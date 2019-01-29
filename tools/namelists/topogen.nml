@@ -1,0 +1,5 @@
+&topogen
+  umwmInputFile = 'umwm.grid'
+  topoInputFile = 'ETOPO1_Ice_c_gmt4.grd'
+  useSeamask    = .T.
+/

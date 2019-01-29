@@ -1,0 +1,1570 @@
+\documentclass[letterpaper]{article}
+%\usepackage{html,makeidx}
+\usepackage{amssymb,amsmath}
+\usepackage{setspace}
+\usepackage{parskip}
+\usepackage[text={6in,8in},centering]{geometry}
+\pagenumbering{arabic}
+\pagestyle{plain}
+
+\title{The University of Miami Wave Model (UMWM) - Description and User's manual}
+\author{M. A. Donelan and M. Curcic}
+
+\date{2016-09-26}
+\numberwithin{equation}{section}
+\setcounter{secnumdepth}{5}
+
+\begin{document}
+
+\begin{titlepage}
+\begin{center}
+\vspace{5 cm}
+\textbf{\large The University of Miami Wave Model (UMWM)}
+
+\textbf{\large Version 2}
+
+\vspace{0.5 cm}
+Description and User's Manual
+
+\vspace{1 cm}
+M.A. Donelan and M. Curcic
+
+\vspace{12 cm}
+September, 2016
+
+\vspace{0.5 cm}
+Rosenstiel School of Marine and Atmospheric Science
+
+University of Miami
+
+\end{center}
+\end{titlepage}
+
+\newpage
+
+\tableofcontents
+\setcounter{tocdepth}{0}
+
+\newpage
+
+\section{Model description}
+\label{sec:model_description}
+
+The University of Miami Wave Model (UMWM) is a prediction model for wave energy and wind stress on the interface between a liquid and a gas. 
+It proceeds through a numerical solution of the wave energy balance equation on a horizontal 2-dimensional grid. 
+The wave energy is a positive definite quantity in logarithmically spaced frequency ($f$) bins and uniformly spaced directional ($\phi$) bins. 
+The energy spectrum is carried as the wavenumber-directional surface elevation variance spectrum and every frequency at each location is identified with the theoretical wavenumber. 
+Thus wave energy is a 5-dimensional quantity ($x,y,k,\phi,t$). 
+Time ($t$) evolution is done by integrating in time the energy balance equation:
+
+\begin{equation}
+\dfrac{\partial E'}{\partial t} + 
+\dfrac{\partial (\dot{\textbf{x}}E')}{\partial \textbf{x}} + 
+\dfrac{\partial (\dot{k}E')}{\partial k} + 
+\dfrac{\partial (\dot{\phi}E')}{\partial \phi} = 
+\rho_{w}g\displaystyle\sum_{i=1}^{n}S_{i} 
+\label{energy_balance}
+\end{equation}
+\\
+where $E'(\textbf{x},k,\phi,t)$ is the energy spectrum, and $\dot{\textbf{x}}=\textbf{c}_{g}+\textbf{u}$, 
+where $\textbf{c}_{g}$ is the group velocity and $\textbf{u}$ is the current in the wave boundary layer. 
+The second, third and fourth terms on the left-hand side are the advection terms
+in geographical, wavenumber and directional space, respectively.
+Advection in wavenumber space is non-zero only in case of changing ocean currents or moving bottom.
+Here, currents are considered to be quasi-stationary on the time scale of wave growth/decay.
+Thus, this term is neglected.
+Advection in directional space (refraction) is non-zero in case of variable water depth 
+and/or inhomogeneous currents. $\displaystyle\sum_{i=1}^{n}S_{i}$ are the source/sink functions 
+that act to grow/decay the waves locally.
+$\rho_{w}$ is the liquid density and $g$ is acceleration due to gravity.\\
+
+The energy spectrum and the variance spectrum are related by:
+
+\begin{equation}
+E'(\textbf{x},k,\phi)=\rho_{w}gE(\textbf{x},k,\phi)
+\end{equation}
+\\
+For convenience, the variance spectrum is the predicted quantity.
+
+\newpage
+\section{Source functions}
+
+The source functions $S$ are parametric descriptions of the various phenomena that increase, decrease or interchange among wavenumbers the energy in the wavenumber spectrum. 
+The wavenumber spectrum is evaluated in separable magnitude and direction bins. 
+The phenomena relevant to the prediction of storm waves in water of arbitrary depth are: \\
+
+(i) Input of energy and momentum from the wind and export of wave energy and momentum to the wind when the waves overrun or run against the wind; \\
+
+(ii) Dissipation of wave energy at and near the surface due to viscosity, ambient turbulence and breaking; \\
+
+(iii) Enhanced dissipation at and near the top and bottom interfaces due to shoaling; \\
+
+(iv) Movement of energy to lower wavenumbers (down-shifting) due to nonlinear interactions including breaking; \\
+
+(v) Enhanced dissipation due to straining by longer waves. \\
+
+The theoretical and experimental justifications for the source functions 
+corresponding to these phenomena are given in Donelan et al. (2012). 
+Here the source functions are simply listed.
+
+\subsection{Wind input function $S_{in}$}
+
+Jeffreys' (1924, 1925) sheltering hypothesis leads to $S_{in}$ of the form:
+
+\begin{equation}
+S_{in}=A_{1}\left(U_{\lambda/2}\cos{\theta}-c-u\cos{\phi}-v\sin{\phi}\right)
+            \left|U_{\lambda/2}\cos{\theta}-c-u\cos{\phi}-v\sin{\phi}\right|
+            \dfrac{k\omega}{g}\dfrac{\rho_{a}}{\rho_{w}}E(k,\phi)
+\label{sin1} 
+\end{equation}
+\\
+where $\theta$ is the angle between wind direction, $\psi$,
+and waves of wavenumber, $k$ and direction, $\phi$. $A_{1}$ is the sheltering coefficient.
+
+$S_{in}$ is positive (energy and momentum transferred from wind to waves)
+when $U_{\lambda/2}\cos{\theta}>c+u\cos{\phi}+v\sin{\phi}$,
+and negative (energy and momentum transferred from waves (swell) to wind)
+when $0<U_{\lambda/2}\cos{\theta}<c+u\cos{\phi}+v\sin{\phi}$ or
+when the waves (swell) propagate against the wind, $\cos{\theta}<0$.
+As waves approach full development $S_{in}$ goes to zero; i.e. the direct wind forcing vanishes.
+The sheltering coefficient, which describes the strength of the source/sink function,
+is different depending on whether $S_{in}$ is positive (wind sea) or negative, when the waves
+run before the wind or against it (swell).
+The wind velocity is that at one half wavelength above the surface up to the top of the logarithmic layer,
+which is usually taken to be $20$ m in the field.
+
+\begin{equation}
+  A_{1}=
+  \begin{cases}
+    variable, & \text{if}\ U_{\lambda/2}\cos{\theta}>c+u\cos{\phi}+v\sin{\phi},\   \text{wind sea} \\
+    0.001, & \text{if}\ 0<U_{\lambda/2}\cos{\theta}<c+u\cos{\phi}+v\sin{\phi},\ \text{swell with wind} \\
+    0.1,  & \text{if}\ \cos{\theta}<0,\   \text{swell against wind} 
+  \end{cases}
+\label{sin2}
+\end{equation}
+
+\subsection{Wave breaking dissipation function $S_{ds}$}
+
+The wave breaking dissipation source function is strongly nonlinear 
+in the saturation spectrum, $B(k,\phi)=k^{4}E(k,\phi)$. 
+In addition the dissipation is enhanced by the straining due to the velocity field of all longer waves 
+and increased by $coth(kd)$ due to the plunging breakers that occur for small values of $kd$ (wavenumber times depth). 
+
+\begin{equation}
+S_{ds}(k,\phi)=-A_{2}\coth(0.2kd)\left(1+A_{3}\overline{\chi^{2}}(k,\phi)\right)^{2}B^{n}(k,\phi)\omega E(k,\phi) 
+\label{sds}
+\end{equation}
+\\
+where $\overline{\chi^{2}}(k,\phi)$ is the sum-squared slope in direction $\phi$ of all waves longer than $\lambda(k)$.
+Coefficients $A_{2}$, $A_{3}$, and $n$ have values $42$, $360$, and $2.4$ respectively.
+
+\subsection{Dissipation by turbulence function $S_{dt}$}
+
+Turbulence mixing in the wave boundary layer attenuates waves. The wave dissipation due to ambient turbulence is:
+
+\begin{equation}
+S_{dt} = -A_{4} u_{*w}k E(k,\phi)
+\label{sdt} 
+\end{equation}
+\\
+where $u_{*w}$ is the friction velocity in the water near the surface and $A_{4} = 0.002$.
+
+\subsection{Dissipation by viscosity function $S_{dv}$}
+
+Some wave energy is converted directly to heat 
+through the action of the viscosity of the liquid.
+Viscous dissipation in the surface sublayer prevents 
+the growth of waves until a threshold wind speed is exceeded.
+The theoretical viscous dissipation rate, $4\nu k^{2}$, 
+has been verified in the laboratory for a range of viscosities, 
+$\nu$ (Donelan and Plant, 2009).
+
+\begin{equation}
+S_{dv}= -4\nu k^{2}E(k,\phi)
+\label{sdv} 
+\end{equation}
+\\
+
+where $\nu$ is the kinematic viscosity of the liquid. 
+It is negligible in clean water for all but the shortest waves ($\lambda<20$ cm).
+
+\subsection{The non-linear wave-wave interaction function $S_{nl}$}
+
+A quantity proportional to the energy dissipated in spilling is passed to longer waves in the next two lower wavenumber bins. 
+The amount transferred decays exponentially with the square of the relative frequency separation:
+
+\begin{equation}
+S_{nl}(k,\phi) = A_{5}\left[b_{1}S_{sb}(k-\Delta k,\phi)
+                           +b_{2}S_{sb}(k-2\Delta k,\phi)
+                           -S_{sb}(k,\phi)\right]
+\label{snl}
+\end{equation}
+\\
+where $b_{1}=\exp(-16(\dfrac{\Delta{f}}{f})^{2})$, $b_{2}=\exp(-16(2\dfrac{\Delta{f}}{f})^{2})$,
+and $b_{1}$ and $b_{2}$ are normalized such that $b_{1}+b_{2}=1$.
+$A_5$ is determined internally s a function of frequency bin spacing.
+$S_{sb}$ is the wave breaking dissipation function due to spilling only: $S_{sb} = S_{ds} / \coth(kd)$.
+
+\subsection{The bottom friction function $S_{bp}$}
+
+The bottom friction function is related to orbital velocity at the bottom and the roughness of the bed. 
+Komen et al. (1994) give the following form for a sandy bed:
+
+\begin{equation}
+S_{bf}= -G_{f}\dfrac{k}{\sinh 2kd} E(k,\phi)
+\label{sbf} 
+\end{equation}
+\\
+where the roughness factor, $G_{f}$ varies from $0.001$ to $0.01$ m/s, depending on bed roughness.
+
+\subsection{The bottom percolation function $S_{bp}$}
+
+On a porous bed the percolation of flow through the bed induces wave energy dissipation. The dissipation rate due 
+to percolation is given by Shemdin et al. (1978):
+
+\begin{equation}
+S_{bp}= -G_{p}\dfrac{k}{\cosh^{2}kd} E(k,\phi)
+\label{sbp} 
+\end{equation}
+\\
+where the permeability factor, $G_{p}$ varies from $0.0006$ to $0.01$ m/s, depending on sand grain size.
+
+
+\newpage
+\section{Stress calculation}
+
+\subsection{Momentum flux from wind}
+\label{sec:wind_stress}
+
+Energy $E$ and momentum $M$ in the wave field are related by the phase speed:
+
+\begin{equation}
+E=Mc
+\end{equation}
+\\
+The form drag components of the wind on the waves $\tau_{x}$ and $\tau_{y}$ 
+are calculated from the wind input source function:
+
+\begin{equation}
+\tau_{x}=\rho_{w}g\int_{-\pi}^{\pi}\!\int_{k_{min}}^{k_{max}}\dfrac{S_{in}}{c}\cos{\phi}\,k\,dk\,d\phi
+\end{equation}
+\\
+\begin{equation}
+\tau_{y}=\rho_{w}g\int_{-\pi}^{\pi}\!\int_{k_{min}}^{k_{max}}\dfrac{S_{in}}{c}\sin{\phi}\,k\,dk\,d\phi
+\end{equation}
+\\
+The form drag coefficient, $Cd_{f}$ is then calculated:
+
+\begin{equation}
+Cd_{f}=\dfrac{\sqrt{\tau_{x}^{2}+\tau_{y}^{2}}}{\rho_{a}U_{z}^{2}}
+\end{equation}
+\\
+where $U_{z}$ is the wind speed at the measured or modeled height $z$.
+The form drag is in the wave direction $\phi$. 
+The skin drag coefficient $Cd_{s}$, in the absence of waves, is in the wind direction $\psi$,
+and is computed from Von Karman's relationship:
+
+\begin{equation}
+Cd_{s} = \dfrac{u_{*}^{2}}{U^{2}(z)} = \dfrac{\kappa^{2}}{\left[\log{\left(\dfrac{z}{z_{0}}\right)}\right]^{2}}
+\end{equation}
+\\
+where $u_{*}$ is the friction velocity, $U(z)$ is wind speed at height $z$ and $\kappa$ is the Von Karman's constant.
+The roughness length $z_0$ is determined by the scale of the molecular sublayer for smooth flow:
+
+\begin{equation}
+z_{0} = 0.132\dfrac{\nu_{a}}{u_{*}} 
+\end{equation}
+\\
+where $\nu_{a}$ is the kinematic viscosity of air.
+In the presence of waves $Cd_{s}$ is reduced due to the sheltering of the surface in the lee of steep waves. 
+The degree of sheltering of the skin is taken to be proportional to the ratio of total drag to skin drag 
+and may be as large as $50\%$ corresponding to full sheltering of the lee face of each wave. 
+The algorithm is as follows:
+
+\begin{equation}
+Cd_{s}^{new}=\dfrac{Cd_{s}^{old}}{3}\left(1+2\dfrac{Cd_{s}^{old}}{Cd_{s}^{old}+Cd_{f}}\right)
+\end{equation}
+\\
+In order to obtain the correct form stress magnitude,
+the high-frequency limit should be equal to or greather than 2 Hz.
+A power law wind-speed dependent tail is appended to the spectrum
+beyond the high-frequency limit. This additional form stress component, $\tau(tail)$, is in the wind direction, as is the skin stress, $\tau(skin)$.  
+
+These (form stress on the resolved waves, form stress on the spectral tail, and skin stress) are the stress components of the wind on the surface.  
+They are the mechanical couplers with the atmospheric model.
+Both skin and form stress components, as well as total drag coefficient $Cd$,
+are part of the standard gridded output of UMWM.
+
+\subsection{Momentum flux into ocean}
+\label{sec:ocean_stress}
+
+Similarly as momentum flux from wind, we can integrate source dissipation
+functions  over the spectrum to obtain momentum fluxes into ocean top and bottom:
+
+\begin{equation}
+\tau_{x}^{OT}=\rho_{w}g\int_{-\pi}^{\pi}\!\int_{k_{min}}^{k_{max}}\dfrac{-S_{ds}-S_{dt}-S_{dv}}{c}\cos{\phi}\,k\,dk\,d\phi 
++ \tau_{x}(tail) + \tau_{x}(skin) 
+\end{equation}
+\\
+\begin{equation}
+\tau_{y}^{OT}=\rho_{w}g\int_{-\pi}^{\pi}\!\int_{k_{min}}^{k_{max}}\dfrac{-S_{ds}-S_{dt}-S_{dv}}{c}\sin{\phi}\,k\,dk\,d\phi 
++ \tau_{y}(tail) + \tau_{y}(skin) 
+\end{equation}
+\\
+\begin{equation}
+\tau_{x}^{OB}=\rho_{w}g\int_{-\pi}^{\pi}\!\int_{k_{min}}^{k_{max}}\dfrac{-S_{bf}-S_{bp}}{c}\cos{\phi}\,k\,dk\,d\phi
+\end{equation}
+\\
+\begin{equation}
+\tau_{y}^{OB}=\rho_{w}g\int_{-\pi}^{\pi}\!\int_{k_{min}}^{k_{max}}\dfrac{-S_{bf}-S_{bp}}{c}\sin{\phi}\,k\,dk\,d\phi
+\end{equation}
+\\
+All momentum fluxes are defined as positive downward - i.e breaking of waves
+in $x$-direction would yield a positive value of momentum flux in that direction.
+These fluxes are part of UMWM standard gridded output.
+
+\newpage
+\section{Numerical approaches}
+
+\subsection{Spatial discretization}
+
+The time evolution of the variance spectrum due to advection in Cartesian projection is given by:
+
+\begin{equation}
+\dfrac{\partial E}{\partial t} = 
+-\dfrac{\partial [(c_{g}\cos{\phi}+u)E]}{\partial x} 
+-\dfrac{\partial [(c_{g}\sin{\phi}+v)E]}{\partial y} 
+-\dfrac{\partial (\dot{\phi}E)}{\partial \phi}
+\end{equation}
+\\
+where $u$ and $v$ are ocean current components in $x$ and $y$, respectively, and $\dot{\phi}$ is the rotation rate.
+Both geographical propagation and refraction terms are discretized using first order upstream differencing.
+This scheme is positive-definite, quantity conserving, 
+implicitly diffusive and computationally efficient.
+A certain amount of diffusion is desirable in order to avoid swell separation between discrete directional and frequency bins.
+A spatial differencing operator is then discretized as:
+
+\begin{equation}
+\dfrac{\partial (\dot{x}E)}{\partial x} \approx \dfrac{\Phi_{i+1/2}-\Phi_{i-1/2}}{\Delta x}\label{advection} 
+\end{equation}
+\\
+where $i$ is a discrete index along dimension $x$. 
+Fluxes at cell edges $\Phi_{i+1/2}$ and $\Phi_{i-1/2}$ are defined as:
+
+\begin{equation}
+\Phi_{i+1/2}=\dfrac{\dot{x}_{i+1/2}+|\dot{x}_{i+1/2}|}{2}E_{i}+\dfrac{\dot{x}_{i+1/2}-|\dot{x}_{i+1/2}|}{2}E_{i+1}\label{fluxout} \\
+\end{equation}
+\\
+\begin{equation}
+\Phi_{i-1/2}=\dfrac{\dot{x}_{i-1/2}+|\dot{x}_{i-1/2}|}{2}E_{i-1}+\dfrac{\dot{x}_{i-1/2}-|\dot{x}_{i-1/2}|}{2}E_{i}\label{fluxin}
+\end{equation} 
+\\
+and 
+
+\begin{equation}
+\dot{x}_{i\pm 1/2} = \dfrac{\dot{x}_{i}+\dot{x}_{i\pm 1}}{2}\label{average}
+\end{equation}
+\\
+The above treatment of flux differencing ensures upstream-definiteness.
+For propagation in two-dimensional space, the stability of the scheme is ensured for:
+
+\begin{equation}
+\mu = \dfrac{\dot{x}\Delta t}{\min{(\Delta x,\Delta y)}} < \dfrac{1}{\sqrt{2}}
+\end{equation}
+\\
+where $\mu$ is the Courant number.
+Depending on the choice of number of directional bins, the stability criterion is more permissive:
+
+\begin{equation}
+\mu = \dfrac{\dot{x}\Delta t}{\min{(\Delta x,\Delta y)}} < 
+\cos{\left(\dfrac{\pi}{4}
+-\dfrac{\Delta \phi}{2}\right)}\label{cfl_2d}
+\end{equation}
+\\
+where $\Delta \phi$ is the directional bin size. 
+To ensure that (\ref{cfl_2d}) holds, the number of directions must be divisible by $8$.
+
+For ocean grid cells next to the land, an open boundary condition is applied
+(energy can freely propagate into land). Same is applied for domain edges, 
+except that there can be incoming wave energy from the boundaries, if provided by the user.
+In the case of global domain simulation, periodic boundary conditions are applied at East and West domain edges.
+\\
+The rotation rate $\dot{\phi}$ in the refraction term is evaluated as:
+
+\begin{equation}
+\dot{\phi} = 
+\dfrac{\partial (c\sin{\phi}+v)}{\partial x} - 
+\dfrac{\partial (c\cos{\phi}+u)}{\partial y}
+\end{equation}
+\\
+The change due to refraction is then computed using (\ref{advection})-(\ref{average}) with $\dot{x}$ replaced by $\dot{\phi}$. 
+Positive and negative values of $\dot{\phi}$ correspond to 
+counter-clockwise and clockwise rotation of energy, respectively.
+The stability constraint for the refraction term is the same as for one-dimensional advection:
+
+\begin{equation}
+\mu = \dfrac{\dot{\phi}\Delta t}{\Delta \phi} < 1\label{cfl_refraction}
+\end{equation}
+\\
+For most domain cells, the allowed refraction time step is larger than the advective step given in (\ref{cfl_2d}).
+In case that condition (\ref{cfl_refraction}) is violated, which can occur on sharp bathymetric or current gradients,
+the rotation at these points is limited so that $\mu = 1$.
+This affects the solution insignificantly, while maintaining computational efficiency.
+Because the domain is periodic in directional space, there is no need for boundary conditions.
+
+\subsection{Time discretization}
+\label{sec:time_discretization}
+
+Once all the source terms in (\ref{energy_balance}) have been evaluated,
+$E(k,\phi)$ is integrated forward in time.
+We evaluate the contribution from source and advection terms separately:
+
+\begin{equation}
+\dfrac{\partial E}{\partial t}=\left(\dfrac{\partial E}{\partial t}\right)_{s}
+                              +\left(\dfrac{\partial E}{\partial t}\right)_{a}
+\end{equation}
+\\
+The contribution from source terms can be written as:
+
+\begin{equation}
+\left(\dfrac{\partial E}{\partial t}\right)_{s}=\displaystyle\sum_{i=1}^{n}S_{i}^{*}E
+\label{src_tend}
+\end{equation}
+\\
+where $S_{i}^{*}$ is just $S_{i}/E$.
+Then, by integrating (\ref{src_tend}) over a finite time interval $\Delta t$,
+a solution is available in the form of:
+
+\begin{equation}
+E^{n+1}_{s}=E^{n}exp\left(\displaystyle\sum_{i=1}^{n}S_{i}^{*}\Delta t\right)
+\end{equation}
+\\
+
+The time increment $\Delta t$ is dynamically computed so that the variance spectrum $E$
+can only grow by a pre-determined, finite factor:
+
+\begin{equation}
+\dfrac{E^{n+1}_{s}}{E^{n}}=exp\left(\displaystyle\sum_{i=1}^{n}S_{i}^{*}\Delta t\right)<r
+\end{equation}
+\\
+where $r$ is usually set between $1.5$ and $2$.
+Lower values of $r$ will draw $E$ closer to the solution attractor.
+
+Then, a time-splitting approach is used to achieve a more stable integration:
+
+\begin{equation}
+E^{*}=\dfrac{E^{n}+E^{n+1}_{s}}{2}
+\end{equation}
+\\
+$E^{*}$ is used to compute the advection and refraction terms described in the previous section.
+Finally, their contribution is evaluated by simple forward-Euler differencing:
+
+\begin{equation}
+E^{n+1}=E^{n+1}_{s}-\Delta t\left[\dfrac{\partial [(c_{g}\cos{\phi}+u)E^{*}]}{\partial x} 
+                                              +\dfrac{\partial [(c_{g}\sin{\phi}+v)E^{*}]}{\partial y}
+                                              +\dfrac{\partial (\dot{\phi}E^{*})}{\partial \phi}\right]
+\end{equation}
+\\
+The above approach is applied to the prognostic part of the spectrum.
+A cut-off frequency, $f_{c}$, which separates the prognostic and diagnostic parts,
+is proportional to the peak frequency of the fully-developed Pierson-Moskowitz spectrum (Pierson and Moskowitz, 1964):
+
+\begin{equation}
+f_{c}=4f_{PM}=\dfrac{0.53g}{U_{10}}
+\end{equation}
+\\
+For all bins higher than $f_{c}$, the waves are assumed to be:  
+in equilibrium with the wind -- traveling centered on the wind direction -- and their spectral densities are established
+from a balance of wind input and dissipation. 
+This approach is justified by the presumption that  
+the quasi-equilibrium range is wider in higher wind conditions.
+
+
+
+\newpage
+\section{Software implementation}
+
+UMWM source code is written in standard Fortran 90 programming language,
+and takes advantage of Unidata's NetCDF standard library for I/O (required),
+and parallel processing through the Message Passing Interface (MPI, optional). 
+It is written in readable and transparent form 
+(i.e. free of low-level instructions), and is well documented. 
+The model may be defined on any structured, curvilinear grid. 
+Most common applications are on a Cartesian and spherical (latitude-longitude) grid.
+More general and un-structured grids are planned 
+to be implemented in future versions of the model.
+A choice is available between limited-area (regional) and global simulation.
+In the latter case, a periodic boundary condition in x-direction is applied automatically,
+and no additional action is required by the user.
+
+In case of parallel processing, model's partitioning scheme (tile distribution)
+is designed in such a way that any number of processors is allowed for running the model.
+This may prove to be useful when a very limited number of processors is available,
+or in the case of coupled modeling where fine-tuning the work-load distribution 
+between model components can be beneficial for computational efficiency.
+
+The user is encouraged to look into the code for information that is not provided in this document.
+The model is open-source and is licensed under a GPL General Public License Version 3,
+\verb+http://www.gnu.org/copyleft/gpl.html+.
+
+\newpage
+\section{Installation and setup}
+
+In order to successfully convey a numerical simulation with UMWM, 
+a procedure is usually as follows:
+
+1) Obtaining the software package;
+
+2) Compiling the source code;
+
+3) Setting up the simulation;
+
+4) Running the model;
+
+5) Reading model output data.
+
+In general, steps 1 and 2 need to be done only once. 
+A working Fortran compiler and NetCDF library must be provided by the user.
+Re-compiling the source code (step 2) is necessary only 
+if change has been made to any of the source files. 
+Naturally, step 3 needs to be repeated if the setup of the experiment is to be changed.
+If only input forcing files are changed, one needs only to re-run the model (step 4).
+Description of the output data files is provided in section \ref{sec:model_output}.
+
+\subsection{Obtaining the software package}
+
+The current version of UMWM can be downloaded from this URL:
+
+\begin{verbatim}
+http://rsmas.miami.edu/groups/umwm/download.html
+\end{verbatim}
+
+On a UNIX-like system (Linux, Mac OS X or other UNIX), 
+unpack the downloaded file by typing \verb+tar xzf umwm-1.x.x.tar.gz+
+(\verb+1.x.x+ should be replaced with the appropriate version number).
+This will create the directory \verb+umwm+.
+In addition, UMWM requires NetCDF Fortran libraries for input and output.
+NetCDF libraries and installation instructions can be downloaded from:
+
+\begin{verbatim}
+http://www.unidata.ucar.edu/downloads/netcdf/index.jsp
+\end{verbatim}
+
+Also, a common build tool \verb+make+ or \verb+gmake+ is recommended 
+for easier compilation.
+\verb+make+ is included by default in most UNIX/Linux distributions,
+but may need to be installed separately on a Microsoft Windows system.
+
+The directory tree in the parent \verb+umwm+ directory is:
+
+\verb+clean+: A script that cleans all output files from the \verb+output/+ directory.
+
+\verb+config+: Directory which contains compilation setup files.
+
+\verb+COPYING+: Licensing.
+
+\verb+input+: Directory where model input files need to be placed.
+
+\verb+INSTALL+: Short installation instructions.
+
+\verb+Makefile+: Compilation rules.
+
+\verb+namelists+: Directory which contains namelist input files for the model.
+
+\verb+output+: Directory where all model output will be written.
+
+\verb+restart+: Directory in which all model restart files are being read and written.
+
+\verb+src+: Directory which contains the source code of the model.
+
+\verb+tools+: Auxiliary pre-processing programs.
+
+The next section describes the steps necessary to compile the model source code.
+
+\subsection{Compiling the source code}
+\label{sec:compilation}
+
+Before doing a simulation, the model code needs to be compiled.
+The source code is located in the \verb+src/+ directory.
+
+The user must set up compiler and NetCDF library variables.
+This is done in the \verb+config/+ directory.
+For example, configuration files \verb+intel+ and \verb+intel.mpi+
+contain configuration settings for the Intel Fortran Compiler,
+for serial and parallel execution, respectively.
+The appropriate configuration file should be then copied or linked
+to a file named \verb+umwm.config+ in the same directory.
+This is the file that is being read at compile-time for both the model
+and the auxiliary tools.
+
+If you have successfully compiled and run UMWM on a platform that was
+not provided originally in the \verb+config/+ directory, please
+send an e-mail to \verb+milan@orca.rsmas.miami.edu+, and we will
+include the configuration file for that platform in the next release.
+
+Once the \verb+umwm.config+ file has been set-up, from the main UMWM directory type:
+
+\begin{verbatim}
+make umwm
+\end{verbatim}
+
+to build the model code,
+
+\begin{verbatim}
+make tools
+\end{verbatim}
+
+to build auxiliary pre-processing programs (see section \ref{sec:tools}), or just type:
+
+\begin{verbatim}
+make
+\end{verbatim}
+
+to build both the model and auxiliary programs.
+The model executable, \verb+umwm+, will appear in the main directory,
+and auxiliary programs executables will appear in the \verb+tools/+ directory.
+
+\subsection{Setting up the simulation}
+
+Once the executable \verb+umwm+ has been generated, 
+the user should set up a desired experiment. 
+The first step is to edit the main UMWM namelist that defines model parameters.
+The namelist is located in \verb+namelists/main.nml+.
+An example \verb+main.nml+ file is shown below:
+
+\begin{verbatim}
+&DOMAIN
+  isGlobal     = .F.                   ! Global (.T.) or regional (.F.)
+  mm           = 399                   ! Domain size in x
+  nm           = 359                   ! Domain size in y
+  om           = 37                    ! Number of frequency bins
+  pm           = 36                    ! Number of directions
+  fmin         = 0.0313                ! Lowest frequency bin [Hz]
+  fmax         = 2.0                   ! Highest frequency bin [Hz]
+  fprog        = 0.5                   ! Highest prognostic frequency bin [Hz]
+  startTimeStr = '2008-09-08_00:00:00' ! Simulation start time
+  stopTimeStr  = '2008-09-13_00:00:00' ! Simulation end time
+  dtg          = 3600                  ! Global (I/O) time step [s]
+  restart      = .F.                   ! Restart from file
+/
+&PHYSICS
+  g         = 9.80665 ! Gravitational acceleration [m/s^2]
+  nu_air    = 1.56E-5 ! Kinematic viscosity of air [m^2/s]
+  nu_water  = 0.9E-6  ! Kinematic viscosity of water [m^2/s]
+  sfct      = 0.074   ! Surface tension [N/m]
+  kappa     = 0.4     ! Von Karman constant
+  z         = 10.     ! Height of the input wind speed [m]
+  gustiness = 0.0     ! Random wind gustiness factor (should be between 0 and 0.2)
+  dmin      = 10.     ! Depth limiter [m]
+  explim    = 1.1     ! Exponent limiter (0.69 ~ 100% growth)
+  sin_fac   = 0.11    ! Input factor from following winds
+  sin_diss1 = 0.10    ! Damping factor from opposing winds
+  sin_diss2 = 0.001   ! Damping factor from swell overrunning wind
+  sds_fac   = 42.     ! Breaking dissipation factor
+  sds_power = 2.4     ! Saturation spectrum power
+  mss_fac   = 360.    ! Mean-square-slope adjustment to Sds
+  sdt_fac   = 0.002   ! Dissipation due to turbulence factor
+  sbf_fac   = 0.003   ! Bottom friction coefficient [m/s]
+  sbp_fac   = 0.003   ! Bottom percolation coefficient [m/s]
+/
+&GRID
+  gridFromFile  = .T.   ! Set to .T. if lon/lat fields are input from file
+  delx          = 12000 ! Grid spacing in x [m] if gridFromFile = .F.
+  dely          = 12000 ! Grid spacing in y [m] if gridFromFile = .F.
+  topoFromFile  = .T.   ! Set to .T. to input bathymetry from file
+  dpt           = 1000  ! Constant water depth [m] if topoFromFile = .F.
+  fillEstuaries = .F.   ! Set to .T. to fill cells with 3 land neighbours
+  fillLakes     = .F.   ! Set to .T. to fill user chosen seas/lakes
+/
+&FORCING
+  winds         = .T. ! Wind input from file
+  currents      = .F. ! Currents input from file
+  air_density   = .T. ! Air density input from file
+  water_density = .F. ! Water density input from file
+/
+&FORCING_CONSTANT
+  wspd0         = 25   ! Wind speed [m/s]
+  wdir0         = 0.   ! Wind direction [rad]
+  uc0           = 0.   ! x-component ocean current [m/s]
+  vc0           = 0.   ! y-component ocean current [m/s]
+  rhoa0         = 1.2  ! Air density [kg/m^3]
+  rhow0         = 1025 ! Water density [kg/m^3]
+/
+&OUTPUT
+  outgrid       = 1   ! Gridded output interval  [hours]
+  outspec       = 0   ! Spectrum output interval [hours]
+  outrst        = 0   ! Restart output interval  [hours]
+  xpl           = 160 ! Grid cell in x for stdout (screen)
+  ypl           = 160 ! Grid cell in y for stdout (screen)
+  stokes        = .T. ! Output Stokes drift velocity fields
+/
+&STOKES
+  depths        = 0 1 2 3 4 5 10 15 20 25 30 35 40 50 60 70 80 90 100
+/
+
+\end{verbatim}
+
+All simulation parameters in \verb+namelists/main.nml+ are 
+summarized below.
+
+\subsubsection{DOMAIN namelist}
+
+The \verb+DOMAIN+ namelist contains main parameters that define 
+a wave model simulation.
+In particular, these include domain grid size in geographical 
+and frequency-directional space and time limits of the simulation.
+Full list of \verb+DOMAIN+ nameslist parameters follow.
+
+\verb+isGlobal+: 
+A boolean value describing whether the simulation is global or regional.
+If set to \verb+.TRUE.+, the domain will be periodic in $x$.
+
+\verb+mm+:
+Domain size in $x$.
+
+\verb+nm+:
+Domain size in $y$.
+
+\verb+om+:
+Total number of discrete frequency bins.
+See \verb+fmin+ and \verb+fmax+ below.
+
+\verb+oa+:
+Highest prognostic frequency bin index. If set to zero, the cutoff
+frequency is computed dynamically and equals 4 times Pierson-Moskowitz peak frequency.
+
+\verb+pm+:
+Total number of discrete directional bins.
+For small to medium-size real case basins (e.g. Mediterranean, Gulf of Mexico), 
+at least $24$ is recommended.
+For larger basins (oceans) or global simulations, set to at least $32$.
+Must be divisible by $4$.
+A value of $pm$ divisible by $8$ is recommended for optimal propagation properties.
+ 
+\verb+fmin+:
+Minimum frequency [Hz].
+Determines the longest wave resolved by the model. 
+Domain and application specific.
+A value between $0.03$ Hz and $0.05$ Hz is commonly used
+for real case larger scale basins.
+ 
+\verb+fmax+:
+Maximum frequency [Hz].
+Determines the shortest wave resolved by the model.
+Domain and application specific.
+Typical values for regional or global wave forecasting is $0.5$ Hz or larger. 
+$2.0$ Hz (or larger) is required for accurate stress estimation.
+
+\verb+fprog+:
+Highest frequency [Hz] in the prognostic range of the spectrum.
+Can be used to limit the prognostic range if the cutoff frequency
+determined by local wind speed 
+(see section \ref{sec:time_discretization} for more information)
+is too high, resulting in short time steps.
+If this is not desired, set to the value of \verb+fmax+. 
+
+\verb+startTimeStr+:
+A character string in the form of \verb+YYYY-MM-DD_hh:mm:ss+ that determines
+the start time of the simulation.
+See \verb+restart+ below.
+
+\verb+stopTimeStr+:
+A character string in the form of \verb+YYYY-MM-DD_hh:mm:ss+ that determines
+the stop time of the simulation.
+
+\verb+dtg+:
+An integer that determines global time step of the wave model in seconds.
+If forcing data is to be input from files (see forcing options below),
+$dtg$ corresponds to the input time step. 
+$dtg$ is the shortest time interval at which output to file can be made
+(see output options below).
+
+\verb+restart+:
+A boolean that determines if the model is to be initiated 
+from initial conditions written in a restart file.
+If set to \verb+.FALSE.+, the model will be initiated from a calm state.
+If set to \verb+.TRUE.+, a valid restart file \verb+umwmrst_YYYY-MM-DD_hh:mm:ss.nc+
+must be present at run time in the \verb+restart/+ directory.
+A valid restart file must have \verb+mm, nm, om, pm, fmin, fmax+ 
+same as the current simulation setup.
+For more information about restarting UMWM from a file, see section \ref{sec:restart}.
+
+
+
+\subsubsection{PHYSICS namelist}
+\label{sec:physics_namelist}
+
+The \verb+PHYSICS+ namelist contains parameters that govern
+the physical processes relevant to wave energy evolution.
+
+\verb+g+:
+Gravitational acceleration [$\dfrac{m}{s^{2}}$].
+
+\verb+nu_air+:
+Kinematic viscosity of air [$\dfrac{m^{2}}{s}$].
+
+\verb+nu_water+:
+Kinematic viscosity of water [$\dfrac{m^{2}}{s}$].
+  
+\verb+sfct+:
+Water surface tension [$\dfrac{N}{m}$].
+
+\verb+kappa+:
+Von Karman constant.
+
+\verb+z+:
+Height of the input wind speed [$m$].
+
+\verb+gustiness+:
+Addition of a stochastic component to $x$ and $y$ wind speed components.
+The value of this parameter is a maximum fraction of the wind speed 
+to be added or substracted.
+For example, setting \verb+gustiness+ to 0.2 will allow wind speed components
+to be randomly modulated by up to 20\%.
+This option may be used to introduce wind fluctuations when available
+wind forcing files are on coarse temporal and spatial resolutions.
+Must be positive, and should not be larger than $0.2$.
+
+\verb+dmin+:
+Depth limiter [$m$]. Must be larger than $0$. 
+All sea points shallower than \verb+dmin+ will be set to this value.
+Values of a few meters or fractions of a meter are allowed, but may lead
+to a shorter time step and longer model integration time.
+
+\verb+sin_fac+:
+Wave growth factor from following winds. 
+See $A_{1}$ in (\ref{sin1}) and (\ref{sin2}).
+
+\verb+sin_diss1+:
+Dissipation factor from opposing wind input.
+See $A_{1}$ in (\ref{sin1}) and (\ref{sin2}).
+
+\verb+sin_diss2+:
+Dissipation factor from swell overrunning wind.
+See $A_{1}$ in (\ref{sin1}) and (\ref{sin2}).
+
+\verb+sds_fac+:
+Dissipation factor from deep-water breaking waves (spilling).
+See $A_{2}$ in (\ref{sds}).
+
+\verb+sds_power+:
+Exponent (power index) of the saturation spectrum, equation (\ref{sds}).
+
+\verb+mss_fac+:
+Sum-square slope adjustment to $S_{ds}$.
+See $A_{3}$ in (\ref{sds}).
+
+\verb+sdt_fac+:
+Dissipation factor due to turbulence in the wave boundary layer (ocean top).
+See $A_{4}$ in (\ref{sdt}).
+
+\verb+sbf_fac+:
+Bottom friction coefficient [$\dfrac{m}{s}$].
+See $G_{f}$ in (\ref{sbf}).
+Typically with values between $0.001$ and $0.01 m/s$,
+depends on bed roughness. 
+
+\verb+sbp_fac+:
+Bottom percolation coefficient [$\dfrac{m}{s}$].
+See $G_{p}$ in (\ref{sbp}).
+Typically with values between $0.0006$ and $0.01 m/s$,
+depends on sand grain size.
+
+\subsubsection{GRID namelist}
+\label{sec:grid_namelist}
+
+\verb+gridFromFile+:
+A boolean parameter that determines whether grid cell size
+$\Delta x$ and $\Delta y$ are going to be computed from 
+longitude and latitude fields in \verb+input/umwm.gridtopo+. 
+If set to \verb+.FALSE.+, $\Delta x$ and $\Delta y$ are constant,
+and they are input as \verb+delx+ and \verb+dely+ below.
+
+\verb+delx+:
+Grid spacing in x [$m$] if \verb+gridFromFile+ is set to \verb+.FALSE.+.
+Must be larger than $0$.
+
+\verb+dely+:
+Grid spacing in y [$m$] if \verb+gridFromFile+ is set to \verb+.FALSE.+.
+Must be larger than $0$.  
+  
+\verb+topoFromFile+:
+When set to \verb+.TRUE.+ bathymetry field
+is to be input from file (\verb+input/umwm.gridtopo+, netCDF variable \verb+z+).
+If set to \verb+.FALSE.+, bathymetry is constant and has the value
+specified by namelist variable \verb+dpt+ below.
+
+\verb+dpt+:
+Constant water depth [$m$] if topoFromFile is set to \verb+.FALSE.+.
+Must be larger than $0$.
+
+\verb+fillEstuaries+:
+If set to \verb+.TRUE.+, all sea points that have 3 land neighbors 
+will be masked iteratively as land.
+Use to reduce computational time if wave simulation in narrow channels 
+or estuaries is not desired.
+Do not use if running a coupled atmosphere-wave simulation where
+atmosphere and wave model have identical sea/land mask fields.
+
+\verb+fillLakes+:
+If set to \verb+.TRUE.+, enclosed seas/lakes marked by the user will
+be filled with land mask.
+Do not use if running a coupled atmosphere-wave simulation where
+atmosphere and wave model have identical sea/land mask fields.
+For more information about how to specify and fill enclosed seas 
+that are not desired in the wave simulation, see section \ref{sec:lakefill}.
+
+\subsubsection{FORCING namelist}
+
+The \verb+FORCING+ namelist contains switches that control input of forcing fields
+from file. There is one switch for each forcing field. If any of the switches is 
+set to \verb+.FALSE.+, a \verb+FORCING_CONSTANT+ namelist will be read. 
+If any of the switches is set to \verb+.TRUE.+, input forcing file(s) will be read.
+
+\verb+winds+:
+Wind speed [$\dfrac{m}{s}$] input from file switch.
+If set to \verb+.FALSE.+, parameters \verb+wspd0+ and \verb+wdir0+ in 
+the \verb+FORCING_CONSTANT+ namelist will provide the values for constant wind speed
+and wind direction (mathematical convention), respectively.
+
+\verb+currents+:
+Ocean surface currents [$\dfrac{m}{s}$] input from file switch.
+If set to \verb+.FALSE.+, parameters \verb+uc0+ and \verb+vc0+ in 
+the \verb+FORCING_CONSTANT+ namelist will provide the values for constant $x$
+and $y$ components of ocean surface currents, respectively.
+
+\verb+air_density+:
+Surface air density [$\dfrac{kg}{m^{3}}$] input from file switch.
+If set to \verb+.FALSE.+, parameter \verb+rhoa0+ in 
+the \verb+FORCING_CONSTANT+ namelist will provide the value for constant
+surface air density field.
+
+\verb+water_density+:
+Surface water density [$\dfrac{kg}{m^{3}}$] input from file switch.
+If set to \verb+.FALSE.+, parameter \verb+rhow0+ in 
+the \verb+FORCING_CONSTANT+ namelist will provide the value for constant
+surface water density field.
+
+\subsubsection{FORCING\textunderscore CONSTANT namelist}
+
+Parameters in this namelist are used only in the case where any of the 
+forcing fields are not provided in the input files. 
+
+\verb+wspd0+:
+Wind speed [$\dfrac{m}{s}$]. Used if \verb+winds = .FALSE.+.
+
+\verb+wdir0+:
+Wind direction [$rad$], mathematical convention. Used if \verb+winds = .FALSE.+.
+
+\verb+uc0+:
+Ocean surface current, $x$-component [$\dfrac{m}{s}$]. Used if \verb+currents = .FALSE.+.
+
+\verb+vc0+:
+Ocean surface current, $y$-component [$\dfrac{m}{s}$]. Used if \verb+currents = .FALSE.+.
+
+\verb+rhoa0+:
+Surface air density [$\dfrac{kg}{m^{3}}$]. Used if \verb+air_density = .FALSE.+. 
+
+\verb+rhow0+:
+Surface water density [$\dfrac{kg}{m^{3}}$]. Used if \verb+water_density = .FALSE.+.
+
+\subsubsection{OUTPUT namelist}
+\label{sec:output_namelist}
+
+Parameters in this namelist control the model output - 
+gridded, spectrum, and restart.
+Gridded output contains integrated 2-dimensional quantities of the spectrum.
+Fields from the whole domain are stored in gridded output files.
+Spectrum output is defined at individual geographical locations in the domain
+(one file per location) and contain full wavenumber-directional spectrum and 
+source functions $S_{in}$, $S_{ds}$ and $S_{nl}$.
+Restart output files contain snapshots of the wave spectrum from the whole domain.
+They are used for continuing a model simulation at a later time (see section \ref{sec:restart}).
+
+\verb+outgrid+:
+Gridded output interval [hours]. 
+Allowed values are \verb+0+, \verb+1+, \verb+2+, \verb+3+, \verb+4+, \verb+6+, \verb+8+, \verb+12+ and \verb+24+.
+If \verb+outgrid+ is larger than \verb+0+, gridded output files in the form of
+\verb+umwmout_YYYY-MM-DD_hh:mm:ss.nc+ will appear in the \verb+output/+ directory,
+where \verb+YYYY-MM-DD_hh:mm:ss+ denotes model time of the output.
+
+\verb+outspec+:
+Spectrum output interval [hours].
+Allowed values are \verb+0+, \verb+1+, \verb+2+, \verb+3+, \verb+4+, \verb+6+, \verb+8+, \verb+12+ and \verb+24+.
+If \verb+outspec+ is larger than \verb+0+, another input file, \verb+namelists/spectrum.nml+
+will be read.
+Although technically not a Fortran namelist file, it works in a similar way.
+An example spectrum input file may look like this:
+
+\begin{verbatim}
+LL
+-89.66 25.89 NDBC42001
+-93.67 25.79 NDBC42002
+-96.66 25.96 NDBC42020
+-94.41 29.23 NDBC42035
+-88.80 30.09 NDBC42007
+\end{verbatim}
+
+The first line of the file must contain either \verb+XY+ or \verb+LL+.
+This 2-character string describes whether the coordinates of spectrum output location
+are given in model grid indices or in longitude and latitude, respectively.
+In case of \verb+XY+, spectrum at exact specified grid cell will be output.
+In case of \verb+LL+, spectrum at grid cell nearest to specified location will be output.
+The following lines each contain 3 elements: $x$ and $y$ coordinate (or longitude and latitude)
+and location identifier (character string, up to 40 characters, no spaces).
+A spectrum output file in the form of \verb+umwmspc_ID_YYYY-MM-DD_hh:mm:ss.nc+ 
+will appear in the \verb+output/+ directory,
+where \verb+ID+ is the location identifier specified in \verb+namelists/spectrum.nml+,
+and \verb+YYYY-MM-DD_hh:mm:ss.nc+ is the initial time of the simulation
+and has the same value as \verb+startTimeStr+.
+All output times during the simulation are stored in the same file.
+Each requested spectrum location is stored in a separate file.
+
+\verb+outrst+:
+Restart output interval [hours].
+Allowed values are \verb+0+, \verb+1+, \verb+2+, \verb+3+, \verb+4+, \verb+6+, \verb+8+, \verb+12+ and \verb+24+.
+If \verb+outrst+ is larger than \verb+0+, restart files in the form of
+\verb+umwmrst_YYYY-MM-DD_hh:mm:ss+ will appear in the \verb+restart/+ directory.
+These files can be used later to re-start a simulation in case of interruption
+or abnormal termination of the model (see section \ref{sec:restart}).
+
+\verb+xpl+:
+Grid cell index in $x$ for stdout (screen).
+
+\verb+ypl+:
+Grid cell index in $y$ for stdout (screen).
+
+\verb+stokes+:
+A boolean that controls the calculation and output of Stokes drift.
+If set to \verb+.TRUE.+, the \verb+STOKES+ namelist (see next section)
+will be read.
+
+\subsubsection{STOKES namelist}
+\label{sec:stokes_namelist}
+
+If the parameter \verb+stokes+ in the \verb+OUTPUT+ namelist is set to \verb+.TRUE.+,
+this namelist will be read by the model.
+It contains only one entry, \verb+depths+, 
+which is an array of depths at which the Stokes drift will be computed.
+Depth values are defined as positive numbers, e.g.:
+
+\begin{verbatim}
+&STOKES
+  depths = 0 1 2 3 4 5 10 15 20 25 30 35 40 50 60 70 80 90 100
+/
+\end{verbatim}
+
+The number of levels at which Stokes drift velocities are to be computed 
+is arbitrary, and can be chosen by the user.
+
+\subsection{Input files}
+
+For a typical regional-scale simulation, 
+UMWM requires a grid and topography file \verb+umwm.gridtopo+
+and input forcing files in the form of \verb+umwmin_YYYY-MM-DD_hh:mm:ss.nc+.
+Both grid and topography file and forcing files must be written in NetCDF
+standard format, and must be present in the \verb+input/+ directory.
+
+The \verb+umwm.gridtopo+ must contain 2-dimensional fields
+of longitude, latitude, and terrain elevation under names 
+\verb+lon+, \verb+lat+, and "\verb+z+", respectively.
+Longitude and latitude fields are used internally to calculate
+grid cell size fields $\Delta x$ and $\Delta y$.
+Terrain elevation field \verb+z+ is defined as positive upward from
+mean sea level.
+
+A forcing file may contain some or all of the following 
+2-dimensional fields:
+
+\verb+uw+: $x$-component of wind [$\dfrac{m}{s}$]. 
+Used if the \verb+winds+ switch in the \verb+OUTPUT+ namelist is set to \verb+.TRUE.+. 
+
+\verb+vw+: $y$-component of wind [$\dfrac{m}{s}$]. 
+Used if the \verb+winds+ switch in the \verb+OUTPUT+ namelist is set to \verb+.TRUE.+.
+
+\verb+uc+: $x$-component of ocean surface currents [$\dfrac{m}{s}$]. 
+Used if the \verb+currents+ switch in the \verb+OUTPUT+ namelist is set to \verb+.TRUE.+.
+
+\verb+vc+: $y$-component of ocean surface currents [$\dfrac{m}{s}$]. 
+Used if the \verb+currents+ switch in the \verb+OUTPUT+ namelist is set to \verb+.TRUE.+.
+
+\verb+rhoa+: Air density [$\dfrac{kg}{m^{3}}$]. 
+Used if the \verb+air_density+ switch in the \verb+OUTPUT+ namelist is set to \verb+.TRUE.+.
+
+\verb+rhow+: Water density [$\dfrac{kg}{m^{3}}$]. 
+Used if the \verb+water_density+ switch in the \verb+OUTPUT+ namelist is set to \verb+.TRUE.+.
+
+The forcing files required during model run time
+must be present in the \verb+input/+ directory.
+
+\newpage
+\section{Pre-processing tools}
+\label{sec:tools}
+
+Several pre-processing tools are available to the user for generation of 
+input grid and bathymetry files for UMWM, as well as input forcing files from 
+WRF (Weather Research and Forecasting atmospheric model) output files.
+The program source files are located in the \verb+tools/src/+ directory.
+After successful compilation, the program executable files will be located in the \verb+tools/+ directory.
+
+Individual pre-processing tools for UMWM are described in the 
+following sections.
+
+\subsection{umwm\textunderscore gridgen}
+
+Program \verb+umwm_gridgen+ may be used for a quick generation of 
+a UMWM grid file (\verb+umwm.grid+) in a regular spherical (lat-lon) projection.
+Before running the program, a \verb+tools/namelists/gridgen.nml+ namelist file
+must be configured:
+
+\begin{verbatim}
+&gridgen
+  idm  = 400    ! Grid size in x (East)
+  jdm  = 300    ! Grid size in y (North)
+  dlon = 0.04   ! Grid increment in degrees longitude
+  dlat = 0.04   ! Grid increment in degrees latitude
+  lon0 = 162    ! Longitude of SW corner point; range is [-180,180]
+  lat0 = 10     ! Latitude of SW corner point; exclusive range is (-90,90)
+/
+\end{verbatim}
+
+Once all the parameters in the namelist have been set up, the 
+program can be run from the \verb+tools/+ directory by typing \verb+umwm_gridgen+.
+This will generate a UMWM grid file \verb+umwm.grid+.
+This file can then be used as input to the wave model itself,
+or to \verb+umwm_topogen+ for bathymetry field generation.
+
+\subsection{umwm\textunderscore topogen}
+\label{sec:topogen}
+
+Once a UMWM grid file, \verb+umwm.grid+ has been generated,
+program \verb+topogen+ may be used to generate the bathymetry 
+field for input to the wave model.
+The namelist file that needs to be editted is \verb+tools/namelists/topogen.nml+:
+
+\begin{verbatim}
+&topogen
+  umwmInputFile = 'umwm.grid'
+  topoInputFile = 'ETOPO1_Ice_c_gmt4.grd'
+  useSeamask    = .F.
+/
+\end{verbatim}
+
+\verb+topogen+ takes two files as input.
+First is a target grid file for which a bathymetry field is desired,
+in this case, UMWM grid file \verb+umwm.grid+, and the second
+is the raw topography file to be read.
+
+There are several requirements about the format of input files.
+Both need to be in netCDF format, with spatial dimensions 
+defined as \verb+x+ and \verb+y+.
+\verb+umwmInputFile+ must have 2-dimensional longitude and latitude 
+fields defined as \verb+lon+ and \verb+lat+, respectively.
+\verb+topoInputFile+ must have 1-dimensional longitude and latitude
+fields defined as \verb+lon+ and \verb+lat+, respectively,
+and a 2-dimensional topography field (positive - up, negative - down)
+defined as \verb+z+.
+This format is compatible with, e.g. ETOPO 1-minute topography in netCDF
+format by NOAA National Geophysical Data Center 
+(topography data can be downloaded from \verb+http://www.ngdc.noaa.gov/mgg/global/global.html+).
+
+The third parameter in the namelist, \verb+useSeamask+, may be used only
+if there is a \verb+seamask+ field defined in \verb+umwmInputFile+
+(e.g. if the grid file was generated by \verb+wrf2umwmgrid+, or added by user).
+If set to \verb+.TRUE.+, the bathymetry field will be modified at points 
+where its values and seamask do not match.
+This may be useful when coupling UMWM with an atmosphere or ocean model,
+and identical seamasks are desired.
+
+\subsection{wrf2umwmgrid}
+
+\verb+wrf2umwmgrid+ is a convenience program for extraction of 
+2-dimensional longitude, latitude and seamask fields from a WRF output file.
+The program takes a WRF file name (path) as a command line argument, e.g.:
+
+\begin{verbatim}
+wrf2umwmgrid wrfout_d01_2008-09-06_00:00:00
+\end{verbatim}
+
+This will generate a UMWM grid file \verb+umwm.grid+.
+This file can then be used as input to the wave model itself,
+or to \verb+umwm_topogen+ for bathymetry field generation.
+
+\verb+wrf2umwmgrid+ will operate on any \verb+wrfout*+, \verb+wrfrst*+ 
+or \verb+wrfinput*+ file. 
+
+\subsection{wrf2umwmin}
+
+Similarly to \verb+wrf2umwmgrid+, this program can be used to
+convert a WRF output file to a UMWM input forcing file.
+Since WRF output does not contain any ocean fields, only wind
+components and air density may be computed using these files.
+The program takes a WRF file name (path) as a command line argument, e.g.:
+
+\begin{verbatim}
+wrf2umwmin wrfout_d01_2008-09-06_00:00:00
+\end{verbatim}
+
+This will generate a UMWM input forcing file \verb+umwmin_d01_2008-09-06_00:00:00.nc+.
+The air density field is calculated using the ideal gas law for moist air.
+
+\verb+wrf2umwmin+ will operate on any \verb+wrfout*+, \verb+wrfrst*+ 
+or \verb+wrfinput*+ file. 
+
+\newpage
+\section{Running the model}
+
+Once namelists have been configured and input files are provided,
+the user can start the simulation by executing \verb+umwm+.
+If the model was compiled in the MPI mode, refer to the documentation
+of the MPI implementation about executing programs in parallel.
+On a UNIX/Linux system with a common modern MPI implementation (e.g. MPICH2 or OpenMPI),
+one would type:
+
+\begin{verbatim}
+mpiexec -n 16 umwm
+\end{verbatim}
+
+This command would execute \verb+umwm+ on 16 parallel processes.
+
+\subsection{Restarting the model}
+\label{sec:restart}
+
+If \verb+restart+ is set to \verb+.TRUE.+ in \verb+namelists/main.nml+,
+the model will read initial conditions from a restart file.
+\verb+startTimeStr+ must match the time string in the restart file name.
+For example, if a user specifies \verb+'2008-09-08_18:00:00'+ as \verb+startTimeStr+,
+\verb+umwmrst_2008-09-08_18:00:00.nc+ file must be present in the \verb+restart/+ directory.
+
+\subsection{Excluding enclosed seas}
+\label{sec:lakefill}
+
+It is possible to mask out lakes or enclosed seas in the domain 
+if they are not desired at model run-time. 
+If the switch \verb+fillLakes+ in the \verb+GRID+ namelist is set to \verb+.TRUE+.,
+UMWM will read the input file \verb+namelists/exclude.nml+ at run-time.
+This file should contain a list of grid coordinates (given as pair of integers each)
+that belong in enclosed seas that are to be filled.
+It is sufficient to specify one point coordinates per enclosed sea.
+One line must contain only one pair of grid indices.
+For example, \verb+namelists/exclude.nml+ containing lines:
+
+\begin{verbatim}
+  2     2
+105   226 
+\end{verbatim}
+
+will instruct the model to fill lakes that contain 
+grid cells at \verb+(2,2)+ and \verb+(105,226)+.
+
+\newpage
+\section{Reading model output data}
+\label{sec:model_output}
+
+As mentioned in the previous section, the output files will appear in the \verb+output/+ directory.
+The user can open and read output files with any program in a language that has NetCDF libraries provided - 
+Fortran, MATLAB, Python, C/C++, Java etc. 
+In addition, convenience NetCDF viewing programs exist, 
+e.g. Ncview - \verb+http://meteora.ucsd.edu/~pierce/ncview_home_page.html+.
+
+\subsection{Grid definition file}
+
+A grid definition file is generated at the beginning of every simulation,
+and is written in \verb+output/umwmout.grid+.
+It contains grid information that may be used for quantitative analysis
+of wave model results. 
+This file may also be used as an input grid file to 
+\verb+umwm_topogen+ (see section \ref{sec:topogen}). 
+The fields that are written in \verb+umwmout.grid+ are:
+
+\verb+lon+:
+2-dimensional longitude field [$deg E$].
+
+\verb+lat+:
+2-dimensional latitude field [$deg N$].
+
+\verb+dlon+:
+Grid cell increment in longitude [$deg$].
+
+\verb+dlat+:
+Grid cell increment in latitude [$deg$].
+
+\verb+dx+:
+Grid cell increment in $x$ [$m$].
+
+\verb+dy+:
+Grid cell increment in $y$ [$m$].
+
+\verb+area+:
+Grid cell area [$m^{2}$].
+
+\verb+depth+:
+Bathymetry [$m$] after processing by the wave model.
+This field is positive below the mean sea level, 
+and has the values effective after the depth limiter
+has been applied (see section \ref{sec:physics_namelist}).
+
+\verb+seamask+:
+Integer field that masks sea points with a value of $1$,
+and land points with a value of $0$.
+
+\verb+nproc+:
+Integer field that marks tiles of the domain covered by each processor
+in MPI mode. 
+
+\subsection{Gridded output}
+
+The integrated spectrum quantities that describe the wave field,
+as well as forcing fields, are being output in the file of the form
+\verb+umwmout_YYYY-MM-DD_hh:mm:ss.nc+, where \verb+YYYY-MM-DD_hh:mm:ss+
+represent the exact simulation time of the output.
+
+The output fields are listed below:
+
+\verb+frequency+: 
+Frequency range [$Hz$].
+
+\verb+theta+:
+Angles of directional bins [$rad$], defined using mathematical convention.
+
+\verb+lon+:
+2-dimensional longitude field [$deg$].
+
+\verb+lat+:
+2-dimensional latitude field [$deg$].
+
+\verb+seamask+:
+Integer field with values of $1$ over ocean grid cells, and $0$ over land.
+
+\verb+depth+:
+Water depth after processing at initialization time (downward is positive). 
+
+\verb+wspd+:
+Wind speed [$\dfrac{m}{s}$] forcing.
+
+\verb+wdir+:
+Wind direction [$rad$], defined using mathematical convention.
+
+\verb+uc+:
+$x$-component of ocean surface currents [$\dfrac{m}{s}$].
+
+\verb+vc+:
+$y$-component of ocean surface currents [$\dfrac{m}{s}$].
+
+\verb+rhoa+:
+Air density [$\dfrac{kg}{m^{3}}$].
+
+\verb+rhow+:
+Water density [$\dfrac{kg}{m^{3}}$].
+
+\verb+taux_form+:
+$x$-component of form drag from wind [$\dfrac{N}{m^{2}}$].
+See section \ref{sec:wind_stress} for more details 
+on this and the following 3 fields.
+
+\verb+tauy_form+:
+$y$-component of form drag from wind [$\dfrac{N}{m^{2}}$].
+
+\verb+taux_skin+:
+$x$-component of skin drag from wind [$\dfrac{N}{m^{2}}$].
+
+\verb+tauy_skin+:
+$y$-component of skin drag from wind [$\dfrac{N}{m^{2}}$].
+
+\verb+taux_ocn+:
+$x$-component of momentum flux from wave dissipation 
+into ocean top [$\dfrac{N}{m^{2}}$].
+
+\verb+tauy_ocn+:
+$y$-component of momentum flux from wave dissipation 
+into ocean top [$\dfrac{N}{m^{2}}$].
+
+\verb+taux_bot+:
+$x$-component of momentum flux from wave dissipation 
+into ocean bottom [$\dfrac{N}{m^{2}}$].
+
+\verb+tauy_bot+:
+$y$-component of momentum flux from wave dissipation 
+into ocean bottom [$\dfrac{N}{m^{2}}$].
+
+\verb+cd+:
+Atmospheric drag coefficient [$nondimensional$].
+Calculated as described in \ref{sec:wind_stress}.
+
+\verb+swh+:
+Significant wave height [$m$].
+Equals the average of the highest third of all waves.
+Calculated in the model as the integral over the whole spectrum:
+
+\begin{equation}
+H_{s} = 4 \sqrt{\int\!\int E(k,\phi)kdkd\phi}
+\end{equation}
+
+\verb+mwp+:
+Mean wave period [$s$]. Calculated in the model as:
+
+\begin{equation}
+\overline{T} = \sqrt{\dfrac{\int\!\int E(k,\phi)kdkd\phi}{\int\!\int f^{2}E(k,\phi)kdkd\phi}}
+\end{equation}
+
+\verb+mwl+:
+Mean wave length [$m$]. 
+
+\begin{equation}
+\overline{L} = 2\pi\sqrt{\dfrac{\int\!\int E(k,\phi)kdkd\phi}{\int\!\int k^{2}E(k,\phi)kdkd\phi}}
+\end{equation}
+
+\verb+mwd+:
+Mean wave direction [$rad$], mathematical convention.
+
+\verb+dwp+:
+Dominant wave period [$s$], 
+corresponding to the discrete peak of the spectrum. 
+
+\verb+dwl+:
+Dominant wave length [$m$],
+corresponding to the discrete peak of the spectrum.
+
+\verb+dwd+:
+Dominant wave direction [$rad$],
+corresponding to the discrete peak of the spectrum.
+
+\verb+u_stokes+:
+Three-dimensional field of $x$-component of Stokes drift, 
+Lagrangian mean of wave induced fluid motion [$\dfrac{m}{s}$].
+The extent of the third dimension ($z$, depth levels) is specified 
+by the user (see \ref{sec:stokes_namelist}).
+
+\verb+v_stokes+:
+Three-dimensional field of $y$-component of Stokes drift, 
+Lagrangian mean of wave induced fluid motion [$\dfrac{m}{s}$].
+The extent of the third dimension ($z$, depth levels) is specified 
+by the user (see \ref{sec:stokes_namelist}).
+
+\subsection{Spectrum output}
+
+Spectrum output at any geographical point in the domain may be optionally enabled
+through the switch in the \verb+OUTPUT+ namelist.
+For instructions on how to enable spectrum point output, 
+see section \ref{sec:output_namelist}). 
+
+The list of fields currently being output in a UMWM spectrum file follows.
+
+\verb+Frequency+:
+One-dimensional frequency array [$Hz$].
+
+\verb+Wavenumber+:
+One-dimensional wavenumber array [$\dfrac{rad}{m}$].
+
+\verb+Direction+:
+One-dimensional array of directional bins, mathematical convention [$rad$].
+
+\verb+Longitude+:
+Longitude [$deg E$] of the point output. 
+Available only if \verb+topoFromFile+ is set to \verb+.TRUE.+.
+
+\verb+Latitude+:
+Latitude [$deg N$] of the point output. 
+Available only if \verb+topoFromFile+ is set to \verb+.TRUE.+.
+
+\verb+wspd+:
+One-dimensional array of wind speed [$\dfrac{m}{s}$] as function of time
+at the location of point output.
+
+\verb+wdir+:
+One-dimensional array of wind direction [$rad$], mathematical convention, 
+as function of time at the location of point output.
+
+\verb+F+:
+Surface elevation variance spectrum in wavenumber-directional space [$\dfrac{m^{4}}{rad^{3}}$].
+
+\verb+Sin+:
+Wind input source in wavenumber-directional space [$\dfrac{m^{4}}{rad^{3}s}$].
+
+\verb+Sds+:
+Wave dissipation sink in wavenumber-directional space [$\dfrac{m^{4}}{rad^{3}s}$].
+
+\verb+Sdt+:
+One-dimensional wave dissipation due to turbulence 
+in the wave boundary layer in wavenumber-directional space [$\dfrac{m^{4}}{rad^{3}s}$].
+
+\verb+Sdv+:
+One-dimensional wave dissipation due to viscosity 
+in wavenumber-directional space [$\dfrac{m^{4}}{rad^{3}s}$].
+
+\verb+Sbf+:
+One-dimensional wave dissipation bottom friction and bottom percolation (total)
+in wavenumber-directional space [$\dfrac{m^{4}}{rad^{3}s}$].
+
+\verb+Snl+:
+Non-linear wave-wave interaction source/sink function in wavenumber-directional space [$\dfrac{m^{4}}{rad^{3}s}$].
+
+
+\subsection{Restart output}
+
+If enabled using the \verb+outrst+ switch in the 
+\verb+OUTPUT+ namelist(see section \ref{sec:output_namelist},
+UMWM restart files will be written at desired intervals 
+in the \verb+restart/+ directory.
+These files contain full domain snapshots of the wave spectrum,
+and can be used to restart the simulation at a later time 
+(see section \ref{sec:restart}).
+The spectrum data is written in an unstructured, 1-dimensional array,
+however, 1-dimensional latitude and longitude arrays are stored as well,
+so these files can also be used for analysis/post-processing when spectrum
+data from the whole domain is desired. 
+
+\newpage
+\section{Revision history}
+
+Below is the summary of changes made to the UMWM source code since origination.
+It documents the UMWM version number, date of release, brief summary of changes made,
+and the author of the changes.
+The revision history can be also found in the header of the main UMWM program 
+source file, \verb+src/umwm.F90+.
+
+\begin{tabular}{|c||c|p{8cm}|c|}
+\hline
+Version & Date & Change log & Contributed by \\
+\hline 
+\hline
+
+      &            & - Variable sheltering coefficient A1                              & \\
+      &            & - Updated default values of physics coefficients (see \verb+namelists/main.nml+) & \\
+      &            & - Changed plunging breaking factor to coth(0.2*kd)                & \\
+      &            & - Sds form now exactly matches eq. (16) in Donelan et al. 2012.   & \\
+2.0.0 & 2016-09-26 & - Added a ramp to explim for more stable integration from calm state & UM/RSMAS \\
+      &            & - Skin drag dependence on Stokes drift                            & \\
+      &            & - Additional wave diagnostics in the output                       & \\
+      &            & - Added time dimension to NetCDF gridded output                   & \\
+      &            & - Minor bug fixes                                                 & \\
+\hline
+      &            & - Added Stokes drift calculation and output                       & \\
+      &            & - Mean-square slope algorithm improved in \verb+UMWM_physics.F90+ & \\
+1.0.1 & 2012-09-05 & - Grid spacing now computed from lat/lon input fields             & UM/RSMAS \\
+      &            & - Fixed filling of isolated seas/lakes                            & \\
+      &            & - Source code clean-up                                            & \\
+      &            & - Minor bug fixes                                                 & \\
+\hline
+1.0.0 & 2012-04-01 & - First public release & UM/RSMAS \\
+\hline
+\end{tabular}
+
+\newpage
+\section{References}
+
+Donelan, M. A., and W. J. Plant, 2009: A threshold for wind-wave growth. \textit{J. Geophys. Res.}, 114, C07012, doi:10.1029/2008JC005238.
+
+Donelan, M. A., M. Curcic, S.S. Chen, and A.K. Magnusson, 2012: Modeling waves and wind stress. \textit{J. Geophys. Res.},117, C00J23, doi:10.1029/2011JC007787.
+
+Jeffreys, H., 1924: On the formation of waves by wind. \textit{Proc. Roy. Soc. A}, 107, pp. 189-206.
+
+Jeffreys, H., 1925: On the formation of waves by wind, II. \textit{Proc. Roy. Soc. A}, 110, pp. 341-347.
+
+Komen, G. J., L. Cavaleri, M. Donelan, K. Hasselmann, S. Hasselmann, and P. A. E. M. Janssen, 1994: \textit{Dynamics and Modelling of Ocean Waves.} Cambridge University Press, 532 pp.
+
+Pierson, W. L. and L. Moskowitz, 1964: A proposed spectral form for fully developed wind seas based on the similarity theory of S. A. Kitaigorodskii. \textit{J. Geophys. Res.}, 69, pp. 5181-5190.
+
+Shemdin, O.H., K. Hasselmann, S.V. Hsiao, and K. Herterich, 1978: Non-linear and linear bottom interaction effects in shallow water, \textit{Turbulent fluxes through the sea surface, wave dynamics and prediction,} A. Favre and K. Hasselmann (eds), Plenum, New York, pp. 347-372. 
+
+\end{document}

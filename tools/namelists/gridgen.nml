@@ -1,0 +1,8 @@
+&gridgen
+  idm  = 50      ! Grid size in x (East)
+  jdm  = 50      ! Grid size in y (North)
+  dlon = 0.5     ! Grid increment in degrees longitude
+  dlat = 0.5     ! Grid increment in degrees latitude
+  lon0 = -98     ! Longitude of SW corner point [-180,180]
+  lat0 =   8     ! Latitude of SW corner point -90,90)
+/
