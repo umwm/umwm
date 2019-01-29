@@ -7,7 +7,7 @@ described by [Donelan et al. (2012)](https://github.com/milancurcic/publications
 UMWM solves the wave energy balance equation on a curvilinear grid.
 It has been used to simulate waves in:
 
-* Global swell and wind-waves
+* Global swell and windsea conditions
 * Coastal and hurricane-induced waves
 * Wave-induced material transport (Stokes drift)
 * Ancient Martian seas and methane lakes on Titan
@@ -26,8 +26,8 @@ git clone --recursive https://github.com/umwm/umwm
 * `make`
 * `cmake`
 * GNU, Intel, or Cray Fortran compiler
-* NetCDF
-* MPI (optional)
+* NetCDF for I/O
+* MPI for parallel processing (optional)
 
 ### Building UMWM
 
