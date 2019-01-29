@@ -5,13 +5,13 @@ A third-generation spectral ocean wave model.
 This is the reference implementation of UMWM, 
 described by [Donelan et al. (2012)](https://github.com/milancurcic/publications/blob/master/Donelan_etal_JGR2012.pdf).
 UMWM solves the wave energy balance equation on a curvilinear grid.
-It has been used to simulate waves in:
+It has been used to simulate:
 
-* Global swell and windsea conditions
-* Coastal and hurricane-induced waves
+* Global swell and windsea
+* Waves in coastal and hurricane conditions
 * Wave-induced material transport (Stokes drift)
 * Ancient Martian seas and methane lakes on Titan
-* Laboratory settings such as wave tanks
+* Waves in laboratory settings such as wave tanks
 
 ## Getting started
 
