@@ -1,0 +1,9 @@
+*.a
+*.o
+*.mod
+
+*.aux
+*.log
+*.toc
+
+umwm
