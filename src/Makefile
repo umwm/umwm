@@ -7,8 +7,8 @@
 # (something other than $NETCDF/include and $NETCDF/lib, edit
 # NETCDFINC and NETCDFLIB below.
 
-NETCDFINC = -I$(NETCDF)/include
-NETCDFLIB = -L$(NETCDF)/lib -lnetcdf -lnetcdff
+NETCDFINC ?= -I$(NETCDF)/include
+NETCDFLIB ?= -L$(NETCDF)/lib -lnetcdf -lnetcdff
 DATETIME = external/datetime-fortran/build
 EXTINC = -I$(DATETIME)/include
 EXTLIB = -L$(DATETIME)/lib -ldatetime

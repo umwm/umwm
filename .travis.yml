@@ -1,0 +1,30 @@
+language: none
+fast_finish: true
+dist: trusty
+group: edge
+os: linux
+
+notifications:
+  email: false
+
+git:
+  depth: false
+
+env:
+  - FC=gfortran
+  - CPPFLAGS=""
+  - NETCDFINC=-I/usr/lib64/gfortran/module
+  - NETCDFLIB="-L/usr/lib64 -lnetcdf -lnetcdff"
+
+addons:
+  apt:
+    packages: ['gfortran', 'libnetcdff']
+
+before_install:
+  - git submodule update --init --recursive
+
+install: 
+  - make umwm 
+    
+script:
+   - ./umwm
