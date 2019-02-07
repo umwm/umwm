@@ -2,9 +2,9 @@
 
 # Top-level Makefile
 
-FC = mpif90
-FCFLAGS = -O3
-CPPFLAGS = -DMPI
+FC ?= mpif90
+FCFLAGS ?= -O3
+CPPFLAGS ?= -DMPI
 
 .PHONY: all umwm docs tools clean clean_all
 
