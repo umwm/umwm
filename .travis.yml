@@ -11,16 +11,12 @@ git:
   depth: false
 
 env:
-  - FC=gfortran-8 CPPFLAGS="" NETCDFINC=-I/usr/lib64/gfortran/module NETCDFLIB="-L/usr/lib64 -lnetcdf -lnetcdff"
-
-#addons:
-# apt:
-#    packages: ['gfortran-8', 'libnetcdff-dev']
+  - FC=gfortran-8 CPPFLAGS="" NETCDFINC=-I/usr/include NETCDFLIB="-L/usr/lib -lnetcdf -lnetcdff"
 
 before_install:
   - sudo add-apt-repository -y ppa:ubuntu-toolchain-r/test
   - sudo apt-get update
-  - sudo apt-get install -y gfortran-8 libnetcdff-dev
+  - sudo apt-get install -y gfortran-8 libnetcdf-dev
   - git submodule update --init --recursive
 
 install: 
