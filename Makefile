@@ -6,6 +6,11 @@ FC ?= mpif90
 FCFLAGS ?= -O3
 CPPFLAGS ?= -DMPI
 
+# don't use make's implicit rule for FC
+ifeq ($(FC), f77)
+  FC = mpif90
+endif
+
 .PHONY: all umwm docs tools clean clean_all
 
 all: umwm tools docs
