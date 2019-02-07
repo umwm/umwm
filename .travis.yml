@@ -11,10 +11,7 @@ git:
   depth: false
 
 env:
-  - FC=gfortran
-  - CPPFLAGS=""
-  - NETCDFINC=-I/usr/lib64/gfortran/module
-  - NETCDFLIB="-L/usr/lib64 -lnetcdf -lnetcdff"
+  - FC=gfortran CPPFLAGS="" NETCDFINC=-I/usr/lib64/gfortran/module NETCDFLIB="-L/usr/lib64 -lnetcdf -lnetcdff"
 
 addons:
   apt:
