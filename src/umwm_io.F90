@@ -16,7 +16,7 @@ use netcdf
 !======================================================================!
 
 logical :: readfile
-logical :: winds,currents,air_density,water_density
+logical :: winds,currents,air_density,water_density,seaice
 
 !======================================================================!
 contains
@@ -51,7 +51,7 @@ nc_infile = 'input/umwmin_'//readstr//'.nc'
 
 ! set the logical switch to .true. only if from file is requested
 ! for any of the fields:
-readfile = winds .or. currents .or. air_density .or. water_density
+readfile = winds .or. currents .or. air_density .or. water_density .or. seaice
 
 if(readfile)then
   call nc_check(nf90_open(trim(nc_infile),nf90_nowrite,ncid))
@@ -77,6 +77,14 @@ else
   vcf = vc0
   uc  = uc0
   vc  = vc0
+end if
+
+if(seaice)them
+  call nc_check(nf90_inq_varid(ncid,'fice',varid))
+  call nc_check(nf90_get_var(ncid,varid,ficef))
+else
+  fice_2d = fice0
+  fice    = fice0
 end if
 
 where(mask == 0)
