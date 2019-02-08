@@ -47,7 +47,7 @@
   currents      = .F. ! Currents input from file
   air_density   = .F. ! Air density input from file
   water_density = .F. ! Water density input from file
-  seaice        = .F. ! Ice fraction from file
+  seaice        = .F. ! Sea ice fraction from file
 /
 &FORCING_CONSTANT
   wspd0         = 10   ! Wind speed [m/s] 
@@ -56,9 +56,9 @@
   vc0           = 0    ! y-component ocean current [m/s]
   rhoa0         = 1.2  ! Air density [kg/m^3]
   rhow0         = 1030 ! Water density [kg/m^3]
-  fice0         = 0.0  ! Ice fraction []
-  fice_lth      = 0.30 ! Ice fraction - lower threshold for attenuation
-  fice_uth      = 0.75 ! Ice fraction - upper threshold for attenuation
+  fice0         = 0.0  ! Sea ice fraction []
+  fice_lth      = 0.30 ! Sea ice fraction - lower threshold for attenuation
+  fice_uth      = 0.75 ! Sea ice fraction - upper threshold for attenuation
 /
 &OUTPUT
   outgrid       = 1   ! Gridded output interval  [hours]
