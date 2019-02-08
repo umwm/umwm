@@ -47,7 +47,7 @@
   currents      = .F. ! Currents input from file
   air_density   = .F. ! Air density input from file
   water_density = .F. ! Water density input from file
-  frac_ice      = .F. ! Ice fraction
+  seaice        = .F. ! Ice fraction from file
 /
 &FORCING_CONSTANT
   wspd0         = 10   ! Wind speed [m/s] 
