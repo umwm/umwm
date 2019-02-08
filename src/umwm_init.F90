@@ -68,7 +68,7 @@ subroutine nmlread
 !use umwm_module,only:starttimestr => starttimestr_nml,&
 !                     stoptimestr => stoptimestr_nml
 use umwm_module,only:starttimestr_nml,stoptimestr_nml
-use umwm_io,  only:winds,currents,air_density,water_density
+use umwm_io,  only:winds,currents,air_density,water_density,seaice
 use umwm_util,only:raiseexception
 !======================================================================!
 
@@ -89,9 +89,9 @@ sdt_fac,sbf_fac,sbp_fac
 namelist /grid/ gridfromfile,delx,dely,topofromfile,dpt,fillestuaries,&
 filllakes
 
-namelist /forcing/ winds,currents,air_density,water_density
+namelist /forcing/ winds,currents,air_density,water_density,seaice
 
-namelist /forcing_constant/ wspd0,wdir0,uc0,vc0,rhoa0,rhow0
+namelist /forcing_constant/ wspd0,wdir0,uc0,vc0,rhoa0,rhow0,fice0,fice_lth,fice_uth
 
 namelist /output/ outgrid,outspec,outrst,xpl,ypl,stokes
 
@@ -243,6 +243,7 @@ if(option==1)then
   allocate(vc_2d(mm,nm),vcb(mm,nm),vcf(mm,nm))
   allocate(vw(mm,nm),vwb(mm,nm),vwf(mm,nm))
   allocate(wdir_2d(mm,nm))
+  allocate(fice_2d(mm,nm),ficeb(mm,nm),ficef(mm,nm))
 
 ! allocate remapped arrays:
 elseif(option==2)then
@@ -346,6 +347,9 @@ elseif(option==2)then
   allocate(wspd(imm)) ! wind speed
   wspd = 0
 
+  allocate(fice(imm))
+  fice = 0
+  
   allocate(wdir(imm))                       ! wind direction
   wdir = 0
 
@@ -1321,7 +1325,7 @@ use umwm_mpi, only:istart_,iend_
 #endif
 use umwm_util,only:raiseexception
 
-use umwm_io, only: winds
+use umwm_io, only: winds,seaice
 use umwm_util, only: remap_mn2i
 
 !======================================================================!
@@ -1426,6 +1430,9 @@ if(restart)then
 else
   firstdtg = .true.
 end if
+
+! if sea ice from file, update the fice field
+if (seaice) fice = remap_mn2i(ficef)
 
 ! if forcing from file, update the wspd field for ustar first guess
 if (winds) wspd = remap_mn2i(sqrt(uwf**2 + vwf**2))
