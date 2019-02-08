@@ -1,27 +1,25 @@
-language: none
-fast_finish: true
-dist: trusty
-group: edge
+language: minimal
+dist: xenial
+group: travis_latest
+
 os: linux
 
-notifications:
-  email: false
-
 git:
-  depth: false
+  depth: 25
+  quiet: true
+  submodules: true
 
-env:
-  - FC=gfortran-8 CPPFLAGS="" NETCDFINC=-I/usr/include NETCDFLIB="-L/usr/lib -lnetcdf -lnetcdff"
+env: FC=gfortran CPPFLAGS="" NETCDFINC=-I/usr/include NETCDFLIB="-L/usr/lib/x86_64-linux-gnu/ -lnetcdff -lnetcdf"
 
-before_install:
-  - sudo add-apt-repository -y ppa:ubuntu-toolchain-r/test
-  - sudo apt-get update
-  - sudo apt-get install -y gfortran-8 libnetcdf-dev
-  - git submodule update --init --recursive
+addons:
+  apt:
+    packages:
+    - gfortran
+    - libnetcdf-dev
+    - libnetcdff-dev
 
-install: 
-  - gfortran-8 -v
-  - make umwm 
+install:
+- make umwm
     
 script:
-   - ./umwm
+- ./umwm

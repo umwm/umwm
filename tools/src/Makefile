@@ -7,8 +7,8 @@
 # (something other than $NETCDF/include and $NETCDF/lib, edit
 # NETCDFINC and NETCDFLIB below.
 
-NETCDFINC = -I$(NETCDF)/include
-NETCDFLIB = -L$(NETCDF)/lib -lnetcdf -lnetcdff
+NETCDFINC ?= -I$(NETCDF)/include
+NETCDFLIB ?= -L$(NETCDF)/lib -lnetcdf -lnetcdff
 
 # Rules:
 
@@ -45,4 +45,4 @@ grid_utils.o:   grid_utils.f90
 
 .PHONY:
 clean:
-	rm -f wrf2umwmin wrf2umwmgrid umwm_gridgen umwm_topogen *.o *.mod 
+	$(RM) wrf2umwmin wrf2umwmgrid umwm_gridgen umwm_topogen *.o *.mod

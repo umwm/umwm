@@ -45,7 +45,7 @@ all: umwm
 
 $(DATETIME)/lib/libdatetime.a:
 	mkdir $(DATETIME)
-	cd $(DATETIME) && FC=$(FC) cmake .. && make
+	cd $(DATETIME) && FC=$(FC) cmake .. && cmake --build .
 
 # Main target
 umwm: umwm.F90 $(DATETIME)/lib/libdatetime.a $(OBJS)
