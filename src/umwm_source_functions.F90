@@ -68,6 +68,7 @@ contains
 
     do concurrent (o = 1:om, p = 1:pm, i = istart:iend)
       ssin(o,p,i) = twopi * rhorat(i) * ssin(o,p,i) * fkovg(o,i)
+      ssin(o,p,i) = (1 - fice(i)) * ssin(o,p,i)
     end do
 
     ! prevent negative sin for diagnostic tail
@@ -100,6 +101,7 @@ contains
 
     do concurrent(o = 1:om, p = 1:pm, i = istart:iend)
       sds(o,p,i) = twopisds_fac * f(o) * dummy(o,p,i) * (e(o,p,i) * k4(o,i))**sds_power
+      sds(o,p,i) = (1 - fice(i)) * sds(o,p,i) 
     end do
 
   end subroutine sds_d12
