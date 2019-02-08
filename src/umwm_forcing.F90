@@ -77,6 +77,10 @@ contains
       ! remap to 1-D arrays:
       fice = remap_mn2i(fice_2d)
 
+      ! sea ice fraction larger than the upper bound
+      ! can be effectively treated as being equal to 1.0
+      where (fice > fice_uth) fice = 1.0
+
      end if
     
 
