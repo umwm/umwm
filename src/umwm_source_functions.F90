@@ -106,6 +106,64 @@ contains
 
   end subroutine sds_d12
 
+
+  subroutine s_ice
+    ! Wave attenuation by sea ice
+
+    integer :: i, o, p
+
+    real, parameter :: C1 =  5.35e-6
+    real, parameter :: C2 = 16.05e-6
+    real, parameter :: H_th = 3.0     ! [m]
+
+    integer :: opeak, ppeak
+    integer, dimension(2) :: spectrum_peak_loc
+
+    real :: ht_
+    real, dimension(om,pm) :: spectrumbin
+
+    real ::  dcg0_, dcg_
+
+    real :: kdk_integral
+  
+    soceanice = 0.0
+
+
+    do i = istart, iend
+
+     if (fice(i) > fice_lth .and. fice(i) < fice_uth) then
+
+       ht_ = 0.0
+
+       do p=1,pm
+         do o=1,om
+           spectrumbin(o,p) = e(o,p,i)*kdk(o,i)
+
+           ht_ = ht_ + spectrumbin(o,p)
+         end do
+       end do
+
+       ht_ = 4*sqrt(ht_*dth)
+
+       spectrum_peak_loc = maxloc(spectrumbin)  ! indices of spectrum peak
+
+       opeak = spectrum_peak_loc(1)             ! frequency/wavenumber peak
+       ppeak = spectrum_peak_loc(2)             ! direction peak
+
+       dcg0_ = cg0(opeak,i)
+       dcg_  = dcg0_(i) + uc(i)*cth(ppeak) + vc(i)*sth(ppeak)
+
+       if (ht_ < H_th) then
+         soceanice(:,:,i) = e(:,:,i) * (C1*dcg_)
+       else
+         kdkintegrate = sum(kdk(:,i), dim=1)
+         soceanice(:,:,i) = -((C2/8.0) * dcg_ * ht_)/(twopi * kdkintegrate)
+       end if
+
+    endif
+  
+    end subroutine s_ice
+
   
   subroutine snl_d12
 
