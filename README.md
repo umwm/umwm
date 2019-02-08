@@ -1,5 +1,8 @@
 # University of Miami Wave Model (UMWM)
 
+[![Build Status](https://travis-ci.org/umwm/umwm.svg?branch=master)](https://travis-ci.org/umwm/umwm)
+[![GitHub issues](https://img.shields.io/github/issues/umwm/umwm.svg)](https://github.com/umwm/umwm/issues)
+
 A third-generation spectral ocean wave model.
 
 This is the reference implementation of UMWM, 
