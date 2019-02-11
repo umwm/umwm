@@ -9,7 +9,7 @@ module umwm_source_functions
 
   private
 
-  public :: sin_d12, sds_d12, snl_d12
+  public :: sin_d12, sds_d12, snl_d12, s_ice
 
 contains
 
@@ -112,26 +112,26 @@ contains
 
     integer :: i, o, p
 
-    real, parameter :: C1 =  5.35e-6
-    real, parameter :: C2 = 16.05e-6
-    real, parameter :: H_th = 3.0     ! [m]
+    ! parameters from Kohout et al. 2014
+    real, parameter :: H_th = 3.0       ! [m]
+    real, parameter :: C1   = -5.35e-6  ! [m-1]
+    real, parameter :: C2   = C1*H_th   ! []
+    real, parameter :: H_th = 3.0       ! [m]
 
     integer :: opeak, ppeak
-    integer, dimension(2) :: spectrum_peak_loc
-
-    real :: ht_
+    integer, dimension(2)  :: spectrum_peak_loc
     real, dimension(om,pm) :: spectrumbin
 
-    real ::  dcg0_, dcg_
-
+    real :: ht_, dcg0_, dcg_
     real :: kdk_integral
   
-    soceanice = 0.0
-
+    sice = 0.0
 
     do i = istart, iend
 
      if (fice(i) > fice_lth .and. fice(i) < fice_uth) then
+
+       kdk_integral = sum(kdk(:,i), dim=1)
 
        ht_ = 0.0
 
@@ -143,22 +143,24 @@ contains
          end do
        end do
 
-       ht_ = 4*sqrt(ht_*dth)
+       ht_ = 4*sqrt(ht_*dth)                    ! significant wave height
 
        spectrum_peak_loc = maxloc(spectrumbin)  ! indices of spectrum peak
 
        opeak = spectrum_peak_loc(1)             ! frequency/wavenumber peak
        ppeak = spectrum_peak_loc(2)             ! direction peak
 
-       dcg0_ = cg0(opeak,i)
-       dcg_  = dcg0_(i) + uc(i)*cth(ppeak) + vc(i)*sth(ppeak)
+       dcg0_ = cg0(opeak,i)                     ! intrinsic dominant group velocity
+       !dcg_  = dcg0_(i) + uc(i)*cth(ppeak) + vc(i)*sth(ppeak)
 
+       ! wave attenuation from sea ice in the two SWH regimes
        if (ht_ < H_th) then
-         soceanice(:,:,i) = e(:,:,i) * (C1*dcg_)
+         sice(:,:,i) = C1 * ht_ * ht_
        else
-         kdkintegrate = sum(kdk(:,i), dim=1)
-         soceanice(:,:,i) = -((C2/8.0) * dcg_ * ht_)/(twopi * kdkintegrate)
+         sice(:,:,i) = C2 * h_t
        end if
+       
+       sice(:,:,i) = (dcg0_ / (8 * twopi * kdk_integral)) * sice(:,:,i)
 
     endif
   

@@ -200,7 +200,7 @@ deallocate(cg0,cp0,cothkd)
 deallocate(dwn,invcp0)
 deallocate(fkovg)
 deallocate(k,k4,kdk,k3dk,l2,logl2overz,oneoverk4)
-deallocate(sbf,sdv,sdt,snl_arg,dummy,e,ef,rotl,rotr,sds,snl,ssin)
+deallocate(sbf,sdv,sdt,snl_arg,dummy,e,ef,rotl,rotr,sds,snl,ssin,sice)
 
 endsubroutine dealloc
 !======================================================================!
