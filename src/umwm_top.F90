@@ -98,7 +98,7 @@ contains
         call sin_d12() ! compute source input term Sin
         call sds_d12() ! compute source dissipation term Sds
         call snl_d12() ! compute non-linear source term Snl
-        call source() ! integrate source functions
+        call source()  ! integrate source functions
 
 #ifdef MPI
         call exchange_halo() ! exchange halo points
