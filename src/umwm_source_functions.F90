@@ -1,6 +1,6 @@
 module umwm_source_functions
   ! Module that provides wave source functions.
-  use umwm_io, only: currents
+  use umwm_io, only: currents,seaice
   use umwm_module
   use umwm_constants, only: rk
   use umwm_sheltering, only: sheltering_coare35, sheltering_reynolds
@@ -116,7 +116,6 @@ contains
     real, parameter :: H_th = 3.0       ! [m]
     real, parameter :: C1   = -5.35e-6  ! [m-1]
     real, parameter :: C2   = C1*H_th   ! []
-    real, parameter :: H_th = 3.0       ! [m]
 
     integer :: opeak, ppeak
     integer, dimension(2)  :: spectrum_peak_loc
@@ -157,13 +156,15 @@ contains
        if (ht_ < H_th) then
          sice(:,:,i) = C1 * ht_ * ht_
        else
-         sice(:,:,i) = C2 * h_t
+         sice(:,:,i) = C2 * ht_
        end if
        
        sice(:,:,i) = (dcg0_ / (8 * twopi * kdk_integral)) * sice(:,:,i)
+       
 
-    endif
-  
+     endif
+ 
+    end do 
     end subroutine s_ice
 
   
