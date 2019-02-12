@@ -23,7 +23,7 @@ with Dataset(infile, 'r') as nc:
     T = nc.variables['T2M'][:,:,:]
     q = nc.variables['QV2M'][:,:,:]
     p = nc.variables['SLP'][:,:,:]
-
+   fice   = nc.variables['FRSEAICE'][:,:,:]
 lon, lat = np.meshgrid(lon, lat)
 
 ndm, jdm, idm = u.shape
@@ -42,3 +42,4 @@ for n in range(ndm):
         nc.createVariable('uw', datatype='f4', dimensions=('y', 'x'))[:] = u[n,:,:]
         nc.createVariable('vw', datatype='f4', dimensions=('y', 'x'))[:] = v[n,:,:]
         nc.createVariable('rhoa', datatype='f4', dimensions=('y', 'x'))[:] = rhoa[n,:,:]
+        nc.createVariable('fice', datatype='f4', dimensions=('y', 'x'))[:] = fice[n,:,:]
