@@ -128,41 +128,40 @@ contains
 
     do i = istart, iend
 
-     if (fice(i) > fice_lth .and. fice(i) < fice_uth) then
-
-       kdk_integral = sum(kdk(:,i), dim=1)
-
-       ht_ = 0.0
-
-       do p=1,pm
-         do o=1,om
-           spectrumbin(o,p) = e(o,p,i)*kdk(o,i)
-
-           ht_ = ht_ + spectrumbin(o,p)
-         end do
-       end do
-
-       ht_ = 4*sqrt(ht_*dth)                    ! significant wave height
-
-       spectrum_peak_loc = maxloc(spectrumbin)  ! indices of spectrum peak
-
-       opeak = spectrum_peak_loc(1)             ! frequency/wavenumber peak
-       ppeak = spectrum_peak_loc(2)             ! direction peak
-
-       dcg0_ = cg0(opeak,i)                     ! intrinsic dominant group velocity
-       !dcg_  = dcg0_(i) + uc(i)*cth(ppeak) + vc(i)*sth(ppeak)
-
-       ! wave attenuation from sea ice in the two SWH regimes
-       if (ht_ < H_th) then
-         sice(:,:,i) = C1 * ht_ * ht_
-       else
-         sice(:,:,i) = C2 * ht_
-       end if
-       
-       sice(:,:,i) = (dcg0_ / (8 * twopi * kdk_integral)) * sice(:,:,i)
-       
-
-     endif
+      if (fice(i) > fice_lth .and. fice(i) < fice_uth) then
+ 
+        kdk_integral = sum(kdk(:,i), dim=1)
+ 
+        ht_ = 0.0
+ 
+        do p=1,pm
+          do o=1,om
+            spectrumbin(o,p) = e(o,p,i)*kdk(o,i)
+ 
+            ht_ = ht_ + spectrumbin(o,p)
+          end do
+        end do
+ 
+        ht_ = 4*sqrt(ht_*dth)                    ! significant wave height
+ 
+        spectrum_peak_loc = maxloc(spectrumbin)  ! indices of spectrum peak
+ 
+        opeak = spectrum_peak_loc(1)             ! frequency/wavenumber peak
+        ppeak = spectrum_peak_loc(2)             ! direction peak
+ 
+        dcg0_ = cg0(opeak,i)                     ! intrinsic dominant group velocity
+        !dcg_  = dcg0_(i) + uc(i)*cth(ppeak) + vc(i)*sth(ppeak)
+ 
+        ! wave attenuation from sea ice in the two SWH regimes
+        if (ht_ < H_th) then
+          sice(:,:,i) = C1 * ht_ * ht_
+        else
+          sice(:,:,i) = C2 * ht_
+        end if
+        
+        sice(:,:,i) = (dcg0_ / (8 * twopi * kdk_integral)) * sice(:,:,i)
+ 
+      endif
  
     end do 
     end subroutine s_ice
