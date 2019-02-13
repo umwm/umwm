@@ -55,17 +55,24 @@ dta = dts
 
 ! increment time:
 sumt = sumt + dts
-
 ! integrate source terms for the prognostic range (o <= ol)
 do i = istart,iend
   do p = 1,pm
     do o = 1,oc(i)
+
+
+      
       ef(o,p,i) = e(o,p,i)*exp(dts*(ssin(o,p,i)-sds(o,p,i)      &
                                    -sbf(o,i)-sdt(o,i)-sdv(o,i)))&
                  +dts*snl(o,p,i)+dts*sice(o,p,i)
+
+
+     
     end do
   end do
 end do
+
+where(ef < 0) ef = 0.0
 
 ! integrate source terms for the diagnostic range (o > ol)
 do i = istart,iend
@@ -78,6 +85,8 @@ do i = istart,iend
     end do
   end do
 end do
+
+where(ef < 0) ef = 0.0
 
 e(:,:,istart:iend) = 0.5*(e(:,:,istart:iend)+ef(:,:,istart:iend))
 
