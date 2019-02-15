@@ -100,6 +100,7 @@ contains
     dummy = (1 + mss_fac * dummy)**2
 
     do concurrent(o = 1:om, p = 1:pm, i = istart:iend)
+      if (e(o,p,i) < 0) print *, o,p,i,e(o,p,i),minval(e), maxval(e)
       sds(o,p,i) = twopisds_fac * f(o) * dummy(o,p,i) * (e(o,p,i) * k4(o,i))**sds_power
       sds(o,p,i) = (1 - fice(i)) * sds(o,p,i) 
     end do
@@ -143,7 +144,7 @@ contains
         end do
  
         ht_ = 4*sqrt(ht_*dth)                    ! significant wave height
- 
+        !print *, 'DEBUG: SWH(:,:,:) = ', ht_ 
         spectrum_peak_loc = maxloc(spectrumbin)  ! indices of spectrum peak
  
         opeak = spectrum_peak_loc(1)             ! frequency/wavenumber peak
@@ -160,10 +161,17 @@ contains
         end if
         
         sice(:,:,i) = (dcg0_ / (8 * twopi * kdk_integral)) * sice(:,:,i)
- 
+         
+        where(e(:,:,i) > 1e-9*maxval(e(:,:,i)))
+              sice(:,:,i) = sice(:,:,i) / e(:,:,i)
+        elsewhere
+            sice(:,:,i) = 0.0
+        end where
+
       endif
  
-    end do 
+    end do
+
     end subroutine s_ice
 
   

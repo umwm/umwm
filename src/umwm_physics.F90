@@ -61,8 +61,9 @@ do i = istart,iend
   do p = 1,pm
     do o = 1,oc(i)
       ef(o,p,i) = e(o,p,i)*exp(dts*(ssin(o,p,i)-sds(o,p,i)      &
-                                   -sbf(o,i)-sdt(o,i)-sdv(o,i)))&
-                 +dts*snl(o,p,i)+dts*sice(o,p,i)
+                                   -sbf(o,i)-sdt(o,i)-sdv(o,i)  &
+                                   +sice(o,p,i)))&
+                 +dts*snl(o,p,i)
     end do
   end do
 end do
