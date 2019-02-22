@@ -144,7 +144,6 @@ contains
         end do
  
         ht_ = 4*sqrt(ht_*dth)                    ! significant wave height
-        !print *, 'DEBUG: SWH(:,:,:) = ', ht_ 
         spectrum_peak_loc = maxloc(spectrumbin)  ! indices of spectrum peak
  
         opeak = spectrum_peak_loc(1)             ! frequency/wavenumber peak
@@ -161,9 +160,9 @@ contains
         end if
         
         sice(:,:,i) = (dcg0_ / (8 * twopi * kdk_integral)) * sice(:,:,i)
-         
-        where(e(:,:,i) > 1e-9*maxval(e(:,:,i)))
+        where(e(:,:,i) > 1e-6*maxval(e(:,:,i)))
               sice(:,:,i) = sice(:,:,i) / e(:,:,i)
+              
         elsewhere
             sice(:,:,i) = 0.0
         end where
