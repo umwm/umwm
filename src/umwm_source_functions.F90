@@ -118,20 +118,15 @@ contains
     real, parameter :: C1   = -5.35e-6  ! [m-1]
     real, parameter :: C2   = C1*H_th   ! []
 
-    integer :: opeak, ppeak
-    integer, dimension(2)  :: spectrum_peak_loc
     real, dimension(om,pm) :: spectrumbin
 
-    real :: ht_, dcg0_, dcg_
-    real :: kdk_integral
+    real :: ht_
   
     sice = 0.0
 
     do i = istart, iend
 
       if (fice(i) > fice_lth .and. fice(i) < fice_uth) then
- 
-        kdk_integral = sum(kdk(:,i), dim=1)
  
         ht_ = 0.0
  
@@ -144,30 +139,21 @@ contains
         end do
  
         ht_ = 4*sqrt(ht_*dth)                    ! significant wave height
-        !print *, 'DEBUG: SWH(:,:,:) = ', ht_ 
-        spectrum_peak_loc = maxloc(spectrumbin)  ! indices of spectrum peak
- 
-        opeak = spectrum_peak_loc(1)             ! frequency/wavenumber peak
-        ppeak = spectrum_peak_loc(2)             ! direction peak
- 
-        dcg0_ = cg0(opeak,i)                     ! intrinsic dominant group velocity
-        !dcg_  = dcg0_(i) + uc(i)*cth(ppeak) + vc(i)*sth(ppeak)
+
  
         ! wave attenuation from sea ice in the two SWH regimes
         if (ht_ < H_th) then
-          sice(:,:,i) = C1 * ht_ * ht_
+          sice(:,:,i) = C1 * ht_
         else
-          sice(:,:,i) = C2 * ht_
+          sice(:,:,i) = C2
         end if
         
-        sice(:,:,i) = (dcg0_ / (8 * twopi * kdk_integral)) * sice(:,:,i)
+        do p=1,pm
+          do o=1,om
+            sice(o,p,i) = 2 * cg0(o,i) * sice(o,p,i)
+          end do
+        end do
          
-        where(e(:,:,i) > 1e-9*maxval(e(:,:,i)))
-              sice(:,:,i) = sice(:,:,i) / e(:,:,i)
-        elsewhere
-            sice(:,:,i) = 0.0
-        end where
-
       endif
  
     end do
