@@ -142,7 +142,7 @@ real,dimension(:,:),allocatable :: fice_2d,ficeb,ficef
 real,dimension(:,:),allocatable :: uwb,vwb,uw,vw,uwf,vwf
 real,dimension(:,:),allocatable :: ucb,uc_2d,ucf,vcb,vc_2d,vcf
 
-real,dimension(:),allocatable :: ar,cd,d,dx,dy,dwd,dwl,dwp,fcutoff,mwf,pwf
+real,dimension(:),allocatable :: ar,cd,d,dx,dy,dwd,dwl,dwp,fcutoff,mwf,pwf,tx,ty
 real,dimension(:),allocatable :: dxn,dxs,dyw,dye
 real,dimension(:),allocatable :: dcp0,dcp,dcg0,dcg
 real,dimension(:),allocatable :: ht,mss,mwd,mwl,mwp,shelt

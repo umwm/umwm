@@ -277,6 +277,7 @@ elseif(option==2)then
   allocate(ar(istart:iend))        ! grid cell surface area
   allocate(cd(istart:iend))        ! air-side drag coefficient
   allocate(d(imm),dx(imm),dy(imm)) ! depth and grid cell increments
+  allocate(tx(imm),ty(imm))        ! grid cell transparency
   allocate(dxs(istart:iend),dxn(istart:iend)) ! cell edges
   allocate(dyw(istart:iend),dye(istart:iend)) ! cell edges
   allocate(fcutoff(istart:iend))   ! cutoff frequency
@@ -1017,7 +1018,8 @@ if(remap_dir == 'h')then ! column-major
         dx(i) = dx_2d(m,n)
         dy(i) = dy_2d(m,n)
         d(i)  = d_2d(m,n)
-        
+        tx(i) = alphax_2d(m,n)
+        ty(i) = alphay_2d(m,n)      
       end if
     end do
   end do
@@ -1031,6 +1033,8 @@ if(remap_dir == 'h')then ! column-major
         dx(i) = dx_2d(m,n)
         dy(i) = dy_2d(m,n)
         d(i)  = d_2d(m,n)
+        tx(i) = alphax_2d(m,n)
+        ty(i) = alphay_2d(m,n)
       end if
     end do
   end do
@@ -1046,6 +1050,8 @@ elseif(remap_dir == 'v')then ! row-major
         dx(i) = dx_2d(m,n)
         dy(i) = dy_2d(m,n)
         d(i)  = d_2d(m,n)
+        tx(i) = alphax_2d(m,n)
+        ty(i) = alphay_2d(m,n)
       end if
     end do
   end do
@@ -1059,6 +1065,8 @@ elseif(remap_dir == 'v')then ! row-major
         dx(i) = dx_2d(m,n)
         dy(i) = dy_2d(m,n)
         d(i)  = d_2d(m,n)
+        tx(i) = alphax_2d(m,n)
+        ty(i) = alphay_2d(m,n)
       end if
     end do
   end do
