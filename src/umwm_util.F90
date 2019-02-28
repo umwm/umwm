@@ -164,7 +164,7 @@ subroutine dealloc
 use umwm_module
 !======================================================================>
 
-deallocate(ar_2d,d_2d,dlon,dlat,dx_2d,dy_2d)
+deallocate(ar_2d,d_2d,alphax_2d,alphay_2d,dlon,dlat,dx_2d,dy_2d)
 deallocate(curv)
 deallocate(gustu,gustv)
 deallocate(lat,lon)
@@ -175,7 +175,7 @@ deallocate(fice_2d,ficef,ficeb,fice)
 deallocate(uwb,vwb,uw,vw,uwf,vwf,ucb,uc_2d,ucf,vcb,vc_2d,vcf)
 deallocate(dom,f,cth,cth2,sth,th)
 deallocate(cth_curv,sth_curv)
-deallocate(ar,cd,d,dx,dy,dwd,dwl,dwp,fcutoff)
+deallocate(ar,cd,d,tx,ty,dx,dy,dwd,dwl,dwp,fcutoff)
 deallocate(dxn,dxs,dye,dyw)
 deallocate(dcp0,dcg0,dcp,dcg)
 deallocate(ht,mss,mwd,mwl,mwp)
