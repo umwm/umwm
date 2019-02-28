@@ -50,7 +50,7 @@ logical :: first,firstdtg
 logical :: isglobal,restart
 
 ! grid and bathymetry related switches
-logical :: gridfromfile,topofromfile,filllakes,fillestuaries
+logical :: gridfromfile,topofromfile,islandsFromFile,filllakes,fillestuaries
 
 ! output related switches
 integer :: outgrid,outspec,outrst
@@ -63,7 +63,7 @@ real :: dta,dtr,dtamin
 real :: bf1,bf1a,bf2
 real :: cgmax,cfllim
 real :: delx,dely
-real :: dpt,dlnf,dmin,dtg,dts,dth,dthg
+real :: dpt,alphax,alphay,dlnf,dmin,dtg,dts,dth,dthg
 real :: explim
 real :: fmin,fmax,fprog
 real :: fieldscale1,fieldscale2
@@ -132,7 +132,7 @@ integer,dimension(:,:),allocatable :: nproc_out
 ! 2-dimensional, unrolled arrays:
 real,dimension(:,:),allocatable :: ar_2d
 real,dimension(:,:),allocatable :: curv
-real,dimension(:,:),allocatable :: d_2d,dlon,dlat,dx_2d,dy_2d
+real,dimension(:,:),allocatable :: d_2d,dlon,dlat,dx_2d,dy_2d,alphax_2d,alphay_2d
 real,dimension(:,:),allocatable :: gustu,gustv
 real,dimension(:,:),allocatable :: lat,lon
 real,dimension(:,:),allocatable :: x,y

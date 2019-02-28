@@ -86,7 +86,7 @@ namelist /physics/ g,nu_air,nu_water,sfct,kappa,z,gustiness,dmin,    &
 explim,sin_fac,sin_diss1,sin_diss2,sds_fac,sds_power,mss_fac,snl_fac,&
 sdt_fac,sbf_fac,sbp_fac
 
-namelist /grid/ gridfromfile,delx,dely,topofromfile,dpt,fillestuaries,&
+namelist /grid/ gridfromfile,delx,dely,topofromfile,dpt,islandsFromFile,alphax,alphay,fillestuaries,&
 filllakes
 
 namelist /forcing/ winds,currents,air_density,water_density,seaice
@@ -180,6 +180,16 @@ if(nproc == 0)then
                         namelistok)
   end if
 
+
+
+  if(.not.islandsfromfile)then
+    if(alphax < 0 .OR. alphay < 0.0)&
+    call raiseexception('error','nmlread',                       &
+                        'bad value in main.nml: alpha must be >= 0',&
+                        namelistok)
+  end if
+ 
+
   if(.not.any(outgrid == allowedoutputtimes))&
   call raiseexception('error','nmlread',                                                     &
                       'bad value in main.nml: outgrid must be 0, 1, 2, 3, 4, 6, 8, 12 or 24',&
@@ -229,6 +239,7 @@ if(option==1)then
   allocate(ar_2d(mm,nm))
   allocate(curv(mm,nm))
   allocate(d_2d(mm,nm),dx_2d(mm,nm),dy_2d(mm,nm))
+  allocate(alphax_2d(mm,nm),alphay_2d(mm,nm))
   allocate(dlon(mm,nm),dlat(mm,nm))
   allocate(gustu(mm,nm),gustv(mm,nm))
   allocate(ii(mm,nm))
@@ -581,6 +592,26 @@ else ! use constant value from namelist
   d_2d = dpt
 
 end if
+
+if(islandsfromfile)then ! read grid transprency fields from file for subgrid scale islands
+
+  call nc_check(nf90_open('input/umwm.gridtransparency',nf90_nowrite,ncid))
+  call nc_check(nf90_inq_varid(ncid,'sx',varid))
+  call nc_check(nf90_get_var(ncid,varid,alphax_2d))
+  call nc_check(nf90_inq_varid(ncid,'sy',varid))
+  call nc_check(nf90_get_var(ncid,varid,alphay_2d))
+  call nc_check(nf90_close(ncid))
+
+else ! use constant value from namelist
+
+  alphax_2d = alphax
+  alphay_2d = alphay
+
+end if
+
+
+
+
 
 ! compute cell areas and reciprocals:
 ar_2d = dx_2d*dy_2d
@@ -986,6 +1017,7 @@ if(remap_dir == 'h')then ! column-major
         dx(i) = dx_2d(m,n)
         dy(i) = dy_2d(m,n)
         d(i)  = d_2d(m,n)
+        
       end if
     end do
   end do
