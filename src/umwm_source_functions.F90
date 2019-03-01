@@ -126,7 +126,7 @@ contains
 
     do i = istart, iend
 
-      if (fice(i) > fice_lth .and. fice(i) < fice_uth) then
+      if (fice(i) > fice_lth) then
  
         ht_ = 0.0
  
@@ -139,7 +139,6 @@ contains
         end do
  
         ht_ = 4*sqrt(ht_*dth)                    ! significant wave height
-
  
         ! wave attenuation from sea ice in the two SWH regimes
         if (ht_ < H_th) then
