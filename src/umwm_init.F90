@@ -392,6 +392,7 @@ elseif(option==2)then
   allocate(  sds(om,pm,istart:iend)) ! wave dissipation sink function
   allocate(  snl(om,pm,istart:iend)) ! wave downshifting source/sink function
   allocate( ssin(om,pm,istart:iend)) ! wind input source/sink function
+  allocate( sice(om,pm,istart:iend)) ! wave attenuation by sea ice function
 
 end if ! if(option)
 

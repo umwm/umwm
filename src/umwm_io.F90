@@ -79,19 +79,12 @@ else
   vc  = vc0
 end if
 
-if(seaice)them
+if(seaice)then
   call nc_check(nf90_inq_varid(ncid,'fice',varid))
   call nc_check(nf90_get_var(ncid,varid,ficef))
 else
   fice_2d = fice0
-
-  ! sea ice fraction larger than the upper bound
-  ! can be effectively treated as being equal to 1.0
-  if (fice0 > fice_uth)
-    fice = 1.0
-  else
-    fice = fice0  
-  end if 
+  fice    = fice0
 end if
 
 where(mask == 0)

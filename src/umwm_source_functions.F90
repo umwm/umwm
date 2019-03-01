@@ -1,6 +1,6 @@
 module umwm_source_functions
   ! Module that provides wave source functions.
-  use umwm_io, only: currents
+  use umwm_io, only: currents,seaice
   use umwm_module
   use umwm_constants, only: rk
   use umwm_sheltering, only: sheltering_coare35, sheltering_reynolds
@@ -100,6 +100,7 @@ contains
     dummy = (1 + mss_fac * dummy)**2
 
     do concurrent(o = 1:om, p = 1:pm, i = istart:iend)
+      if (e(o,p,i) < 0) print *, o,p,i,e(o,p,i),minval(e), maxval(e)
       sds(o,p,i) = twopisds_fac * f(o) * dummy(o,p,i) * (e(o,p,i) * k4(o,i))**sds_power
       sds(o,p,i) = (1 - fice(i)) * sds(o,p,i) 
     end do
@@ -116,54 +117,46 @@ contains
     real, parameter :: H_th = 3.0       ! [m]
     real, parameter :: C1   = -5.35e-6  ! [m-1]
     real, parameter :: C2   = C1*H_th   ! []
-    real, parameter :: H_th = 3.0       ! [m]
 
-    integer :: opeak, ppeak
-    integer, dimension(2)  :: spectrum_peak_loc
     real, dimension(om,pm) :: spectrumbin
 
-    real :: ht_, dcg0_, dcg_
-    real :: kdk_integral
+    real :: ht_
   
     sice = 0.0
 
     do i = istart, iend
 
-     if (fice(i) > fice_lth .and. fice(i) < fice_uth) then
+      if (fice(i) > fice_lth) then
+ 
+        ht_ = 0.0
+ 
+        do p=1,pm
+          do o=1,om
+            spectrumbin(o,p) = e(o,p,i)*kdk(o,i)
+ 
+            ht_ = ht_ + spectrumbin(o,p)
+          end do
+        end do
+ 
+        ht_ = 4*sqrt(ht_*dth)                    ! significant wave height
+ 
+        ! wave attenuation from sea ice in the two SWH regimes
+        if (ht_ < H_th) then
+          sice(:,:,i) = C1 * ht_
+        else
+          sice(:,:,i) = C2
+        end if
+        
+        do p=1,pm
+          do o=1,om
+            sice(o,p,i) = 2 * cg0(o,i) * sice(o,p,i)
+          end do
+        end do
+         
+      endif
+ 
+    end do
 
-       kdk_integral = sum(kdk(:,i), dim=1)
-
-       ht_ = 0.0
-
-       do p=1,pm
-         do o=1,om
-           spectrumbin(o,p) = e(o,p,i)*kdk(o,i)
-
-           ht_ = ht_ + spectrumbin(o,p)
-         end do
-       end do
-
-       ht_ = 4*sqrt(ht_*dth)                    ! significant wave height
-
-       spectrum_peak_loc = maxloc(spectrumbin)  ! indices of spectrum peak
-
-       opeak = spectrum_peak_loc(1)             ! frequency/wavenumber peak
-       ppeak = spectrum_peak_loc(2)             ! direction peak
-
-       dcg0_ = cg0(opeak,i)                     ! intrinsic dominant group velocity
-       !dcg_  = dcg0_(i) + uc(i)*cth(ppeak) + vc(i)*sth(ppeak)
-
-       ! wave attenuation from sea ice in the two SWH regimes
-       if (ht_ < H_th) then
-         sice(:,:,i) = C1 * ht_ * ht_
-       else
-         sice(:,:,i) = C2 * h_t
-       end if
-       
-       sice(:,:,i) = (dcg0_ / (8 * twopi * kdk_integral)) * sice(:,:,i)
-
-    endif
-  
     end subroutine s_ice
 
   

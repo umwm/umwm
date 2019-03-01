@@ -44,7 +44,7 @@ OBJS = umwm_advection.o \
 all: umwm
 
 $(DATETIME)/lib/libdatetime.a:
-	mkdir $(DATETIME)
+	mkdir -p $(DATETIME)
 	cd $(DATETIME) && FC=$(FC) cmake .. && cmake --build .
 
 # Main target
