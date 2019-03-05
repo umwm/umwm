@@ -9,16 +9,19 @@ infile = '/gpfsm/dnb32/araman2/sandbox/experiments/offline_umwm_seaice/umwm_seai
 transparencyfile = '/gpfsm/dnb32/araman2/sandbox/experiments/offline_umwm_seaice/umwm_seaice_new/umwm_work/src/input/umwm_transparency4.nc'
 
 nc   = Dataset(transparencyfile, 'r') 
-glon = nc.variables['longitude'][:,:,:]
-glat = nc.variables['latitude'][:,:,:]
+glon = nc.variables['longitude'][:]
+glat = nc.variables['latitude'][:]
 gz   = nc.variables['depths'][:,:,:]
 gsx  = nc.variables['sx1'][:,:,:]
-gxy  = nc.variables['sy1'][:,:,:]
+gsy  = nc.variables['sy1'][:,:,:]
+gz = np.squeeze(gz)
+gsx = np.squeeze(gsx)
+gsy = np.squeeze(gsy)
 nc.close()
 
 nc = Dataset(infile, 'r')
-lon = nc.variables['lon'][:]
-lat = nc.variables['lat'][:]
+lon = nc.variables['lon'][:,:]
+lat = nc.variables['lat'][:,:]
 nc.close()
 
 dlon = np.diff(lon[0,:])[-1]
@@ -53,12 +56,12 @@ for j in range(jdm):
     print(j)
     for i in range(1,idm):
         i0 = np.argmin((lon1d[i]-glon)**2)
-        z[j,i]  = np.mean(gz[j0-jj:j0+jj,i0-ii:i0+ii])
-        sx[j,i] = np.mean(gsx[j0-jj:j0+jj,i0-ii:i0+ii])
-        sy[j,i] = np.mean(gsy[j0-jj:j0+jj,i0-ii:i0+ii])
-    z[j,0]  = np.mean(np.mean(gz[j0-jj:j0+jj,i0]))
-    sx[j,0] = np.mean(np.mean(gsx[j0-jj:j0+jj,i0]))
-    sy[j,0] = np.mean(np.mean(gsy[j0-jj:j0+jj,i0]))
+        z[j,i]  = np.mean(gz[j0,i0])
+        sx[j,i] = np.mean(gsx[j0,i0])
+        sy[j,i] = np.mean(gsy[j0,i0])
+    z[j,0]  = np.mean(np.mean(gz[j0,i0]))
+    sx[j,0] = np.mean(np.mean(gsx[j0,i0]))
+    sy[j,0] = np.mean(np.mean(gsy[j0,i0]))
 
 z[340:,:] = 1000.
 
