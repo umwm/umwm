@@ -31,10 +31,10 @@ contains
       do concurrent(o = 1:oc(i), p = 1:pm)
 
         !  double group velocity at east, west, north, south cell edges
-        cge = tx(i) * (cg0(o,i) * cth_curv(p,i) + cg0(o,ie(i)) * cth_curv(p,i))
-        cgw = tx(i) * (cg0(o,i) * cth_curv(p,i) + cg0(o,iw(i)) * cth_curv(p,i))
-        cgs = ty(i) * (cg0(o,i) * sth_curv(p,i) + cg0(o,is(i)) * sth_curv(p,i))
-        cgn = ty(i) * (cg0(o,i) * sth_curv(p,i) + cg0(o,in(i)) * sth_curv(p,i))
+        cge = (tx(i) * cg0(o,i) * cth_curv(p,i) + tx(ie(i)) * cg0(o,ie(i)) * cth_curv(p,i))
+        cgw = (tx(i) * cg0(o,i) * cth_curv(p,i) + tx(iw(i)) * cg0(o,iw(i)) * cth_curv(p,i))
+        cgs = (ty(i) * cg0(o,i) * sth_curv(p,i) + ty(is(i)) * cg0(o,is(i)) * sth_curv(p,i))
+        cgn = (ty(i) * cg0(o,i) * sth_curv(p,i) + ty(in(i)) * cg0(o,in(i)) * sth_curv(p,i))
 
         ! advective energy flux in and out of all 4 directions
         flux(o,p,i) = (cge + abs(cge)) * dye(i) * e(o,p,i)     & ! east, out
@@ -62,16 +62,16 @@ contains
       do concurrent(i = istart:iend)
 
         ! x-direction
-        feup = tx(i) * (uc(i) + uc(iie(i)) + abs(uc(i) + uc(iie(i)))) * dye(i)
-        fedn = tx(i) * (uc(i) + uc(iie(i)) - abs(uc(i) + uc(iie(i)))) * dye(i)
-        fwup = tx(i) * (uc(i) + uc(iiw(i)) + abs(uc(i) + uc(iiw(i)))) * dyw(i)
-        fwdn = tx(i) * (uc(i) + uc(iiw(i)) - abs(uc(i) + uc(iiw(i)))) * dyw(i)
+        feup = (tx(i) * uc(i) + tx(iie(i)) * uc(iie(i)) + abs(tx(i) * uc(i) + tx(iie(i)) * uc(iie(i)))) * dye(i)
+        fedn = (tx(i) * uc(i) + tx(iie(i)* uc(iie(i)) - abs(tx(i) * uc(i) + tx(iie(i)) * uc(iie(i)))) * dye(i)
+        fwup = (tx(i) * uc(i) + tx(iiw(i)) * uc(iiw(i)) + abs(tx(i) * uc(i) + tx(iiw(i)) * uc(iiw(i)))) * dyw(i)
+        fwdn = (tx(i) * uc(i) + tx(iiw(i)) * uc(iiw(i)) - abs(tx(i) * uc(i) + tx(iiw(i)) * uc(iiw(i)))) * dyw(i)
 
         ! y-direction
-        fnup = ty(i) * (vc(i) + vc(iin(i)) + abs(vc(i) + vc(iin(i)))) * dxn(i)
-        fndn = ty(i) * (vc(i) + vc(iin(i)) - abs(vc(i) + vc(iin(i)))) * dxn(i)
-        fsup = ty(i) * (vc(i) + vc(iis(i)) + abs(vc(i) + vc(iis(i)))) * dxs(i)
-        fsdn = ty(i) * (vc(i) + vc(iis(i)) - abs(vc(i) + vc(iis(i)))) * dxs(i)
+        fnup = (ty(i) * vc(i) + ty(iin(i)) * vc(iin(i)) + abs(ty(i) * vc(i) + ty(iin(i)) * vc(iin(i)))) * dxn(i)
+        fndn = (ty(i) * vc(i) + ty(iin(i)) * vc(iin(i)) - abs(ty(i) * vc(i) + ty(iin(i)) * vc(iin(i)))) * dxn(i)
+        fsup = (ty(i) * vc(i) + ty(iis(i)) * vc(iis(i)) + abs(ty(i) * vc(i) + ty(iis(i)) * vc(iis(i)))) * dxs(i)
+        fsdn = (ty(i) * vc(i) + ty(iis(i)) * vc(iis(i)) - abs(ty(i) * vc(i) + ty(iis(i)) * vc(iis(i)))) * dxs(i)
 
         do concurrent(o = 1:oc(i), p = 1:pm)
           flux(o,p,i) = flux(o,p,i)                                &
@@ -93,6 +93,7 @@ contains
           if (fice(i) > fice_uth) then
             ef(o,p,i) = 0.0
           end if  
+
       end do
     end do
 
