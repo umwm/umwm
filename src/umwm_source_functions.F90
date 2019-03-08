@@ -126,7 +126,7 @@ contains
 
     do i = istart, iend
 
-      if (fice(i) > fice_lth .and. fice(i) < fice_uth) then
+      if (fice(i) > fice_lth) then
  
         ht_ = 0.0
  
