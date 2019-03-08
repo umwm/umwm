@@ -31,20 +31,29 @@ contains
       do concurrent(o = 1:oc(i), p = 1:pm)
 
         !  double group velocity at east, west, north, south cell edges
-        cge = (tx(i) * cg0(o,i) * cth_curv(p,i) + tx(ie(i)) * cg0(o,ie(i)) * cth_curv(p,i))
-        cgw = (tx(i) * cg0(o,i) * cth_curv(p,i) + tx(iw(i)) * cg0(o,iw(i)) * cth_curv(p,i))
-        cgs = (ty(i) * cg0(o,i) * sth_curv(p,i) + ty(is(i)) * cg0(o,is(i)) * sth_curv(p,i))
-        cgn = (ty(i) * cg0(o,i) * sth_curv(p,i) + ty(in(i)) * cg0(o,in(i)) * sth_curv(p,i))
+        cge = (cg0(o,i) * cth_curv(p,i) + cg0(o,ie(i)) * cth_curv(p,i))
+        cgw = (cg0(o,i) * cth_curv(p,i) + cg0(o,iw(i)) * cth_curv(p,i))
+        cgs = (cg0(o,i) * sth_curv(p,i) + cg0(o,is(i)) * sth_curv(p,i))
+        cgn = (cg0(o,i) * sth_curv(p,i) + cg0(o,in(i)) * sth_curv(p,i))
 
         ! advective energy flux in and out of all 4 directions
-        flux(o,p,i) = (cge + abs(cge)) * dye(i) * e(o,p,i)     & ! east, out
-                    + (cge - abs(cge)) * dye(i) * e(o,p,ie(i)) & ! east, in
-                    - (cgw + abs(cgw)) * dyw(i) * e(o,p,iw(i)) & ! west, in
-                    - (cgw - abs(cgw)) * dyw(i) * e(o,p,i)     & ! west, out
-                    + (cgn + abs(cgn)) * dxn(i) * e(o,p,i)     & ! north, out
-                    + (cgn - abs(cgn)) * dxn(i) * e(o,p,in(i)) & ! north, in
-                    - (cgs + abs(cgs)) * dxs(i) * e(o,p,is(i)) & ! south, in
-                    - (cgs - abs(cgs)) * dxs(i) * e(o,p,i)       ! south, out
+        flux(o,p,i) = (cge + abs(cge)) * 1.0 * dye(i) * e(o,p,i)  & 
+                      ! east, out
+          + (cge - abs(cge)) * (2*tx(i)/(1+tx(i))) * dye(i) * e(o,p,ie(i)) & 
+                      ! east, in
+          - (cgw + abs(cgw)) * 0.5*(1+tx(i))* dyw(i) * e(o,p,iw(i)) & 
+                      ! west, in
+          - (cgw - abs(cgw)) * 1.0 * dyw(i) * e(o,p,i)     & 
+                      ! west, out
+          + (cgn + abs(cgn)) * 1.0 * dxn(i) * e(o,p,i)     & 
+                      ! north, out
+          + (cgn - abs(cgn)) * (2*ty(i)/(1+ty(i))) * dxn(i) * e(o,p,in(i)) & 
+                      ! north, in
+          - (cgs + abs(cgs)) * 0.5*(1+ty(i)) * dxs(i) * e(o,p,is(i)) & 
+                      ! south, in
+          - (cgs - abs(cgs)) * 1.0 * dxs(i) * e(o,p,i)       ! south, out
+    
+          
 
       end do
     end do
@@ -63,7 +72,7 @@ contains
 
         ! x-direction
         feup = (tx(i) * uc(i) + tx(iie(i)) * uc(iie(i)) + abs(tx(i) * uc(i) + tx(iie(i)) * uc(iie(i)))) * dye(i)
-        fedn = (tx(i) * uc(i) + tx(iie(i)* uc(iie(i)) - abs(tx(i) * uc(i) + tx(iie(i)) * uc(iie(i)))) * dye(i)
+        fedn = (tx(i) * uc(i) + tx(iie(i))* uc(iie(i)) - abs(tx(i) * uc(i) + tx(iie(i)) * uc(iie(i)))) * dye(i)
         fwup = (tx(i) * uc(i) + tx(iiw(i)) * uc(iiw(i)) + abs(tx(i) * uc(i) + tx(iiw(i)) * uc(iiw(i)))) * dyw(i)
         fwdn = (tx(i) * uc(i) + tx(iiw(i)) * uc(iiw(i)) - abs(tx(i) * uc(i) + tx(iiw(i)) * uc(iiw(i)))) * dyw(i)
 
