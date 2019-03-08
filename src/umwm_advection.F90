@@ -51,7 +51,8 @@ contains
                       ! north, in
           - (cgs + abs(cgs)) * 0.5*(1+ty(i)) * dxs(i) * e(o,p,is(i)) & 
                       ! south, in
-          - (cgs - abs(cgs)) * 1.0 * dxs(i) * e(o,p,i)       ! south, out
+          - (cgs - abs(cgs)) * 1.0 * dxs(i) * e(o,p,i)       
+                      ! south, out
     
           
 
