@@ -373,6 +373,7 @@ integer :: lonid,latid,maskid,depthid,nprocid,swhid,mwpid
 integer :: freqid,thetaid
 integer :: wspdid,wdirid
 integer :: rhoaid,rhowid
+integer :: ficeid
 integer :: psimid
 integer :: zid,usid,vsid,dsid
 integer :: momxid,momyid
@@ -486,6 +487,10 @@ if(nproc == 0)then
   stat = nf90_def_var(ncid,'rhow',nf90_float,[xdimid,ydimid,tdimid],rhowid)
   stat = nf90_put_att(ncid,rhowid,name='description',values='water density')
   stat = nf90_put_att(ncid,rhowid,name='units',values='kg/m^3')
+
+  stat = nf90_def_var(ncid,'fice',nf90_float,[xdimid,ydimid,tdimid],ficeid)
+  stat = nf90_put_att(ncid,ficeid,name='description',values='seaice fraction')
+  stat = nf90_put_att(ncid,ficeid,name='units',values='non-dimensional')
 
   stat = nf90_def_var(ncid,'psim',nf90_float,[xdimid,ydimid,tdimid],psimid)
   stat = nf90_put_att(ncid,psimid,name='description',values='universal stability function for momentum')
@@ -717,6 +722,9 @@ if(nproc == 0)stat = nf90_put_var(ncid,rhoaid,output_field,start=[1,1,1],count=[
 
 call gatherfield(rhow(istart:iend),output_field)
 if(nproc == 0)stat = nf90_put_var(ncid,rhowid,output_field,start=[1,1,1],count=[mm,nm,1])
+
+call gatherfield(fice(istart:iend),output_field)
+if(nproc == 0)stat = nf90_put_var(ncid,ficeid,output_field,start=[1,1,1],count=[mm,nm,1])
 
 call gatherfield(psim(istart:iend),output_field)
 if(nproc == 0)stat = nf90_put_var(ncid,psimid,output_field,start=[1,1,1],count=[mm,nm,1])
