@@ -139,14 +139,12 @@ contains
  
         ! wave attenuation from sea ice in the two SWH regimes
         if (ht_ < H_th) then
-          sice(:,:,i) = C1 * ht_
+          sice(:,i) = C1 * ht_
         else
-          sice(:,:,i) = C2
+          sice(:,i) = C2
         end if
         
-        do p = 1, pm
-          sice(:,p,i) = 2 * cg0(:,i) * sice(:,p,i)
-        end do
+        sice(:,i) = 2 * cg0(:,i) * sice(:,i)
          
       end if
  
