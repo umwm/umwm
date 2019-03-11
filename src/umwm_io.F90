@@ -51,7 +51,7 @@ nc_infile = 'input/umwmin_'//readstr//'.nc'
 
 ! set the logical switch to .true. only if from file is requested
 ! for any of the fields:
-readfile = winds .or. currents .or. air_density .or. water_density .or. seaice
+readfile = any([winds, currents, air_density, water_density, seaice])
 
 if(readfile)then
   call nc_check(nf90_open(trim(nc_infile),nf90_nowrite,ncid))
