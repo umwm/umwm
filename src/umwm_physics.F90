@@ -19,6 +19,8 @@ real    :: maxarg,send_buff
 
 !real,save :: explim_ramp
 
+!print *, maxval(sice)
+
 ! calculate the exponential argument:
 ef = 0
 do i = istart,iend
@@ -69,12 +71,12 @@ do i = istart,iend
 end do
 
 ! integrate source terms for the diagnostic range (o > ol)
-do i = istart,iend
-  do p = 1,pm
-    do o = oc(i)+1,om
-      if(ssin(o,p,i)-sdt(o,i)-sdv(o,i) >= 0)then
-        ef(o,p,i) = oneoverk4(o,i)*((ssin(o,p,i)-sdt(o,i)-sdv(o,i))   &
-                  / (twopisds_fac*f(o)*dummy(o,p,i)*cothkd(o,i)))**inv_sds_power
+do i = istart, iend
+  do p = 1, pm
+    do o = oc(i) + 1, om
+      if (ssin(o,p,i) - sdt(o,i) - sdv(o,i) + sice(o,p,i) >= 0) then
+        ef(o,p,i) = oneoverk4(o,i) * ((ssin(o,p,i) - sdt(o,i) - sdv(o,i) + sice(o,p,i)) &
+                  / (twopisds_fac * f(o) * dummy(o,p,i) * cothkd(o,i)))**inv_sds_power
       end if
     end do
   end do
