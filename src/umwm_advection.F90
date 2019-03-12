@@ -44,7 +44,7 @@ contains
         south_in_ty   = 0.5*(1+ty(i))
         north_in_ty   = 2*ty(i)/(1+ty(i)) 
         
-        if(tx(iw(i)) < 0.02 .and. tx(i) < 0.02) then
+        if(tx(iw(i)) > 0.02 .and. tx(i) > 0.02) then
 !
            west_in_tx  =  tx(iw(i)) * (1 + tx(i))/ (1+tx(iw(i)))
  !           west_in_tx = (tx(iw(i)) + tx(i))/ 2
@@ -52,14 +52,14 @@ contains
         endif
 
 
-        if(tx(ie(i)) < 0.02 .and. tx(i) < 0.02) then
+        if(tx(ie(i)) > 0.02 .and. tx(i) > 0.02) then
 
            east_in_tx  =  tx(i) * (1 + tx(ie(i)))/ (1+tx(i))
            ! east_in_tx = (tx(ie(i)) + tx(i))/ 2
         endif
 
 
-        if(ty(is(i)) < 0.02 .and. ty(i) < 0.02) then
+        if(ty(is(i)) > 0.02 .and. ty(i) > 0.02) then
 
            south_in_ty  =  ty(is(i)) * (1 + ty(i))/ (1+ty(is(i)))
            ! south_in_ty = (ty(is(i)) + ty(i))/ 2
@@ -67,7 +67,7 @@ contains
 
 
 
-       if(ty(in(i)) < 0.02 .and. ty(i) < 0.02) then
+       if(ty(in(i)) > 0.02 .and. ty(i) > 0.02) then
         
            north_in_ty  =  ty(i) * (1 + ty(in(i)))/ (1+ty(i))
            ! north_in_ty = (ty(in(i)) + ty(i))/ 2
