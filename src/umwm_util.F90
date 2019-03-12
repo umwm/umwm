@@ -171,6 +171,7 @@ deallocate(lat,lon)
 deallocate(x,y)
 deallocate(rhoa_2d,rhow_2d)
 deallocate(wspd_2d,wdir_2d)
+deallocate(fice_2d,ficef,ficeb,fice)
 deallocate(uwb,vwb,uw,vw,uwf,vwf,ucb,uc_2d,ucf,vcb,vc_2d,vcf)
 deallocate(dom,f,cth,cth2,sth,th)
 deallocate(cth_curv,sth_curv)
@@ -199,7 +200,7 @@ deallocate(cg0,cp0,cothkd)
 deallocate(dwn,invcp0)
 deallocate(fkovg)
 deallocate(k,k4,kdk,k3dk,l2,logl2overz,oneoverk4)
-deallocate(sbf,sdv,sdt,snl_arg,dummy,e,ef,rotl,rotr,sds,snl,ssin)
+deallocate(sbf,sdv,sdt,snl_arg,dummy,e,ef,rotl,rotr,sds,snl,ssin,sice)
 
 endsubroutine dealloc
 !======================================================================!

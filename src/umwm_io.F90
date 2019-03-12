@@ -16,7 +16,7 @@ use netcdf
 !======================================================================!
 
 logical :: readfile
-logical :: winds,currents,air_density,water_density
+logical :: winds,currents,air_density,water_density,seaice
 
 !======================================================================!
 contains
@@ -51,7 +51,7 @@ nc_infile = 'input/umwmin_'//readstr//'.nc'
 
 ! set the logical switch to .true. only if from file is requested
 ! for any of the fields:
-readfile = winds .or. currents .or. air_density .or. water_density
+readfile = any([winds, currents, air_density, water_density, seaice])
 
 if(readfile)then
   call nc_check(nf90_open(trim(nc_infile),nf90_nowrite,ncid))
@@ -77,6 +77,14 @@ else
   vcf = vc0
   uc  = uc0
   vc  = vc0
+end if
+
+if(seaice)then
+  call nc_check(nf90_inq_varid(ncid,'fice',varid))
+  call nc_check(nf90_get_var(ncid,varid,ficef))
+else
+  fice_2d = fice0
+  fice    = fice0
 end if
 
 where(mask == 0)
@@ -365,6 +373,7 @@ integer :: lonid,latid,maskid,depthid,nprocid,swhid,mwpid
 integer :: freqid,thetaid
 integer :: wspdid,wdirid
 integer :: rhoaid,rhowid
+integer :: ficeid
 integer :: psimid
 integer :: zid,usid,vsid,dsid
 integer :: momxid,momyid
@@ -478,6 +487,10 @@ if(nproc == 0)then
   stat = nf90_def_var(ncid,'rhow',nf90_float,[xdimid,ydimid,tdimid],rhowid)
   stat = nf90_put_att(ncid,rhowid,name='description',values='water density')
   stat = nf90_put_att(ncid,rhowid,name='units',values='kg/m^3')
+
+  stat = nf90_def_var(ncid,'fice',nf90_float,[xdimid,ydimid,tdimid],ficeid)
+  stat = nf90_put_att(ncid,ficeid,name='description',values='seaice fraction')
+  stat = nf90_put_att(ncid,ficeid,name='units',values='non-dimensional')
 
   stat = nf90_def_var(ncid,'psim',nf90_float,[xdimid,ydimid,tdimid],psimid)
   stat = nf90_put_att(ncid,psimid,name='description',values='universal stability function for momentum')
@@ -709,6 +722,9 @@ if(nproc == 0)stat = nf90_put_var(ncid,rhoaid,output_field,start=[1,1,1],count=[
 
 call gatherfield(rhow(istart:iend),output_field)
 if(nproc == 0)stat = nf90_put_var(ncid,rhowid,output_field,start=[1,1,1],count=[mm,nm,1])
+
+call gatherfield(fice(istart:iend),output_field)
+if(nproc == 0)stat = nf90_put_var(ncid,ficeid,output_field,start=[1,1,1],count=[mm,nm,1])
 
 call gatherfield(psim(istart:iend),output_field)
 if(nproc == 0)stat = nf90_put_var(ncid,psimid,output_field,start=[1,1,1],count=[mm,nm,1])

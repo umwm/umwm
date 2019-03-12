@@ -25,7 +25,7 @@ do i = istart,iend
   do p = 1,pm
     do o = 1,oc(i)
       ef(o,p,i) = ssin(o,p,i)-sds(o,p,i)*snl_arg(o,i)&
-                 -sbf(o,i)-sdt(o,i)-sdv(o,i)
+                 -sbf(o,i)-sdt(o,i)-sdv(o,i)+sice(o,i)
     end do
   end do
 end do
@@ -61,19 +61,20 @@ do i = istart,iend
   do p = 1,pm
     do o = 1,oc(i)
       ef(o,p,i) = e(o,p,i)*exp(dts*(ssin(o,p,i)-sds(o,p,i)      &
-                                   -sbf(o,i)-sdt(o,i)-sdv(o,i)))&
+                                   -sbf(o,i)-sdt(o,i)-sdv(o,i)  &
+                                   +sice(o,i)))&
                  +dts*snl(o,p,i)
     end do
   end do
 end do
 
 ! integrate source terms for the diagnostic range (o > ol)
-do i = istart,iend
-  do p = 1,pm
-    do o = oc(i)+1,om
-      if(ssin(o,p,i)-sdt(o,i)-sdv(o,i) >= 0)then
-        ef(o,p,i) = oneoverk4(o,i)*((ssin(o,p,i)-sdt(o,i)-sdv(o,i))   &
-                  / (twopisds_fac*f(o)*dummy(o,p,i)*cothkd(o,i)))**inv_sds_power
+do i = istart, iend
+  do p = 1, pm
+    do o = oc(i) + 1, om
+      if (ssin(o,p,i) - sdt(o,i) - sdv(o,i) + sice(o,i) >= 0) then
+        ef(o,p,i) = oneoverk4(o,i) * ((ssin(o,p,i) - sdt(o,i) - sdv(o,i) + sice(o,i)) &
+                  / (twopisds_fac * f(o) * dummy(o,p,i) * cothkd(o,i)))**inv_sds_power
       end if
     end do
   end do

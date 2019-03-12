@@ -79,6 +79,7 @@ real :: sbf_fac,sbp_fac,sds_fac,sds_power,sdt_fac,sfct,sin_diss1
 real :: sin_diss2,sin_fac,snl_fac,sumt
 real :: temp0,twopisds_fac,twonu
 real :: wspd0,wdir0,uc0,vc0,z
+real :: fice0,fice_lth,fice_uth
 
 !=======================================================================
 
@@ -137,6 +138,7 @@ real,dimension(:,:),allocatable :: lat,lon
 real,dimension(:,:),allocatable :: x,y
 real,dimension(:,:),allocatable :: rhoa_2d,rhow_2d
 real,dimension(:,:),allocatable :: wspd_2d,wdir_2d
+real,dimension(:,:),allocatable :: fice_2d,ficeb,ficef
 real,dimension(:,:),allocatable :: uwb,vwb,uw,vw,uwf,vwf
 real,dimension(:,:),allocatable :: ucb,uc_2d,ucf,vcb,vc_2d,vcf
 
@@ -183,6 +185,7 @@ real,dimension(:),allocatable :: tailocnx,tailocny
 
 real,dimension(:),allocatable :: uc,vc,ustar
 real,dimension(:),allocatable :: wspd,wdir
+real,dimension(:),allocatable :: fice
 
 ! snl downshifting weights, used in snl routine:
 real,dimension(:,:),allocatable :: bf1_renorm,bf2_renorm
@@ -198,7 +201,7 @@ real,dimension(:,:),allocatable :: dwn,invcp0
 real,dimension(:,:),allocatable :: fkovg
 real,dimension(:,:),allocatable :: k,k4,kdk,k3dk
 real,dimension(:,:),allocatable :: l2,logl2overz,oneoverk4,psiml2
-real,dimension(:,:),allocatable :: sbf,sdv,sdt,snl_arg
+real,dimension(:,:),allocatable :: sbf,sdv,sdt,snl_arg,sice
 
 real,dimension(:,:,:),allocatable :: dummy,e,ef,rotl,rotr,sds,snl,ssin
 

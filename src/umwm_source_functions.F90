@@ -1,6 +1,6 @@
 module umwm_source_functions
   ! Module that provides wave source functions.
-  use umwm_io, only: currents
+  use umwm_io, only: currents,seaice
   use umwm_module
   use umwm_constants, only: rk
   use umwm_sheltering, only: sheltering_coare35, sheltering_reynolds
@@ -9,7 +9,7 @@ module umwm_source_functions
 
   private
 
-  public :: sin_d12, sds_d12, snl_d12
+  public :: sin_d12, sds_d12, snl_d12, s_ice
 
 contains
 
@@ -67,7 +67,7 @@ contains
     end do
 
     do concurrent (o = 1:om, p = 1:pm, i = istart:iend)
-      ssin(o,p,i) = twopi * rhorat(i) * ssin(o,p,i) * fkovg(o,i)
+      ssin(o,p,i) = (1 - fice(i)) * twopi * rhorat(i) * ssin(o,p,i) * fkovg(o,i)
     end do
 
     ! prevent negative sin for diagnostic tail
@@ -103,6 +103,54 @@ contains
     end do
 
   end subroutine sds_d12
+
+
+  subroutine s_ice
+    ! Wave attenuation by sea ice, following Kohoun et al. (2014).
+
+    integer :: i, o, p
+
+    ! parameters from Kohout et al. 2014
+    real, parameter :: H_th = 3.0       ! [m]
+    real, parameter :: C1   = -5.35e-6  ! [m-1]
+    real, parameter :: C2   = C1 * H_th ! []
+
+    real, dimension(om,pm) :: spectrumbin
+
+    real :: ht_
+  
+    sice = 0.0
+
+    do i = istart, iend
+
+      if (fice(i) > fice_lth) then
+ 
+        ht_ = 0.0
+ 
+        do p = 1, pm
+          do o = 1, om
+            spectrumbin(o,p) = e(o,p,i) * kdk(o,i)
+ 
+            ht_ = ht_ + spectrumbin(o,p)
+          end do
+        end do
+ 
+        ht_ = 4 * sqrt(ht_ * dth) ! significant wave height
+ 
+        ! wave attenuation from sea ice in the two SWH regimes
+        if (ht_ < H_th) then
+          sice(:,i) = C1 * ht_
+        else
+          sice(:,i) = C2
+        end if
+        
+        sice(:,i) = 2 * cg0(:,i) * sice(:,i)
+         
+      end if
+ 
+    end do
+
+  end subroutine s_ice
 
   
   subroutine snl_d12

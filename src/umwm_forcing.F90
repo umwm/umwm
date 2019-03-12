@@ -1,6 +1,6 @@
 module umwm_forcing
 
-  use umwm_io, only: input_nc, readfile, winds, currents, air_density, water_density
+  use umwm_io, only: input_nc, readfile, winds, currents, air_density, water_density, seaice
   use umwm_module
   use umwm_util, only: remap_mn2i
 
@@ -27,6 +27,9 @@ contains
     ! save air and water density at time level n
     if (air_density) rhoab = rhoaf
     if (water_density) rhowb = rhowf
+
+    ! save sea ice fraction at time level n
+    if (seaice) ficeb = ficef
 
     ! load input fields at time level n+1
     if (readfile) call input_nc(timestr)
@@ -66,6 +69,16 @@ contains
       wdir = remap_mn2i(wdir_2d)
 
     end if ! winds
+
+    if (seaice) then
+
+      fice_2d = ficeb * (1 - sumt / dtg) + ficef * sumt/dtg
+
+      ! remap to 1-D arrays:
+      fice = remap_mn2i(fice_2d)
+
+     end if
+    
 
     if (currents) then
 

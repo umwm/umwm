@@ -89,6 +89,10 @@ contains
     do concurrent(i = istart:iend)
       do concurrent(o = 1:oc(i), p = 1:pm)
           ef(o,p,i) = ef(o,p,i) - 0.25 * dta * flux(o,p,i) * oneovar(i)
+
+          if (fice(i) > fice_uth) then
+            ef(o,p,i) = 0.0
+          end if  
       end do
     end do
 
@@ -165,6 +169,10 @@ contains
                      * oneovdth
         ! integrate
         ef(o,p,i) = ef(o,p,i) - dtr * flux(o,p,i)
+        
+        if (fice(i) > fice_uth) then
+          ef(o,p,i) = 0.0
+        end if
 
       end do
     end do
