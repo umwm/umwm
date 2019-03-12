@@ -744,6 +744,21 @@ else
 
 end if
 
+
+if(islandsfromfile) then
+  alphax_2d(:,1) = 0.0
+  alphax_2d(:,nm) = 0.0
+  alphay_2d(:,1) = 0.0
+  alphay_2d(:,nm) = 0.0
+
+  if(.not.isglobal)then
+    alphax_2d( 1,:)  = 0.0
+    alphax_2d(mm,:) = 0.0
+    alphay_2d(1,:) = 0.0
+    alphay_2d(mm,:) = 0.0
+  end if
+endif
+
 ! calculate the upper index for 1-d arrays:
 im = count(mask==1)
 imm = mm*nm
