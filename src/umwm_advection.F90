@@ -47,7 +47,6 @@ contains
         if(tx(iw(i)) > 0.02 .and. tx(i) > 0.02) then
 !
            west_in_tx  =  tx(iw(i)) * (1 + tx(i))/ (1+tx(iw(i)))
- !           west_in_tx = (tx(iw(i)) + tx(i))/ 2
 
         endif
 
@@ -55,14 +54,12 @@ contains
         if(tx(ie(i)) > 0.02 .and. tx(i) > 0.02) then
 
            east_in_tx  =  tx(i) * (1 + tx(ie(i)))/ (1+tx(i))
-           ! east_in_tx = (tx(ie(i)) + tx(i))/ 2
         endif
 
 
         if(ty(is(i)) > 0.02 .and. ty(i) > 0.02) then
 
            south_in_ty  =  ty(is(i)) * (1 + ty(i))/ (1+ty(is(i)))
-           ! south_in_ty = (ty(is(i)) + ty(i))/ 2
         endif
 
 
@@ -70,7 +67,6 @@ contains
        if(ty(in(i)) > 0.02 .and. ty(i) > 0.02) then
         
            north_in_ty  =  ty(i) * (1 + ty(in(i)))/ (1+ty(i))
-           ! north_in_ty = (ty(in(i)) + ty(i))/ 2
        endif
         
 
@@ -111,23 +107,23 @@ contains
       do concurrent(i = istart:iend)
 
         ! x-direction
-        feup = (tx(i) * uc(i) + tx(iie(i)) * uc(iie(i)) + abs(tx(i) * uc(i) + tx(iie(i)) * uc(iie(i)))) * dye(i)
-        fedn = (tx(i) * uc(i) + tx(iie(i))* uc(iie(i)) - abs(tx(i) * uc(i) + tx(iie(i)) * uc(iie(i)))) * dye(i)
-        fwup = (tx(i) * uc(i) + tx(iiw(i)) * uc(iiw(i)) + abs(tx(i) * uc(i) + tx(iiw(i)) * uc(iiw(i)))) * dyw(i)
-        fwdn = (tx(i) * uc(i) + tx(iiw(i)) * uc(iiw(i)) - abs(tx(i) * uc(i) + tx(iiw(i)) * uc(iiw(i)))) * dyw(i)
+        feup = (uc(i) + uc(iie(i)) + abs(uc(i) + uc(iie(i)))) * dye(i)
+        fedn = (uc(i) + uc(iie(i)) - abs(uc(i) + uc(iie(i)))) * dye(i)
+        fwup = (uc(i) + uc(iiw(i)) + abs(uc(i) + uc(iiw(i)))) * dyw(i)
+        fwdn = (uc(i) + uc(iiw(i)) - abs(uc(i) + uc(iiw(i)))) * dyw(i)
 
         ! y-direction
-        fnup = (ty(i) * vc(i) + ty(iin(i)) * vc(iin(i)) + abs(ty(i) * vc(i) + ty(iin(i)) * vc(iin(i)))) * dxn(i)
-        fndn = (ty(i) * vc(i) + ty(iin(i)) * vc(iin(i)) - abs(ty(i) * vc(i) + ty(iin(i)) * vc(iin(i)))) * dxn(i)
-        fsup = (ty(i) * vc(i) + ty(iis(i)) * vc(iis(i)) + abs(ty(i) * vc(i) + ty(iis(i)) * vc(iis(i)))) * dxs(i)
-        fsdn = (ty(i) * vc(i) + ty(iis(i)) * vc(iis(i)) - abs(ty(i) * vc(i) + ty(iis(i)) * vc(iis(i)))) * dxs(i)
+        fnup = (vc(i) + vc(iin(i)) + abs(vc(i) + vc(iin(i)))) * dxn(i)
+        fndn = (vc(i) + vc(iin(i)) - abs(vc(i) + vc(iin(i)))) * dxn(i)
+        fsup = (vc(i) + vc(iis(i)) + abs(vc(i) + vc(iis(i)))) * dxs(i)
+        fsdn = (vc(i) + vc(iis(i)) - abs(vc(i) + vc(iis(i)))) * dxs(i)
 
         do concurrent(o = 1:oc(i), p = 1:pm)
           flux(o,p,i) = flux(o,p,i)                                &
-                      + (feup * e(o,p,i)     + fedn * e(o,p,ie(i)) &
-                      -  fwup * e(o,p,iw(i)) - fwdn * e(o,p,i)     &
-                      +  fnup * e(o,p,i)     + fndn * e(o,p,in(i)) &
-                      -  fsup * e(o,p,is(i)) - fsdn * e(o,p,i))
+                      + (feup * e(o,p,i) * 1.0     + fedn * e(o,p,ie(i) * east_in_tx) &
+                      -  fwup * e(o,p,iw(i)) * west_in_tx - fwdn * e(o,p,i) * 1.0     &
+                      +  fnup * e(o,p,i) * 1.0     + fndn * e(o,p,in(i) * north_in_ty) &
+                      -  fsup * e(o,p,is(i)) * south_in_ty - fsdn * e(o,p,i) * 1.0)
         end do
 
       end do
