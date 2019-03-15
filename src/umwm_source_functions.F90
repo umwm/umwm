@@ -67,8 +67,7 @@ contains
     end do
 
     do concurrent (o = 1:om, p = 1:pm, i = istart:iend)
-      ssin(o,p,i) = twopi * rhorat(i) * ssin(o,p,i) * fkovg(o,i)
-      ssin(o,p,i) = (1 - fice(i)) * ssin(o,p,i)
+      ssin(o,p,i) = (1 - fice(i)) * twopi * rhorat(i) * ssin(o,p,i) * fkovg(o,i)
     end do
 
     ! prevent negative sin for diagnostic tail
@@ -100,23 +99,21 @@ contains
     dummy = (1 + mss_fac * dummy)**2
 
     do concurrent(o = 1:om, p = 1:pm, i = istart:iend)
-      if (e(o,p,i) < 0) print *, o,p,i,e(o,p,i),minval(e), maxval(e)
       sds(o,p,i) = twopisds_fac * f(o) * dummy(o,p,i) * (e(o,p,i) * k4(o,i))**sds_power
-      sds(o,p,i) = (1 - fice(i)) * sds(o,p,i) 
     end do
 
   end subroutine sds_d12
 
 
   subroutine s_ice
-    ! Wave attenuation by sea ice
+    ! Wave attenuation by sea ice, following Kohoun et al. (2014).
 
     integer :: i, o, p
 
     ! parameters from Kohout et al. 2014
     real, parameter :: H_th = 3.0       ! [m]
     real, parameter :: C1   = -5.35e-6  ! [m-1]
-    real, parameter :: C2   = C1*H_th   ! []
+    real, parameter :: C2   = C1 * H_th ! []
 
     real, dimension(om,pm) :: spectrumbin
 
@@ -130,34 +127,30 @@ contains
  
         ht_ = 0.0
  
-        do p=1,pm
-          do o=1,om
-            spectrumbin(o,p) = e(o,p,i)*kdk(o,i)
+        do p = 1, pm
+          do o = 1, om
+            spectrumbin(o,p) = e(o,p,i) * kdk(o,i)
  
             ht_ = ht_ + spectrumbin(o,p)
           end do
         end do
  
-        ht_ = 4*sqrt(ht_*dth)                    ! significant wave height
+        ht_ = 4 * sqrt(ht_ * dth) ! significant wave height
  
         ! wave attenuation from sea ice in the two SWH regimes
         if (ht_ < H_th) then
-          sice(:,:,i) = C1 * ht_
+          sice(:,i) = C1 * ht_
         else
-          sice(:,:,i) = C2
+          sice(:,i) = C2
         end if
         
-        do p=1,pm
-          do o=1,om
-            sice(o,p,i) = 2 * cg0(o,i) * sice(o,p,i)
-          end do
-        end do
+        sice(:,i) = 2 * cg0(:,i) * sice(:,i)
          
-      endif
+      end if
  
     end do
 
-    end subroutine s_ice
+  end subroutine s_ice
 
   
   subroutine snl_d12

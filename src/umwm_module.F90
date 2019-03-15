@@ -201,9 +201,9 @@ real,dimension(:,:),allocatable :: dwn,invcp0
 real,dimension(:,:),allocatable :: fkovg
 real,dimension(:,:),allocatable :: k,k4,kdk,k3dk
 real,dimension(:,:),allocatable :: l2,logl2overz,oneoverk4,psiml2
-real,dimension(:,:),allocatable :: sbf,sdv,sdt,snl_arg
+real,dimension(:,:),allocatable :: sbf,sdv,sdt,snl_arg,sice
 
-real,dimension(:,:,:),allocatable :: dummy,e,ef,rotl,rotr,sds,snl,ssin,sice
+real,dimension(:,:,:),allocatable :: dummy,e,ef,rotl,rotr,sds,snl,ssin
 
 !=======================================================================
 end module umwm_module
