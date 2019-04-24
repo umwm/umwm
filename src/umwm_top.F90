@@ -94,24 +94,38 @@ contains
 #ifndef ESMF
         call forcinginterpolate() ! interpolate force fields in time
 #endif
+!       call sin_d12()
 
-        call sin_d12() ! compute source input term Sin
-        call sds_d12() ! compute source dissipation term Sds
-        call snl_d12() ! compute non-linear source term Snl
-        call s_ice()   ! compute sea ice attenuation term Sice
-        call source()  ! integrate source functions
+        call sin_d12(wspd, istart, iend, iistart, iiend, fprog, om, oc, pm, f, g, ustar, logl2overz, psim, psiml2, wdir, th, cp0, uc, cth, vc, sth, sin_fac, fieldscale1, fieldscale2, twopi, fkovg, fice, rhorat, fcutoff, shelt, ssin) ! compute source input term Sin
+
+!        call sds_d12()
+
+        call sds_d12(e, mss_fac, om, pm,iistart,iiend, istart, iend, cth2pp, k3dk, twopisds_fac, f, k4, sds_power, sds, dummy ) ! compute source dissipation term Sds
+
+!        call snl_d12()
+
+        call snl_d12(iistart,iiend, istart, iend, oc, om, pm, bf1_renorm, bf2_renorm, e, snl_fac, cothkd, sdt_fac, rhorat, ustar, k, sds, sdt, snl  ) ! compute non-linear source term Snl
+
+        call s_ice(istart, iend, iistart, iiend, fice, fice_lth, fice_uth, om, pm , e, kdk, dth, cg0, sice)   ! compute sea ice attenuation term Sice
+
+!       call s_ice()
+
+        call source(iistart,iiend,ierr, first, restart, cothkd, f, om, oc, pm, istart,iend, dtg, dtamin, explim, oneoverk4, twopisds_fac,inv_sds_power, sumt, ssin,sds,snl,snl_arg,sbf,sdt,sdv,sice,dummy,e,ef, dts, dta)
+
+!         call source()
+
 
 #ifdef MPI
         call exchange_halo() ! exchange halo points
 #endif
 
-        call propagation() ! compute advection and integrate
+        call propagation(imm, istart, iend, iistart, iiend,  om, pm, oc, cg0, cth_curv, sth_curv, ie, iw, is, in, dye, dyw, dxn, dxs, e, isglobal, uc, vc, iie, iiw,iis, iin, ef, dta, oneovar, fice, fice_uth) ! compute advection and integrate
 
 #ifdef ESMF
         e(:,:,istart:iend) = ef(:,:,istart:iend) ! update
 #endif
 
-        call refraction()    ! compute refraction and integrate
+        call refraction(istart, iend, iistart, iiend, om, pm, oc, cp0, cth, sth, uc, vc,ie, iw, in, is, iie, iiw, iis, iin, imm, oneovdx, oneovdy, pl, pr, dts, dth, fice, fice_uth, e, ef, first, oneovdth, rotr, rotl, ierr)    ! compute refraction and integrate
 
         e(:,:,istart:iend) = ef(:,:,istart:iend) ! update
 
