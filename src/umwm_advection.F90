@@ -6,7 +6,7 @@ module umwm_advection
 #if defined(MPI)
   use mpi
 #endif
-  use umwm_module
+  !use umwm_module
   use umwm_io, only: currents
 
   implicit none
@@ -15,15 +15,46 @@ module umwm_advection
 
 contains
 
-  subroutine propagation
+  subroutine propagation(imm, istart, iend, iistart, iiend,  om, pm, oc, cg0, cth_curv, sth_curv, ie, iw, is, in, dye, dyw, dxn, dxs, e, isglobal, uc, vc, iie, iiw,iis, iin, ef, dta, oneovar, fice, fice_uth)
+   ! 1st order upstream finite difference advection in geographical space.
 
-    ! 1st order upstream finite difference advection in geographical space.
+    implicit none 
+   
+    ! input variables
+
+    integer, intent(in)               :: om, pm, istart,iend,iistart,iiend, imm
+
+    integer, dimension(istart:iend), intent(in)      :: oc
+
+    real, intent(in)   :: cg0(om, iistart-1:iiend)
+
+    real, intent(in)   :: cth_curv(pm, istart:iend), sth_curv(pm, istart:iend)
+
+    integer, intent(in)   :: ie(imm), iw(imm), is(imm), in(imm), iie(imm), iiw(imm), iin(imm), iis(imm)
+
+    real, intent(in)   :: dye(istart:iend), dyw(istart:iend), dxs(istart:iend), dxn(istart:iend)
+    
+    real, intent(in)   :: uc(istart:iend), vc(istart:iend), fice(istart:iend), oneovar(istart:iend)
+
+    real, intent(in)   :: fice_uth, dta
+
+    logical, intent(in)  :: isglobal
+
+    real, intent(in)   :: e(om, pm, iistart-1:iiend)
+
+
+    ! local variables
+
 
     integer :: o, p, i
     real :: cge, cgw, cgn, cgs
     real :: feup, fedn, fwup, fwdn, fnup, fndn, fsup, fsdn
 
     real :: flux(om,pm,istart:iend)
+
+    ! output variables
+
+    real, intent(inout)   :: ef(om, pm, istart:iend)
 
     flux = 0
 
@@ -99,17 +130,60 @@ contains
   end subroutine propagation
 
 
-  subroutine refraction
+  subroutine refraction(istart, iend, iistart, iiend, om, pm, oc, cp0, cth, sth, uc, vc,ie, iw, in, is, iie, iiw, iis, iin, imm, oneovdx, oneovdy, pl, pr, dts, dth, fice, fice_uth, e, ef, first, oneovdth, rotr, rotl, ierr)
 
     ! 1st order upstream finite difference advection in
     ! directional space -- bottom- and current-induced refraction.
 
+    implicit none
+
+    ! input variables
+
+    integer, intent(in)               :: om, pm, imm , istart,iend,iistart,iiend
+
+    integer, dimension(istart:iend), intent(in)      :: oc
+
+    logical, intent(in)               :: first
+
+    real, intent(in)                  :: cp0(om, iistart-1:iiend)
+
+    real, intent(in)                  :: cth(pm), sth(pm)
+    integer, intent(in)               :: pl(pm), pr(pm)
+
+    real, intent(in)                  :: dth, dts, fice_uth, oneovdth
+
+    real, intent(in)                  :: uc(istart:iend), vc(istart:iend)
+
+    integer, intent(in)                  :: ie(imm), iw(imm), is(imm), in(imm), iie(imm), iiw(imm), iin(imm), iis(imm)  
+
+    real, intent(in)                  :: oneovdx(istart:iend),oneovdy(istart:iend), fice(istart:iend)
+
+
+     real, intent(in)   :: e(om, pm, iistart-1:iiend)
+
+
+     real, intent(inout) :: rotl(om, pm, istart:iend), rotr(om, pm, istart:iend)
+
+     ! MPI inputs
+
+
+     integer, intent(inout) :: ierr
+    ! local variables
+
     integer :: i, o, p
     logical :: compute_rotation_tendency
     real :: sendbuffer
-    real, save :: dtr_temp
-
+    real, save :: dtr_temp, dtr
     real :: flux(om,pm,istart:iend)
+
+
+
+    ! output variables
+
+
+     real, intent(inout)   :: ef(om, pm, istart:iend)
+
+
 
 #ifdef ESMF
     ! always compute in coupled mode:
