@@ -1,22 +1,67 @@
 module umwm_physics
 
-  use umwm_module
+  !use umwm_module
 
   implicit none
 
 contains
 
-subroutine source
+subroutine source(iistart,iiend,ierr, first, restart, cothkd, f, om, oc, pm, istart,iend, dtg, dtamin, explim, oneoverk4, twopisds_fac,inv_sds_power, sumt, ssin,sds,snl,snl_arg,sbf,sdt,sdv,sice,dummy,e,ef, dts, dta)
 
-  ! TODO move to umwm_integration.f90
+
 
 #ifdef MPI
 use mpi
 #endif
 
+  ! TODO move to umwm_integration.f90
+
+  implicit None
+! input variables
+
+integer, intent(in)               :: om, pm, istart,iend,iistart,iiend
+
+real,   intent(in)                :: ssin(om, pm, istart:iend),sds(om,pm,istart:iend), snl(om,pm,istart:iend), dummy(om, pm, istart:iend)
+
+
+real, intent(in)                  :: sice(om,istart:iend),  snl_arg(om,istart:iend), sbf(om,istart:iend), sdt(om,istart:iend), sdv(om,istart:iend)
+
+
+real, intent(in)                  :: dtg, dtamin, explim, twopisds_fac,inv_sds_power
+
+
+integer, dimension(istart:iend), intent(in)      :: oc
+
+real, intent(in)                  :: oneoverk4(om,istart:iend)
+
+real, intent(in)                  :: f(om)
+
+real, intent(in)      :: cothkd(om,istart:iend)
+
+logical, intent(in) :: first
+
+! main control switches
+logical, intent(in) :: restart
+
+!local variables
+
+
+
 integer :: i,o,p
 real    :: maxarg,send_buff
+! MPI inputs
 
+
+integer, intent(inout) :: ierr
+
+! output variables
+
+real, intent(inout)   :: ef(om, pm, istart:iend)
+
+real, intent(out)   :: dts, dta
+real, intent(inout) :: sumt
+
+real, intent(inout)   :: e(om, pm, iistart-1:iiend)
 !real,save :: explim_ramp
 
 ! calculate the exponential argument:
@@ -29,6 +74,7 @@ do i = istart,iend
     end do
   end do
 end do
+
 
 !explim_ramp = explim
 
@@ -84,9 +130,8 @@ e(:,:,istart:iend) = 0.5*(e(:,:,istart:iend)+ef(:,:,istart:iend))
 
 endsubroutine source
 
-
 subroutine diag
-
+use umwm_module
 ! TODO move to umwm_diagnostics.F90
 
 integer              :: o,p,i
