@@ -10,89 +10,147 @@ implicit none
 
 character(len=5),parameter :: version = '2.0.0'
 
-! use blocking mpi routines?
-logical,parameter :: mpiisblocking = .false.
 
 ! time objects
 type(datetime) :: starttime,stoptime,currenttime
 
-character(len=19) :: starttimestr_nml,stoptimestr_nml
 
-! domain dimensions
-integer :: mm  ! domain mpisize in x
-integer :: nm  ! domain mpisize in y
-integer :: om  ! number of frequency/wavenumber bins
-integer :: pm  ! number of direction bins
 
-integer :: im  ! unrolled domain length (sea-points only)
-integer :: imm ! unrolled domain length (all, equals mm*nm)
 
-integer :: istart,iend   ! tile exclusive range (no halo)
-integer :: iistart,iiend ! tile computational range (exclusive+halo)
+! domain objects
 
-integer :: nproc ! process rank
-integer :: mpisize  ! mpi pool mpisize
-integer :: ierr  ! mpi error return status
+type UMWM_Config_list     
 
-! lengths of leftmost and rightmost columns
-integer :: first_col_len,last_col_len
+    character(len=19) :: starttimestr_nml,stoptimestr_nml
 
+    type(UMWM_domain)  :: mm,nm, om, pm, im, imm, istart, iend, iistart, iiend,first_col_len,last_col_len
+
+    type(UMWM_mpi)     :: nproc, mpisize, ierr
+
+    type(UMWM_output)  :: iip,nproc_plot,xpl,ypl,outgrid,outspec,outrst
+
+    type(UMWM_timestep):: step,timestep,first,firstdtg,dta,dtr,dtamin
+
+
+    type(UMWM_ctl_switch) :: isglobal,restart
+
+
+    type(UMWM_extdata)       :: gridfromfile,topofromfile,filllakes,fillestuaries
+
+    type(UMWM_stokes)        :: stokes
+
+end type UMWM_Config_list
+
+type UMWM_domain
+    integer :: mm  ! domain mpisize in x
+    integer :: nm  ! domain mpisize in y
+    integer :: om  ! number of frequency/wavenumber bins
+    integer :: pm  ! number of direction bins
+
+    integer :: im  ! unrolled domain length (sea-points only)
+    integer :: imm ! unrolled domain length (all, equals mm*nm)
+
+    integer :: istart,iend   ! tile exclusive range (no halo)
+    integer :: iistart,iiend ! tile computational range (exclusive+halo)
+
+    ! lengths of leftmost and rightmost columns
+    integer :: first_col_len,last_col_len
+
+end type UMWM_domain
+
+type UMWM_mpi
+
+ 	integer :: nproc ! process rank
+
+	integer :: mpisize  ! mpi pool mpisize
+
+	integer :: ierr  ! mpi error return status
+
+    ! use blocking mpi routines?
+    logical,parameter :: mpiisblocking = .false.
+
+end type UMWM_mpi
+
+type UMWM_output
 ! stdout related variables
-integer :: iip,nproc_plot,xpl,ypl
 
+	integer :: iip,nproc_plot,xpl,ypl
+
+    ! output related switches
+    integer :: outgrid,outspec,outrst
+
+end type UMWM_output
+
+type UMWM_timestep
 ! time stepping
-integer :: step,timestep
 
-! .true. during first time step
-logical :: first,firstdtg
+	integer :: step,timestep
 
+    ! .true. during first time step
+    logical :: first,firstdtg
+
+
+    ! time steps:
+    real :: dta,dtr,dtamin
+
+end type UMWM_timestep
+
+type UMWM_ctl_switch
 ! main control switches
-logical :: isglobal,restart
+	logical :: isglobal,restart
+
+end type UMWM_ctl_switch
+
+type UMWM_extdata
 
 ! grid and bathymetry related switches
-logical :: gridfromfile,topofromfile,filllakes,fillestuaries
+	logical :: gridfromfile,topofromfile,filllakes,fillestuaries
 
-! output related switches
-integer :: outgrid,outspec,outrst
-logical :: stokes
+end type UMWM_extdata
 
-! time steps:
-real :: dta,dtr,dtamin
+type UMWM_stokes
 
+	logical :: stokes
+
+end type UMWM_stokes
+
+
+type workspace
 ! miscellaneous variables
-real :: bf1,bf1a,bf2
-real :: cgmax,cfllim
-real :: delx,dely
-real :: dpt,dlnf,dmin,dtg,dts,dth,dthg
-real :: explim
-real :: fmin,fmax,fprog
-real :: fieldscale1,fieldscale2
-real :: g,gustiness
-real :: inv_sds_power
-real :: kappa
-real :: log10overz
-real :: mindelx,mss_fac
-real :: nu_air,nu_water
-real :: oneovdth
-real :: rhoa0,rhow0
-real :: sbf_fac,sbp_fac,sds_fac,sds_power,sdt_fac,sfct,sin_diss1
-real :: sin_diss2,sin_fac,snl_fac,sumt
-real :: temp0,twopisds_fac,twonu
-real :: wspd0,wdir0,uc0,vc0,z
-real :: fice0,fice_lth,fice_uth
+	real :: bf1,bf1a,bf2
+	real :: cgmax,cfllim
+	real :: delx,dely
+	real :: dpt,dlnf,dmin,dtg,dts,dth,dthg
+	real :: explim
+	real :: fmin,fmax,fprog
+	real :: fieldscale1,fieldscale2
+	real :: g,gustiness
+	real :: inv_sds_power
+	real :: kappa
+	real :: log10overz
+	real :: mindelx,mss_fac
+	real :: nu_air,nu_water
+	real :: oneovdth
+	real :: rhoa0,rhow0
+	real :: sbf_fac,sbp_fac,sds_fac,sds_power,sdt_fac,sfct,sin_diss1
+	real :: sin_diss2,sin_fac,snl_fac,sumt
+	real :: temp0,twopisds_fac,twonu
+	real :: wspd0,wdir0,uc0,vc0,z
+	real :: fice0,fice_lth,fice_uth
 
 !=======================================================================
 
-! global constants
-real,parameter :: pi     = 3.141592653589793 ! pi
-real,parameter :: invpi  = 1/pi              ! 1/pi
-real,parameter :: twopi  = 2*pi              ! 2*pi
-real,parameter :: twopi2 = twopi**2          ! 4*pi^2
-real,parameter :: dr     = pi/180.           ! deg -> rad
+	! global constants
+	real,parameter :: pi     = 3.141592653589793 ! pi
+	real,parameter :: invpi  = 1/pi              ! 1/pi
+	real,parameter :: twopi  = 2*pi              ! 2*pi
+	real,parameter :: twopi2 = twopi**2          ! 4*pi^2
+	real,parameter :: dr     = pi/180.           ! deg -> rad
 
-integer,dimension(10),parameter :: &
-allowedoutputtimes = [-1,0,1,2,3,4,6,8,12,24]
+	integer,dimension(10),parameter :: &
+	allowedoutputtimes = [-1,0,1,2,3,4,6,8,12,24]
 
+end type workspace
 !=======================================================================
 
 ! allocatable arrays
