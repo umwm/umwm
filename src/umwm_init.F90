@@ -410,7 +410,7 @@ subroutine grid
 !======================================================================!
 use netcdf
 use umwm_io,  only:nc_check
-use umwm_util,only:raiseexception
+use umwm_util,only:raiseexception, distance_haversine
 !======================================================================!
 
 logical :: loniscontinuous = .true.
@@ -498,9 +498,10 @@ if(gridfromfile)then
 
   do n=1,nm
     do m=2,mm-1
-      dx_2d(m,n) = r_earth*2*asin(sqrt((sin(0.5*(rlat(m+1,n)-rlat(m-1,n))))**2&
-                                       +cos(rlat(m-1,n))*cos(rlat(m+1,n))&
-                                      *(sin(0.5*(rlon(m+1,n)-rlon(m-1,n))))**2))
+      dx_2d(m,n) = r_earth * distance_haversine(0.5*(rlon(m-1,n) + rlon(m  ,n)), &
+                                                0.5*(rlon(m  ,n) + rlon(m+1,n)), &
+                                                0.5*(rlat(m-1,n) + rlat(m  ,n)), &
+                                                0.5*(rlat(m  ,n) + rlat(m+1,n)))
     end do
   end do
 
@@ -509,9 +510,10 @@ if(gridfromfile)then
 
   do n=2,nm-1
     do m=1,mm
-      dy_2d(m,n) = r_earth*2*asin(sqrt((sin(0.5*(rlat(m,n+1)-rlat(m,n-1))))**2&
-                                       +cos(rlat(m,n-1))*cos(rlat(m,n+1))&
-                                      *(sin(0.5*(rlon(m,n+1)-rlon(m,n-1))))**2))
+      dy_2d(m,n) = r_earth * distance_haversine(0.5*(rlon(m,n-1) + rlon(m,n  )), &
+                                                0.5*(rlon(m,n  ) + rlon(m,n+1)), &
+                                                0.5*(rlat(m,n-1) + rlat(m,n  )), &
+                                                0.5*(rlat(m,n  ) + rlat(m,n+1)))
     end do
   end do
 

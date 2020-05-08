@@ -204,4 +204,31 @@ deallocate(sbf,sdv,sdt,snl_arg,dummy,e,ef,rotl,rotr,sds,snl,ssin,sice)
 
 endsubroutine dealloc
 !======================================================================!
+
+
+
+pure function distance_haversine(lon1, lon2, lat1, lat2) result(distance)
+!======================================================================+
+!                                                                      !
+! calculates shortest distance between two points on the surface       !
+! of a sphere using the Haversine formula                              !                                 !
+!                                                                      !
+!======================================================================+
+    
+! arguments
+real :: distance
+real, intent(in) :: lon1, lon2, lat1, lat2
+
+! local
+real :: dlon, dlat
+
+dlon = abs(lon2 - lon1)
+dlat = abs(lat2 - lat1)
+
+distance = 2 * asin( sqrt( (sin(0.5 * dlat))**2 + &
+                     cos(lat1) * cos(lat2) * (sin(0.5 * dlon))**2 ) )
+
+end function distance_haversine
+!======================================================================>
+
 end module umwm_util
