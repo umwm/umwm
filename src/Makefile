@@ -9,20 +9,21 @@
 
 NETCDFINC ?= -I$(NETCDF)/include
 NETCDFLIB ?= -L$(NETCDF)/lib -lnetcdf -lnetcdff
-DATETIME = external/datetime-fortran/build
-EXTINC = -I$(DATETIME)/include
-EXTLIB = -L$(DATETIME)/lib -ldatetime
 
 # Rules, object list and dependencies start here.
 
-.SUFFIXES: .F90 .o
+.SUFFIXES: .F90 .f90 .o
 
 # Rule
 .F90.o:
-	$(FC) -c $(CPPFLAGS) $(FCFLAGS) $(NETCDFINC) $(EXTINC) $<
+	$(FC) -c $(CPPFLAGS) $(FCFLAGS) $(NETCDFINC) $<
+
+.f90.o:
+	$(FC) -c $(CPPFLAGS) $(FCFLAGS) $(NETCDFINC) $<
 
 # Object list
-OBJS = umwm_advection.o \
+OBJS = datetime_module.o \
+       umwm_advection.o \
        umwm_constants.o \
        umwm_diagnostics.o \
        umwm_domain.o \
@@ -43,22 +44,19 @@ OBJS = umwm_advection.o \
 
 all: umwm
 
-$(DATETIME)/lib/libdatetime.a:
-	mkdir -p $(DATETIME)
-	cd $(DATETIME) && FC=$(FC) cmake .. && cmake --build .
-
 # Main target
-umwm: umwm.F90 $(DATETIME)/lib/libdatetime.a $(OBJS)
-	$(FC) -c $(CPPFLAGS) $(FCFLAGS) $(NETCDFINC) $(EXTINC) $<
-	$(FC) $(FCFLAGS) -o $@ umwm.o $(OBJS) $(NETCDFLIB) $(EXTLIB)
+umwm: umwm.F90 $(OBJS)
+	$(FC) -c $(CPPFLAGS) $(FCFLAGS) $(NETCDFINC) $<
+	$(FC) $(FCFLAGS) -o $@ umwm.o $(OBJS) $(NETCDFLIB)
 	cp $@ ../.
 	ar r libumwm.a $(OBJS)
 
 %.o: %.mod
 
 # Object           Source              Dependencies
-umwm_domain.o: umwm_domain.F90 umwm_constants.o umwm_spectrum.o
-umwm_top.o:        umwm_top.F90        umwm_constants.o umwm_module.o umwm_mpi.o umwm_forcing.o umwm_physics.o umwm_advection.o umwm_io.o umwm_init.o umwm_restart.o umwm_source_functions.o umwm_stress.o
+datetime_module.o: datetime_module.f90
+umwm_domain.o: umwm_domain.F90 datetime_module.o umwm_constants.o umwm_spectrum.o
+umwm_top.o:        umwm_top.F90 datetime_module.o umwm_constants.o umwm_module.o umwm_mpi.o umwm_forcing.o umwm_physics.o umwm_advection.o umwm_io.o umwm_init.o umwm_restart.o umwm_source_functions.o umwm_stress.o
 umwm_module.o: umwm_module.F90    
 umwm_constants.o: umwm_constants.F90
 umwm_diagnostics.o: umwm_diagnostics.F90 umwm_constants.o
@@ -76,10 +74,12 @@ umwm_stokes.o:     umwm_stokes.F90     umwm_module.o umwm_constants.o
 umwm_stress.o:     umwm_stress.F90     umwm_advection.o umwm_module.o umwm_constants.o umwm_stokes.o
 umwm_source_functions.o: umwm_source_functions.F90 umwm_constants.o umwm_io.o umwm_sheltering.o
 
+datetime_module.f90:
+	curl -O https://raw.githubusercontent.com/wavebitscientific/datetime-fortran/master/src/datetime_module.f90
+
 .PHONY:
 clean:
 	$(RM) umwm *.o *.mod libumwm.a 
 
 clean_all:
 	$(MAKE) clean
-	$(RM) -r $(DATETIME)
