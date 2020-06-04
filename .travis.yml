@@ -7,7 +7,7 @@ os: linux
 git:
   depth: 25
   quiet: true
-  submodules: true
+  submodules: false
 
 env: FC=gfortran CPPFLAGS="" NETCDFINC=-I/usr/include NETCDFLIB="-L/usr/lib/x86_64-linux-gnu/ -lnetcdff -lnetcdf"
 
