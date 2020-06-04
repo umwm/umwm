@@ -1,3 +1,0 @@
-[submodule "src/external/datetime-fortran"]
-	path = src/external/datetime-fortran
-	url = https://github.com/wavebitscientific/datetime-fortran

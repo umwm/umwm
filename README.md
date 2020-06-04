@@ -21,13 +21,12 @@ It has been used to simulate:
 ### Getting the code
 
 ```
-git clone --recursive https://github.com/umwm/umwm
+git clone https://github.com/umwm/umwm
 ```
 
 ### System dependencies
 
 * `make`
-* `cmake`
 * GNU, Intel, or Cray Fortran compiler
 * NetCDF for I/O
 * MPI for parallel processing (optional)

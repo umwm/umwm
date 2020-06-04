@@ -6,4 +6,6 @@
 *.log
 *.toc
 
+src/datetime_module.f90
+
 umwm
