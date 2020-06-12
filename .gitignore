@@ -9,3 +9,14 @@
 src/datetime_module.f90
 
 umwm
+
+umwm_gridgen
+umwm_topogen
+wrf2umwmgrid
+wrf2umwmin
+
+umwm.grid
+umwm.gridtopo
+umwmout_*.nc
+umwmin_*.nc
+umwmrst_*.nc
