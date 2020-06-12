@@ -20,7 +20,7 @@ def swap_sides_1d(x):
 
 infile = 'umwm.grid'
 
-etopofile = '/home/orca/mcurcic/data/etopo01/ETOPO1_Ice_c_gmt4.grd'
+etopofile = 'ETOPO1_Ice_c_gmt4.grd'
 with Dataset(etopofile, 'r') as nc:
     elon = nc.variables['x'][:]
     elat = nc.variables['y'][:]
