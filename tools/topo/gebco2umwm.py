@@ -42,11 +42,10 @@ print(ii,jj)
 
 for j in range(jdm):
     j0 = np.argmin((lat1d[j] - elat)**2)
-    print(j)
-    for i in range(1, idm):
+    print('Processing row', j)
+    for i in range(idm):
         i0 = np.argmin((lon1d[i]-elon)**2)
         z[j,i] = np.mean(ez[j0-jj:j0+jj,i0-ii:i0+ii])
-    z[j,0] = np.mean(np.mean(ez[j0-jj:j0+jj,i0]))
 
 outfile = 'umwm.gridtopo'
 print('Writing '+outfile)
