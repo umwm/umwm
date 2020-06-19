@@ -14,6 +14,8 @@ NETCDFLIB ?= -L$(NETCDF)/lib -lnetcdf -lnetcdff
 
 .SUFFIXES: .f90 .o
 
+%.o: %.mod
+
 .f90.o:
 	$(FC) -c $(FCFLAGS) $(NETCDFINC) $<
 
