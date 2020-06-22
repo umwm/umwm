@@ -16,7 +16,7 @@ contains
   subroutine sin_d12()
     ! Wind input function based on Jeffreys's sheltering hypothesis
     ! and described by Donelan et al. (2012).
-    integer :: i, m, n, o, p
+    integer :: i, o, p
 
     ! protection against low wind speed values
     wspd = max(wspd, 1e-2)

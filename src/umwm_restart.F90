@@ -59,9 +59,9 @@ contains
   subroutine restart_write(timestr)
     character(19), intent(in) :: timestr
   
-    integer :: i, o, nn, p
+    integer :: i, nn
     integer :: stat, ncid, xdimid, fdimid, thdimid
-    integer :: kid, xid, lonid, latid, freqid, thetaid, ustid, specid
+    integer :: kid, lonid, latid, freqid, thetaid, ustid, specid
     real :: lon_tmp(im), lat_tmp(im)
 
     if (nproc == 0) then

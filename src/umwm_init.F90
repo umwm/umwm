@@ -1,5 +1,5 @@
 module umwm_init
-!======================================================================!
+
 #ifdef MPI
 use mpi
 #endif
@@ -7,16 +7,15 @@ use umwm_module
 
 implicit none
 
-character(len=1) :: remap_dir
+character(1) :: remap_dir
 
-!======================================================================!
 contains
 
 
 
 subroutine environment(option)
 
-character(len=4),intent(in) :: option
+character(4),intent(in) :: option
 
 if(option == 'init')then
 #ifdef MPI
@@ -59,25 +58,15 @@ end subroutine greeting
 
 
 subroutine nmlread
-!======================================================================!
-!                                                                      !
-! description: opens namelist file list.nml and reads runtime input    !
-!              parameters                                              !
-!                                                                      !
-!======================================================================!
-!use umwm_module,only:starttimestr => starttimestr_nml,&
-!                     stoptimestr => stoptimestr_nml
+! Opens namelist file namelists/main.nml and reads runtime input parameters.
 use umwm_module,only:starttimestr_nml,stoptimestr_nml
 use umwm_io,  only:winds,currents,air_density,water_density,seaice
 use umwm_util,only:raiseexception
-!======================================================================!
 
 logical :: namelistok
 
 ! local variables for reading from namelist
-character(len=19) :: starttimestr,stoptimestr
-
-!======================================================================!
+character(19) :: starttimestr,stoptimestr
 
 namelist /domain/ isglobal,mm,nm,om,pm,fmin,fmax,fprog,starttimestr,&
 stoptimestr,dtg,restart
@@ -94,8 +83,6 @@ namelist /forcing/ winds,currents,air_density,water_density,seaice
 namelist /forcing_constant/ wspd0,wdir0,uc0,vc0,rhoa0,rhow0,fice0,fice_lth,fice_uth
 
 namelist /output/ outgrid,outspec,outrst,xpl,ypl,stokes
-
-!======================================================================!
 
 ! read simulation parameters from the main namelist:
 open(unit=21,file='namelists/main.nml',status='old',&
@@ -208,7 +195,6 @@ starttimestr_nml = starttimestr
 stoptimestr_nml = stoptimestr
 
 endsubroutine nmlread
-!======================================================================!
 
 
 
@@ -600,25 +586,16 @@ end if
 101 format(a,3(f15.2,1x))
 
 endsubroutine grid
-!======================================================================!
-
 
 
 subroutine masks
-!======================================================================!
-!                                                                      !
-! description: defines landmasks, and in case of real bathymetry       !
-!              removes one-cell wide estuaries and small lakes         !
-!                                                                      !
-!======================================================================!
+! Defines landmasks and optionally removes one-cell wide estuaries and lakes
 
 logical :: iterate
 
-integer :: m,n,l,o,p
-integer :: exm,exn
-integer :: cnt,fillcount
-
-!======================================================================!
+integer :: m, n
+integer :: exm, exn
+integer :: cnt, fillcount
 
 ! set masks:
 if(topofromfile)then
@@ -728,7 +705,6 @@ if(nproc==0)then
   write(unit=*,fmt=306)maxval(d_2d,mask==1)
 end if
 
-300 format(9999(a1))
 302 format('umwm: masks: total number of grid points: ',i9)
 303 format('umwm: masks: number of land points:       ',i9,', ',f5.1,'%')
 304 format('umwm: masks: number of sea points:        ',i9,', ',f5.1,'%')
@@ -736,25 +712,17 @@ end if
 306 format('umwm: masks: deepest point:               ',f9.3,' meters')
 
 endsubroutine masks
-!======================================================================!
 
 
 
-recursive subroutine fill(m,n,fillcount)
-!=======================================================================
-!                                                                      !
-! description: mask out enclosed seas chosen by user                   !
-!                                                                      !
-!======================================================================!
+recursive subroutine fill(m, n, fillcount)
+! Mask out enclosed seas chosen by user.
 
-integer,intent(in)    :: m,n
-integer,intent(inout) :: fillcount
-
-!=======================================================================
+integer, intent(in) :: m, n
+integer, intent(in out) :: fillcount
 
 ! return if reached domain edge:
-if(m==1)return; if(m==mm)return
-if(n==1)return; if(n==nm)return
+if (any(m == [1, mm]) .or. any(n == [1, nm])) return
 
 ! fill:
 mask(m,n) = 0
@@ -762,30 +730,23 @@ mask(m,n) = 0
 fillcount = fillcount+1
 
 ! recurse in all directions:
-if(mask(m-1,n)==1)call fill(m-1,n,fillcount)
-if(mask(m+1,n)==1)call fill(m+1,n,fillcount)
-if(mask(m,n-1)==1)call fill(m,n-1,fillcount)
-if(mask(m,n+1)==1)call fill(m,n+1,fillcount)
+if (mask(m-1,n) == 1) call fill(m-1, n, fillcount)
+if (mask(m+1,n) == 1) call fill(m+1, n, fillcount)
+if (mask(m,n-1) == 1) call fill(m, n-1, fillcount)
+if (mask(m,n+1) == 1) call fill(m, n+1, fillcount)
 
-endsubroutine fill
-!======================================================================!
+end subroutine fill
 
 
 
 subroutine partition
-!======================================================================!
-!                                                                      !
-! description: establish the infrastructure between processes          !
-!                                                                      !
-!======================================================================!
+! Partitions the domain for parallel computation.
 
 #ifdef MPI
 use umwm_mpi
 #endif
 
-integer :: i,m,n,nn
-integer :: extend
-!======================================================================!
+integer :: nn
 
 #ifndef MPI
 istart  = 1
@@ -1317,13 +1278,8 @@ endsubroutine remap
 
 
 subroutine init
-!======================================================================!
-!                                                                      !
-! description: subroutine to initialize many model parameters and      !
-!              variables such as frequencies, direction angles,        !
-!              phase speed and group velocity, wave numbers, etc.      !
-!                                                                      !
-!======================================================================!
+! Initialize model variables such as frequencies, direction angles,
+! phase speed and group velocity, wave numbers, etc.
 #ifdef MPI
 use umwm_mpi, only:istart_,iend_
 #endif
@@ -1332,11 +1288,7 @@ use umwm_util,only:raiseexception
 use umwm_io, only: winds,seaice
 use umwm_util, only: remap_mn2i
 
-!======================================================================!
-
-integer :: i,m,n,o,p,pp,ind
-
-!======================================================================!
+integer :: i, n, o, p, pp, ind
 
 ! set frequency increment:
 dlnf = (log(fmax)-log(fmin))/float(om-1)
@@ -1441,9 +1393,11 @@ if (seaice) fice = remap_mn2i(ficef)
 ! if forcing from file, update the wspd field for ustar first guess
 if (winds) wspd = remap_mn2i(sqrt(uwf**2 + vwf**2))
 
-! initialize drag coefficient (large and pond, 1981):
+! initialize drag coefficient (Large and Pond, 1981):
 cd = 1.2e-3
-forall(i=istart:iend,wspd(i)>11.)cd(i) = (0.49+0.065*wspd(i))*1e-3
+do concurrent (i=istart:iend, wspd(i) > 11)
+  cd(i) = (0.49 + 0.065 * wspd(i)) * 1e-3
+end do
 
 ! initialize friction velocity:
 do i=istart,iend
@@ -1503,45 +1457,35 @@ write(*,fmt=102)
 #endif
 
 endsubroutine init
-!======================================================================!
-
 
 
 subroutine dispersion(tol)
-!======================================================================!
-!                                                                      !
-! description: solves for the dispersion relation by iteration, and    !
-!              and computes phase and group velocities in absolute     !
-!              reference frame (w/ currents)                           !
-!                                                                      !
-!======================================================================!
+! Iteratively solve the dispersion relation by iteration,
+! and compute phase and group velocities in absolute reference frame (w/ currents)
 #ifdef MPI
 use umwm_mpi
 #endif
-!======================================================================!
 
 integer :: sendcount, recvcount
 integer :: sendtag, recvtag
 integer :: src, dest
 
-integer :: counter,i,o,p
+integer :: counter,i,o
 real,intent(in) :: tol
 real :: dk
 
 real,dimension(istart:iend) :: b
 real,dimension(om,istart:iend) :: f_nd,kd,t
 
-!======================================================================!
-
 if(nproc==0)write(*,'(a)')'umwm: dispersion: solving for dispersion relationship;'
 
 ! non-dimesionalize frequencies, and use deep water limit
 ! as initial guess:
-forall(o=1:om,i=istart:iend)
+do concurrent (o=1:om, i=istart:iend)
   cp0(o,i)  = twopi*sqrt(d(i)/g)
   f_nd(o,i) = cp0(o,i)*f(o)
   k(o,i)    = f_nd(o,i)*f_nd(o,i)
-endforall
+end do
 
 ! non-dimesionalize surface tension:
 b = sfct/(rhow0*g*d(istart:iend)**2)
@@ -1573,7 +1517,9 @@ end do
 
 if(nproc==0)write(*,'(a)')'umwm: dispersion: dispersion relationship done;'
 
-forall(o=1:om,i=istart:iend)kd(o,i) = k(o,i)*d(i)
+do concurrent (o=1:om, i=istart:iend)
+  kd(o,i) = k(o,i) * d(i)
+end do
 
 ! limit kd to avoid floating overflow in transcendental functions:
 where(kd>20.)kd = 20.
@@ -1581,15 +1527,16 @@ where(kd>20.)kd = 20.
 ! phase speed and group velocity:
 cp0 = tiny(cp0)
 cg0 = tiny(cg0)
-forall(o=1:om,i=istart:iend)
+
+do concurrent (o=1:om, i=istart:iend)
 
   cp0(o,i) = twopi*f(o)/k(o,i)
   cg0(o,i) = cp0(o,i)*(0.5+k(o,i)*d(i)/sinh(2.*kd(o,i))&
                       +sfct*k(o,i)*k(o,i)/(rhow0*g+sfct*k(o,i)*k(o,i)))
-endforall
+end do
 
 ! compute some frequently used arrays:
-forall(o=1:om,i=istart:iend)
+do concurrent (o=1:om, i=istart:iend)
 
   dwn(o,i)       = dom(o)/abs(cg0(o,i))                         ! dk
   l2(o,i)        = 0.5*abs(cp0(o,i))/f(o)                       ! lambda/2 (half wavelength)
@@ -1604,7 +1551,7 @@ forall(o=1:om,i=istart:iend)
                   +sbp_fac*k(o,i)/(cosh(kd(o,i))*cosh(kd(o,i))) ! bottom percolation
   sdv(o,i)       = 4.*nu_water*k(o,i)**2.                       ! viscosity
 
-endforall
+end do
 
 ! compute renormalization factors for snl:
 bf1_renorm = 0.

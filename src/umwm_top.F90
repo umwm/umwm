@@ -50,12 +50,9 @@ contains
 
     use datetime_module
 
-    character(len=19), intent(in) :: starttimestr
-    character(len=19), intent(in) :: stoptimestr
+    character(19), intent(in) :: starttimestr, stoptimestr
 
-    type(tm_struct) :: tm
-    character(len=19) :: currenttimestr
-    integer :: rc
+    character(19) :: currenttimestr
     logical :: fullhour
 
     ! convert start and stop time strings to datetime objects:

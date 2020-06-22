@@ -16,9 +16,9 @@ contains
 
   subroutine stress(option)
 
-    character(len=3), intent(in) :: option
+    character(3), intent(in) :: option
 
-    integer :: i, m, n, o, p
+    integer :: i, o, p
 
     real(rk) :: taux_util(om, istart:iend), tauy_util(om, istart:iend)
     real(rk) :: tail(istart:iend)
@@ -26,8 +26,7 @@ contains
     ! x- and y-components of surface stokes drift velocities
     real(rk) :: usurf(istart:iend), vsurf(istart:iend)
 
-    ! wind components, speed and direction relative to surface velocity
-    real(rk) :: urel(istart:iend), vrel(istart:iend)
+    ! wind speed and direction relative to surface velocity
     real(rk) :: wspdrel(istart:iend), wdirrel(istart:iend)
 
     real(rk) :: cd_form(istart:iend), cd_skin(istart:iend)
@@ -221,7 +220,7 @@ contains
     if (option == 'atm') then
 
       ! compute form drag from atmosphere: (positive into waves)
-      call stress_vector_integral(e(:,:,istart:iend), ssin, th, cp0, taux_util, tauy_util)
+      call stress_vector_integral(e(:,:,istart:iend), ssin, cp0, taux_util, tauy_util)
 
       do concurrent(i = istart:iend)
 
@@ -320,10 +319,10 @@ contains
          / (kmax_pow_tail * (tail + 1))
   end function stress_tail
 
-  pure subroutine stress_vector_integral(e, src, th, cp, taux, tauy)
+  pure subroutine stress_vector_integral(e, src, cp, taux, tauy)
     !! Integrates the input source function src over the spectrum with
     !! wave variance e over the directions.
-    real(rk), intent(in) :: e(:,:,:), src(:,:,:), th(:), cp(:,:)
+    real(rk), intent(in) :: e(:,:,:), src(:,:,:), cp(:,:)
     real(rk), intent(out) :: taux(:,:), tauy(:,:)
     integer :: i, p, o
     integer :: dim(3)
