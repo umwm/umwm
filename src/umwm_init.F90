@@ -746,7 +746,7 @@ subroutine partition
 use umwm_mpi
 #endif
 
-integer :: nn
+integer :: extend, i, m, n, nn
 
 #ifndef MPI
 istart  = 1
