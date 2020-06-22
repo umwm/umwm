@@ -3,7 +3,7 @@
 # Top-level Makefile
 
 FC ?= mpif90
-FCFLAGS ?= -O3
+FCFLAGS ?= -O3 -Wall -std=f2018
 CPPFLAGS ?= -DMPI
 
 # don't use make's implicit rule for FC
