@@ -1,5 +1,5 @@
 language: minimal
-dist: xenial
+dist: bionic
 group: travis_latest
 
 os: linux
