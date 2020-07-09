@@ -9,12 +9,12 @@ git:
   quiet: true
   submodules: false
 
-env: FC=gfortran CPPFLAGS="" NETCDFINC=-I/usr/include NETCDFLIB="-L/usr/lib/x86_64-linux-gnu/ -lnetcdff -lnetcdf"
+env: FC=gfortran-8 CPPFLAGS="" NETCDFINC=-I/usr/include NETCDFLIB="-L/usr/lib/x86_64-linux-gnu/ -lnetcdff -lnetcdf"
 
 addons:
   apt:
     packages:
-    - gfortran
+    - gfortran-8
     - libnetcdf-dev
     - libnetcdff-dev
 
