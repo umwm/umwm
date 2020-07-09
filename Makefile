@@ -3,7 +3,7 @@
 # Top-level Makefile
 
 FC ?= mpif90
-FCFLAGS ?= -Ofast -march=native -ffast-math -funroll-loops -Wall -std=f2018
+FCFLAGS ?= -Ofast -march=native -ffast-math -funroll-loops -Wall
 CPPFLAGS ?= -DMPI
 
 # don't use make's implicit rule for FC
