@@ -746,7 +746,11 @@ subroutine partition
 use umwm_mpi
 #endif
 
-integer :: extend, i, m, n, nn
+integer :: nn
+
+#ifdef ESMF
+integer :: extend, i, m, n
+#endif
 
 #ifndef MPI
 istart  = 1

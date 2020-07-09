@@ -1,61 +1,35 @@
 module umwm_io
-!======================================================================!
-!                                                                      !
-! description: provides input/output routines for the wave model       !
-!                                                                      !
-! contains: input_nc                                                   !
-!           output_grid                                                !
-!           output_grid_nc                                             !
-!           output_spectrum_nc                                         !
-!           gatherfield                                                !
-!           nc_check                                                   !
-!                                                                      !
-!======================================================================!
+! Provides input/output routines for the wave model
 use umwm_module
 use netcdf
-!======================================================================!
 
 logical :: readfile
 logical :: winds,currents,air_density,water_density,seaice
 
-!======================================================================!
 contains
 
 
 
 subroutine input_nc(timestr)
-!======================================================================!
-!                                                                      !
-! description: reads input data files for atmospheric and oceanic      !
-!              fields                                                  !
-!                                                                      !
-!======================================================================!
-use umwm_util,only:remap_mn2i
-!======================================================================!
+! Reads input data files for atmospheric and oceanic fields.
+use umwm_util, only: remap_mn2i
 
-character(len=19),intent(in) :: timestr
-
-character(len=999) :: nc_infile
-character(len=19) :: readstr
-
-integer :: m,n
+character(19), intent(in) :: timestr
+character(999) :: nc_infile
+character(19) :: readstr
 integer :: ncid,varid
-
-!======================================================================!
 
 readstr = timestr
 readstr(11:11) = '_'
 
 ! forcing fields are input from this file:
-nc_infile = 'input/umwmin_'//readstr//'.nc'
+nc_infile = 'input/umwmin_' // readstr // '.nc'
 
 ! set the logical switch to .true. only if from file is requested
 ! for any of the fields:
 readfile = any([winds, currents, air_density, water_density, seaice])
 
-if(readfile)then
-  call nc_check(nf90_open(trim(nc_infile),nf90_nowrite,ncid))
-end if
+if (readfile) call nc_check(nf90_open(trim(nc_infile), nf90_nowrite, ncid))
 
 if(winds)then
   call nc_check(nf90_inq_varid(ncid,'uw',varid))
@@ -116,24 +90,16 @@ end if
 rhoaf = remap_mn2i(rhoa_2d)
 rhowf = remap_mn2i(rhow_2d)
 
-endsubroutine input_nc
-!======================================================================!
-
+end subroutine input_nc
 
 
 subroutine output_grid
-!======================================================================!
-!                                                                      !
-! description: outputs grid related fields into a netcdf file.         !
-!                                                                      !
-!======================================================================!
+! Outputs grid related fields into a netcdf file.
 
-integer :: ncid,varid
+integer :: ncid
 integer :: xdimid,ydimid
 integer :: lonid,latid,dlonid,dlatid,dxid,dyid,arid,maskid,did,nprocid
 integer :: xid,yid,curvid
-
-!======================================================================!
 
 if(nproc == 0)then
 
@@ -173,49 +139,41 @@ if(nproc == 0)then
 
 end if
 
-endsubroutine output_grid
-!=======================================================================
-
+end subroutine output_grid
 
 
 subroutine output_spectrum_nc(timestr)
-!======================================================================!
-!                                                                      !
-! description: writes out model spectrum output in a netcdf format     !
-!                                                                      !
-!======================================================================!
+! Writes out model spectrum output in a netcdf format
 
 ! arguments:
-character(len=19),intent(in) :: timestr
+character(19),intent(in) :: timestr
 
-character(len=19),save :: savetimestr
+character(19),save :: savetimestr
 
-character(len=9999) :: spectrumoutputfile
+character(9999) :: spectrumoutputfile
 
-character(len=2) :: coord_input
+character(2) :: coord_input
 
 integer,dimension(2) :: xy_coords
 
 integer :: stat
 integer :: ncid
-integer :: xdimid,ydimid,zdimid,fdimid,thdimid,tdimid,scalarid
-integer :: lon_scalarid,lat_scalarid,wspdid,wdirid,timeid
+integer :: fdimid,thdimid,tdimid,scalarid
+integer :: lon_scalarid,lat_scalarid,wspdid,wdirid
 integer :: specid,sinid,sdsid,snlid,freqid,thetaid,wlid
 integer :: sdtid,sdvid,sbfid
 
 integer                               :: nn
 integer,save                          :: npts = 0
 integer,          dimension(999),save :: mspec,nspec,ispec
-character(len= 3),dimension(999),save :: cnn
-character(len=40),dimension(999),save :: spectrumid
+character(3),dimension(999),save :: cnn
+character(40),dimension(999),save :: spectrumid
 
 real :: latspec,lonspec
 real :: wspdtmp,wdirtmp
 
 integer,save :: counter = 1
 logical,save :: firstrun = .true.
-
-!======================================================================!
 
 if(firstrun)then
 
@@ -348,28 +306,21 @@ end do
 counter  = counter+1
 firstrun = .false.
 
-endsubroutine output_spectrum_nc
-!======================================================================!
-
+end subroutine output_spectrum_nc
 
 
 subroutine output_grid_nc(timestr)
-!======================================================================!
-!                                                                      !
-! description: writes out model gridded output in a netcdf format      !
-!                                                                      !
-!======================================================================!
+! Writes out model gridded output in a netcdf format
 use umwm_stokes,only:depth,lm,us,vs,ds
-!======================================================================!
 
-character(len=19),intent(in) :: timestr
+character(19),intent(in) :: timestr
 
-character(len=19) :: timestrnew
+character(19) :: timestrnew
 
 integer :: stat
 integer :: ncid
-integer :: xdimid,ydimid,zdimid,fdimid,thdimid,tdimid,scalarid
-integer :: lonid,latid,maskid,depthid,nprocid,swhid,mwpid
+integer :: xdimid,ydimid,zdimid,fdimid,thdimid,tdimid
+integer :: lonid,latid,maskid,depthid,swhid,mwpid
 integer :: freqid,thetaid
 integer :: wspdid,wdirid
 integer :: rhoaid,rhowid
@@ -391,17 +342,13 @@ integer :: taux_botid,tauy_botid
 integer :: taux_snlid,tauy_snlid
 integer :: tailatmxid,tailatmyid
 integer :: tailocnxid,tailocnyid
-integer :: dwdid,dwlid,dwpid,mwdid,mwlid,uwndid,vwndid,ucid,vcid,wlid
+integer :: dwdid,dwlid,dwpid,mwdid,mwlid,ucid,vcid
 integer :: cdid,mssid,ustid,sheltid
 integer :: dcpid,dcp0id,dcgid,dcg0id
 
 integer :: l
 
-integer,save :: counter = 1
-
-real,dimension(mm,nm) :: output_field
-
-!======================================================================!
+real :: output_field(mm,nm)
 
 timestrnew = timestr
 timestrnew(11:11) = '_'
@@ -891,18 +838,12 @@ if(nproc == 0)then
   write(unit=*,fmt='(a)')'umwm: output_nc: output written to output/umwmout_'//timestrnew//'.nc'
 end if
 
-endsubroutine output_grid_nc
-!======================================================================!
+end subroutine output_grid_nc
 
 
-
-subroutine gatherfield(field,field_mn)
-!======================================================================!
-!                                                                      !
-! description: this subroutine gathers a field on root processor and   !
-!              remaps it on a 2-d array.                               !
-!                                                                      !
-!======================================================================!
+subroutine gatherfield(field, field_mn)
+! This subroutine gathers a field on root processor 
+! and remaps it on a 2-d array.
 #ifdef MPI
 use mpi
 use umwm_mpi
@@ -910,20 +851,14 @@ use umwm_mpi
 use umwm_util,only:remap_i2mn
 use, intrinsic :: ieee_arithmetic
 
-!======================================================================!
+real, intent(in) :: field(istart:iend)
+real, intent(out) :: field_mn(mm,nm)
 
-real,dimension(istart:iend),intent(in)  :: field
-real,dimension(mm,nm),      intent(out) :: field_mn
-
-real,dimension(imm) :: field_ii
-
-integer :: m,n,nn
-
+real :: field_ii(imm)
+integer :: nn
 real :: nan
 
-!======================================================================!
-
-field_ii = ieee_value(nan,ieee_quiet_nan)
+field_ii = ieee_value(nan, ieee_quiet_nan)
 
 #ifdef MPI
 if(mpiisblocking)then
@@ -951,20 +886,13 @@ if(nproc == 0)then
   field_mn = remap_i2mn(field_ii)
 end if
 
-endsubroutine gatherfield
-!======================================================================!
-
+end subroutine gatherfield
 
 
 subroutine nc_check(stat)
-!======================================================================!
-!                                                                      !
-! description: checks for netcdf errors and if any, print and abort    !
-!                                                                      !
-!======================================================================!
+! Checks for netcdf errors and if any, print and abort.
 
 integer,intent(in) :: stat
-!======================================================================!
 
 if(stat /= nf90_noerr)then
   write(*,*)'error in netcdf i/o'
@@ -972,6 +900,6 @@ if(stat /= nf90_noerr)then
   stop
 end if
 
-endsubroutine nc_check
-!======================================================================!
+end subroutine nc_check
+
 end module umwm_io
