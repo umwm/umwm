@@ -208,12 +208,12 @@ contains
         end do
       end do
 
-      taux1 = taux1 * rhow * dthg
-      tauy1 = tauy1 * rhow * dthg
-      taux2 = taux2 * rhow * dthg
-      tauy2 = tauy2 * rhow * dthg
-      taux3 = taux3 * rhow * dthg
-      tauy3 = tauy3 * rhow * dthg
+      taux1 = taux1 * rhow(istart:iend) * dthg
+      tauy1 = tauy1 * rhow(istart:iend) * dthg
+      taux2 = taux2 * rhow(istart:iend) * dthg
+      tauy2 = tauy2 * rhow(istart:iend) * dthg
+      taux3 = taux3 * rhow(istart:iend) * dthg
+      tauy3 = tauy3 * rhow(istart:iend) * dthg
 
     end if ! if(option=='ocn')
 
