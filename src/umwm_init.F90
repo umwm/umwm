@@ -7,7 +7,7 @@ use umwm_module
 
 implicit none
 
-character(1) :: remap_dir
+character :: remap_dir
 
 contains
 
@@ -15,7 +15,7 @@ contains
 
 subroutine environment(option)
 
-character(4),intent(in) :: option
+character(4), intent(in) :: option
 
 if(option == 'init')then
 #ifdef MPI
@@ -37,23 +37,19 @@ if(option == 'stop')then
 #endif
 end if
 
-endsubroutine environment
+end subroutine environment
 
 
 subroutine greeting
   use netcdf
-
-if(nproc == 0)then
-
-  write(*,'(a)')
-  write(*,'(a)')' University of Miami Wave Model v'//version
-  write(*,'(a)')'~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~'
-  write(*,'(a)')
-  write(*,'(a)')' compiled using netcdf library version '//trim(nf90_inq_libvers())
-  write(*,'(a)')
-
-end if
-
+  if (nproc == 0) then
+    print '(a)'
+    print '(a)', ' University of Miami Wave Model v' // version
+    print '(a)', '~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~'
+    print '(a)'
+    print '(a)', ' compiled using NetCDF library version ' // trim(nf90_inq_libvers())
+    print '(a)'
+  end if
 end subroutine greeting
 
 
@@ -194,20 +190,13 @@ end if
 starttimestr_nml = starttimestr
 stoptimestr_nml = stoptimestr
 
-endsubroutine nmlread
-
+end subroutine nmlread
 
 
 subroutine alloc(option)
-!======================================================================!
-!                                                                      !
-! description: allocation of arrays used in umwm                       !
-!                                                                      !
-!======================================================================!
+  ! Allocates UMWM arrays
 
 integer,intent(in) :: option
-
-!======================================================================!
 
 ! allocate 2-d native arrays:
 if(option==1)then
@@ -383,21 +372,14 @@ elseif(option==2)then
 
 end if ! if(option)
 
-endsubroutine alloc
-!======================================================================!
-
+end subroutine alloc
 
 
 subroutine grid
-!======================================================================!
-!                                                                      !
-! description: defines grid spacing and grid cell areas                !
-!                                                                      !
-!======================================================================!
+! Defines grid spacing and grid cell areas
 use netcdf
 use umwm_io,  only:nc_check
 use umwm_util,only:raiseexception, distance_haversine
-!======================================================================!
 
 logical :: loniscontinuous = .true.
 
@@ -408,8 +390,6 @@ real,parameter :: r_earth = 6.371009e6
 
 real,dimension(:,:),allocatable :: abscoslat,lon_tmp,rotx,roty
 real,dimension(:,:),allocatable :: rlon,rlat
-
-!======================================================================!
 
 if(gridfromfile)then
 
@@ -472,9 +452,6 @@ if(gridfromfile)then
   dlat(:,nm) = 2*dlat(:,nm-1)-dlat(:,nm-2)
 
   abscoslat = abs(cos(dr*lat))
-
-  !dy_2d = dlat*twopi*r_earth/360.
-  !dx_2d = dlon*twopi*r_earth/360.*abscoslat
 
   ! revert to original lon array:
   lon = lon_tmp
@@ -585,7 +562,7 @@ end if
 
 101 format(a,3(f15.2,1x))
 
-endsubroutine grid
+end subroutine grid
 
 
 subroutine masks
@@ -711,7 +688,7 @@ end if
 305 format('umwm: masks: shallowest point:            ',f9.3,' meters')
 306 format('umwm: masks: deepest point:               ',f9.3,' meters')
 
-endsubroutine masks
+end subroutine masks
 
 
 
@@ -736,7 +713,6 @@ if (mask(m,n-1) == 1) call fill(m, n-1, fillcount)
 if (mask(m,n+1) == 1) call fill(m, n+1, fillcount)
 
 end subroutine fill
-
 
 
 subroutine partition
@@ -789,18 +765,17 @@ else
   iend   = istart+ilen-1
 end if
 
-! which direction for remapping?
-! (matters only in parallel or global mode)
-if(mm>=nm)remap_dir = 'v'
-if(mm<nm)remap_dir  = 'h'
+! Which direction for remapping? (matters only in parallel or global mode)
+!if (mm >= nm) then
+  remap_dir = 'v' ! Do always vertical due to a bug in halo exchange in horizontal remapping
+!else
+!  remap_dir  = 'h'
+!end if
 
-if(isglobal)remap_dir = 'v'
+if (isglobal) remap_dir = 'v'
 
-!======================================================================!
-! esmf related section;
-!
-! the code below adjusts the start and end indices of each tile
-! because currently esmf deblocklist accepts only regular rectangular
+! The code below adjusts the start and end indices of each tile
+! because currently ESMF DEBlockList accepts only regular rectangular
 ! domains.
 
 #ifdef ESMF
@@ -875,9 +850,6 @@ ilen = iend-istart+1
 
 #endif
 
-! end of esmf related section;
-!======================================================================!
-
 ! gather tile mpisize information to root process:
 call mpi_gather(istart,1,MPI_INTEGER,istart_,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
 call mpi_gather(iend,1,MPI_INTEGER,iend_,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
@@ -902,39 +874,30 @@ end if
 
 #endif
 
-endsubroutine partition
-!======================================================================!
-
+end subroutine partition
 
 
 subroutine remap
-!======================================================================!
-!                                                                      !
-! description: remaps two-dimensional arrays into one-dimensional      !
-!              arrays while leaving out land points. it also assigns   !
-!              and links neighboring points that are needed for        !
-!              spatial differencing, and builds the communication      !
-!              interface between processes;                            !
-!                                                                      !
-!======================================================================!
+! Remaps two-dimensional arrays into one-dimensional
+! arrays while leaving out land points. it also assigns
+! and links neighboring points that are needed for
+! spatial differencing, and builds the communication
+! interface between processes.
 #ifdef MPI
 use umwm_mpi
 #endif
-!======================================================================!
 
 integer :: i,m,n,nn
 integer :: counter, itemp
 
 integer, dimension(:), allocatable :: n_exchange_indices
 
-!======================================================================!
-!
 ! remapping section:
 ! unroll 2-d array into a contiguous 1-d array of sea-only points.
 ! first part contains only sea-points; the second part contains only
 ! land-points, which are necessary for grid mpisize information in advection
 ! routine.
-!
+
 ! in serial mode this does not matter, but we must pick one:
 #ifndef MPI
   remap_dir = 'v'
@@ -1276,9 +1239,7 @@ end if
 
 #endif
 
-endsubroutine remap
-!======================================================================!
-
+end subroutine remap
 
 
 subroutine init
@@ -1313,10 +1274,10 @@ fieldscale1   = sin_diss1/sin_fac
 fieldscale2   = sin_diss2/sin_diss1
 inv_sds_power = 1./sds_power
 
-! this limits the courant number to its theoretical value slightly
+! this limits the Courant number to its theoretical value slightly
 ! larger than 1/sqrt(2), depending on the number of directional bins;
 ! this also limits the number of directions to be divisible by 8,
-! not 4! (more isotropic in cartesian projection)
+! not 4! (more isotropic in Cartesian projection)
 
 if(mod(pm,8) == 0)then
   cfllim = cos(0.25*pi-0.5*dth)
@@ -1460,7 +1421,7 @@ write(*,fmt=102)
 
 #endif
 
-endsubroutine init
+end subroutine init
 
 
 subroutine dispersion(tol)
@@ -1575,8 +1536,6 @@ logl2overz = log(l2/z)
 
 ! limit wind input to be at 10 m for l/2 > 10 m:
 where(l2>20.)logl2overz = log(20./z)
-
-!=======================================================================
 
 #ifdef MPI
 if(nproc<mpisize-1)then ! communicate with process above:
@@ -1701,6 +1660,6 @@ do o=1,om
   cg0(o,iistart-1) = minval(cg0(o,istart:iend))
 end do
 
-endsubroutine dispersion
-!======================================================================!
+end subroutine dispersion
+
 end module umwm_init
