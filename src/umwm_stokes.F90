@@ -17,9 +17,8 @@ contains
     use umwm_module, only: twopi, d, e, f, k, dwn, dth, istart, iend, om, pm,&
                            cth, sth,nproc
 
-    character(len=4), intent(in), optional :: option
+    character(4), intent(in), optional :: option
     integer :: i, l, o, p
-    integer :: coords(2)
     real :: ust_efolding
     real, allocatable :: kd(:,:)
 
@@ -53,9 +52,9 @@ contains
         end do
 
         ! compute exponent
-        do l = 1,lm
-          do i = istart,iend
-            do o = 1,om
+        do l = 1, lm
+          do i = istart, iend
+            do o = 1, om
 
               arg(o,i,l) = 2 * k(o,i) * (depth(l) + d(i))
 
@@ -78,7 +77,7 @@ contains
           end do
         end do
 
-        deallocate(arg,kd)
+        deallocate(arg, kd)
 
         if (nproc == 0) write(*, fmt=101) 'umwm: stokes_drift: initialized'
 
@@ -109,7 +108,7 @@ contains
 
       if (usmag(i,1) == 0) then
         ds(i) = 0
-        continue
+        cycle
       end if
 
       ust_efolding = usmag(i,1) * eulerinv
