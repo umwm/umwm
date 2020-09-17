@@ -42,7 +42,7 @@ subroutine refineField(field_src,field_dst,ratio)
 
   if (im_dst > im .or. jm_dst > jm) then
     write(*,*) 'RefineField: ERROR: &
-                Source field smaller than required by the target field size:'
+              & Source field smaller than required by the target field size:'
     write(*,*) 'Source field:                im_src,jm_src = ',im_src,jm_src
     write(*,*) 'Interpolates to:                    im,jm  = ',im,jm
     write(*,*) 'Target field dummy argument: im_dst,jm_dst = ',im_dst,jm_dst

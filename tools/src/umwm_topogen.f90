@@ -1,136 +1,132 @@
-PROGRAM umwm_topogen
-! Topography generation utility for UMWM. Reads UMWM input
-! grid file and ETOPO topography field. Outputs grid and topography
-! in NetCDF format (umwm.gridtopo) that can be used by the wave model. 
+program umwm_topogen
 
-USE netcdf
-USE umwm_utils, ONLY:nc_check
+  ! Topography generation utility for UMWM. Reads UMWM input
+  ! grid file and ETOPO topography field. Outputs grid and topography
+  ! in NetCDF format (umwm.gridtopo) that can be used by the wave model. 
 
-IMPLICIT NONE
+  use netcdf
+  use umwm_utils, only: nc_check
 
-INTEGER :: i, j, i0, j0
+  implicit none
 
-LOGICAL :: useSeamask
+  integer :: i, j, i0, j0
+  logical :: useSeamask
+  integer :: ncid, xdimid, ydimid, lonid, latid, zid, maskid
 
-INTEGER :: ncid, xdimid, ydimid, lonid, latid, zid, maskid
+  character(NF90_MAX_NAME) :: dimname
 
-CHARACTER(NF90_MAX_NAME) :: dimname
+  character(9999) :: topoInputFile, umwmInputFile
 
-CHARACTER(9999) :: topoInputFile, umwmInputFile
+  type :: grid
+    integer :: idm, jdm
+    real, allocatable :: lon1d(:), lat1d(:)
+    real, allocatable :: lon(:,:), lat(:,:), z(:,:)
+  end type grid 
 
-TYPE grid
-  INTEGER                         :: idm, jdm
-  REAL, DIMENSION(:),   ALLOCATABLE :: lon1d, lat1d
-  REAL, DIMENSION(:, :), ALLOCATABLE :: lon, lat, z
-ENDTYPE grid 
+  type(grid) :: topo, umwm
 
-TYPE(grid) :: topo, umwm
+  integer, allocatable :: mask(:,:)
 
-INTEGER, DIMENSION(:, :), ALLOCATABLE :: mask
+  namelist /topogen/ umwmInputFile, topoInputFile, useSeamask
 
-NAMELIST /topogen/ umwmInputFile, topoInputFile, useSeamask
+  ! 1) Read namelist:
+  open(10, file='namelists/topogen.nml', status='old', &
+       form='formatted', access='sequential')
+  read(10, nml=topogen)
+  close(10)
 
-! 1) Read namelist:
-OPEN(UNIT=10, FILE='namelists/topogen.nml', STATUS='OLD', &
-     FORM='FORMATTED', ACCESS='SEQUENTIAL')
-READ(UNIT=10, NML=topogen)
-CLOSE(UNIT=10)
+  ! 2) Read input grid:
+  print *, 'umwm_topogen: Reading input (UMWM) grid.'
 
-! 2) Read input grid:
-WRITE(*, *)'umwm_topogen: Reading input (UMWM) grid.'
+  call nc_check(nf90_open(trim(umwmInputFile), nf90_nowrite, ncid))
+  call nc_check(nf90_inq_dimid(ncid, 'x', xdimid))
+  call nc_check(nf90_inq_dimid(ncid, 'y', ydimid))
+  call nc_check(nf90_inquire_dimension(ncid, xdimid, dimname, umwm % idm))
+  call nc_check(nf90_inquire_dimension(ncid, ydimid, dimname, umwm % jdm))
 
-CALL nc_check(nf90_open(TRIM(umwmInputFile), nf90_nowrite, ncid))
-CALL nc_check(nf90_inq_dimid(ncid, 'x', xdimid))
-CALL nc_check(nf90_inq_dimid(ncid, 'y', ydimid))
-CALL nc_check(nf90_inquire_dimension(ncid, xdimid, dimname, umwm % idm))
-CALL nc_check(nf90_inquire_dimension(ncid, ydimid, dimname, umwm % jdm))
+  allocate(umwm % lon(umwm % idm, umwm % jdm))
+  allocate(umwm % lat(umwm % idm, umwm % jdm))
+  allocate(umwm % z(umwm % idm, umwm % jdm))
 
-ALLOCATE(umwm % lon(umwm % idm, umwm % jdm))
-ALLOCATE(umwm % lat(umwm % idm, umwm % jdm))
-ALLOCATE(umwm % z(umwm % idm, umwm % jdm))
+  if (useSeamask) allocate(mask(umwm % idm, umwm % jdm))
 
-IF(useSeamask)ALLOCATE(mask(umwm % idm, umwm % jdm))
+  call nc_check(nf90_inq_varid(ncid, 'lon', lonid))
+  call nc_check(nf90_inq_varid(ncid, 'lat', latid))
+  call nc_check(nf90_get_var(ncid, lonid, umwm % lon))
+  call nc_check(nf90_get_var(ncid, latid, umwm % lat))
 
-CALL nc_check(nf90_inq_varid(ncid, 'lon', lonid))
-CALL nc_check(nf90_inq_varid(ncid, 'lat', latid))
-CALL nc_check(nf90_get_var(ncid, lonid, umwm % lon))
-CALL nc_check(nf90_get_var(ncid, latid, umwm % lat))
+  if(useSeamask)THEN
+    call nc_check(nf90_inq_varid(ncid, 'seamask', maskid))
+    call nc_check(nf90_get_var(ncid, maskid, mask))
+  endif
 
-IF(useSeamask)THEN
-  CALL nc_check(nf90_inq_varid(ncid, 'seamask', maskid))
-  CALL nc_check(nf90_get_var(ncid, maskid, mask))
-ENDIF
+  call nc_check(nf90_close(ncid))
 
-CALL nc_check(nf90_close(ncid))
+  ! 3) Read ETOPO01 grid and topography:
+  WRITE(*, *)'umwm_topogen: Reading input topography data.'
 
-! 3) Read ETOPO01 grid and topography:
-WRITE(*, *)'umwm_topogen: Reading input topography data.'
+  call nc_check(nf90_open(trim(topoInputFile), nf90_nowrite, ncid))
+  call nc_check(nf90_inq_dimid(ncid, 'lon', xdimid))
+  call nc_check(nf90_inq_dimid(ncid, 'lat', ydimid))
+  call nc_check(nf90_inquire_dimension(ncid, xdimid, dimname, topo % idm))
+  call nc_check(nf90_inquire_dimension(ncid, ydimid, dimname, topo % jdm))
 
-CALL nc_check(nf90_open(TRIM(topoInputFile), nf90_nowrite, ncid))
-CALL nc_check(nf90_inq_dimid(ncid, 'lon', xdimid))
-CALL nc_check(nf90_inq_dimid(ncid, 'lat', ydimid))
-CALL nc_check(nf90_inquire_dimension(ncid, xdimid, dimname, topo % idm))
-CALL nc_check(nf90_inquire_dimension(ncid, ydimid, dimname, topo % jdm))
+  allocate(topo % lon1d(topo % idm))
+  allocate(topo % lat1d(topo % jdm))
+  allocate(topo % z(topo % idm, topo % jdm))
 
-ALLOCATE(topo % lon1d(topo % idm))
-ALLOCATE(topo % lat1d(topo % jdm))
-ALLOCATE(topo % z(topo % idm, topo % jdm))
+  ! Uncomment for ETOPO
+  !call nc_check(nf90_inq_varid(ncid, 'x', lonid))
+  !call nc_check(nf90_inq_varid(ncid, 'y', latid))
+  !call nc_check(nf90_inq_varid(ncid, 'z', zid))
 
-! Uncomment for ETOPO
-!CALL nc_check(nf90_inq_varid(ncid, 'x', lonid))
-!CALL nc_check(nf90_inq_varid(ncid, 'y', latid))
-!CALL nc_check(nf90_inq_varid(ncid, 'z', zid))
+  ! Uncommend for GEBCO
+  call nc_check(nf90_inq_varid(ncid, 'lon', lonid))
+  call nc_check(nf90_inq_varid(ncid, 'lat', latid))
+  call nc_check(nf90_inq_varid(ncid, 'elevation', zid))
 
-! Uncommend for GEBCO
-CALL nc_check(nf90_inq_varid(ncid, 'lon', lonid))
-CALL nc_check(nf90_inq_varid(ncid, 'lat', latid))
-CALL nc_check(nf90_inq_varid(ncid, 'elevation', zid))
+  call nc_check(nf90_get_var(ncid, lonid, topo % lon1d))
+  call nc_check(nf90_get_var(ncid, latid, topo % lat1d))
+  call nc_check(nf90_get_var(ncid, zid, topo % z))
 
-CALL nc_check(nf90_get_var(ncid, lonid, topo % lon1d))
-CALL nc_check(nf90_get_var(ncid, latid, topo % lat1d))
-CALL nc_check(nf90_get_var(ncid, zid, topo % z))
+  call nc_check(nf90_close(ncid))
 
-CALL nc_check(nf90_close(ncid))
+  ! 4) Loop over target (UMWM) grid and sample ETOPO01 values:
+  print *, 'umwm_topogen: Sampling topography on target grid.'
 
-! 4) Loop over target (UMWM) grid and sample ETOPO01 values:
-WRITE(*, *)'umwm_topogen: Sampling topography on target grid.'
+  do j = 1, umwm % jdm
+    print *, 'umwm_topogen: Sampling row', j
+    do i = 1, umwm % idm
+      i0 = minloc(abs(umwm % lon(i,j)-topo % lon1d), dim=1)
+      j0 = minloc(abs(umwm % lat(i,j)-topo % lat1d), dim=1)
+      umwm % z(i,j) = topo % z(i0,j0)
+    enddo
+  enddo
 
-DO j=1, umwm % jdm
-  WRITE(*, *)'umwm_topogen: Sampling row', j
-  DO i=1, umwm % idm
+  ! Adjust bathymetry to match the input seamask:
+  if (useSeamask) then
+    where (mask == 0 .and. umwm % z < 0) umwm % z = 0
+    where (mask == 1 .and. umwm % z >= 0) umwm % z = -100
+  end if
 
-    i0 = MINLOC(ABS(umwm % lon(i,j)-topo % lon1d), DIM=1)
-    j0 = MINLOC(ABS(umwm % lat(i,j)-topo % lat1d), DIM=1)
+  ! 5) Generate new umwm.gridtopo file:
+  print *, 'umwm_topogen: Writing umwm.gridtopo file.'
 
-    umwm % z(i,j) = topo % z(i0,j0)
+  call nc_check(nf90_create('umwm.gridtopo', nf90_clobber, ncid))
+  call nc_check(nf90_def_dim(ncid, 'x', umwm % idm, xdimid))
+  call nc_check(nf90_def_dim(ncid, 'y', umwm % jdm, ydimid))
+  call nc_check(nf90_def_var(ncid, 'lon', nf90_float, [xdimid, ydimid], lonid))
+  call nc_check(nf90_def_var(ncid, 'lat', nf90_float, [xdimid, ydimid], latid))
+  if(useSeamask)call nc_check(nf90_def_var(ncid, 'seamask', nf90_int, [xdimid, ydimid], maskid))
+  call nc_check(nf90_def_var(ncid, 'z', nf90_float, [xdimid, ydimid], zid))
+  call nc_check(nf90_put_att(ncid, NF90_GLOBAL, name='history', values='Generated by umwm_topogen'))
+  call nc_check(nf90_enddef(ncid))
+  call nc_check(nf90_put_var(ncid, lonid, umwm % lon))
+  call nc_check(nf90_put_var(ncid, latid, umwm % lat))
+  if (useSeamask) call nc_check(nf90_put_var(ncid, maskid, mask))
+  call nc_check(nf90_put_var(ncid, zid, umwm % z))
+  call nc_check(nf90_close(ncid))
 
-  ENDDO
-ENDDO
+  print *, 'umwm_topogen: Success.'
 
-! Adjust bathymetry to match the input seamask:
-IF(useSeamask)THEN
-  WHERE(mask == 0 .AND. umwm % z < 0)umwm % z = 0
-  WHERE(mask == 1 .AND. umwm % z >= 0)umwm % z = -10
-ENDIF
-
-! 5) Generate new umwm.gridtopo file:
-WRITE(*, *)'umwm_topogen: Writing umwm.gridtopo file.'
-
-CALL nc_check(nf90_create('umwm.gridtopo', nf90_clobber, ncid))
-CALL nc_check(nf90_def_dim(ncid, 'x', umwm % idm, xdimid))
-CALL nc_check(nf90_def_dim(ncid, 'y', umwm % jdm, ydimid))
-CALL nc_check(nf90_def_var(ncid, 'lon', nf90_float, [xdimid, ydimid], lonid))
-CALL nc_check(nf90_def_var(ncid, 'lat', nf90_float, [xdimid, ydimid], latid))
-IF(useSeamask)CALL nc_check(nf90_def_var(ncid, 'seamask', nf90_int, [xdimid, ydimid], maskid))
-CALL nc_check(nf90_def_var(ncid, 'z', nf90_float, [xdimid, ydimid], zid))
-CALL nc_check(nf90_put_att(ncid, NF90_GLOBAL, name='history', values='Generated by umwm_topogen'))
-CALL nc_check(nf90_enddef(ncid))
-CALL nc_check(nf90_put_var(ncid, lonid, umwm % lon))
-CALL nc_check(nf90_put_var(ncid, latid, umwm % lat))
-IF(useSeamask)CALL nc_check(nf90_put_var(ncid, maskid, mask))
-CALL nc_check(nf90_put_var(ncid, zid, umwm % z))
-CALL nc_check(nf90_close(ncid))
-
-WRITE(*, *)'umwm_topogen: Success.'
-
-ENDPROGRAM umwm_topogen
+end program umwm_topogen

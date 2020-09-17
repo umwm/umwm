@@ -1,12 +1,14 @@
 program wrf2umwmgrid
+  
   ! Reads longitude, latitude, and landmask from a WRF file 
   ! and writes them into a umwm.grid file.
+  
   use netcdf
   use umwm_utils, only: nc_check
   use grid_utils, only: refineField, coarsenField
+  
   implicit none
 
-  integer :: i, j
   integer :: idm_src, jdm_src
   integer :: idm_dst, jdm_dst
 
