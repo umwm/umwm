@@ -2,6 +2,8 @@
 
 Publications about or using UMWM.
 
+* Haza A. C., N. Paldor, T. M. Özgökmen, M. Curcic, S. S. Chen, and G. Jacobs, 2019: Wind-based estimations of ocean surface currents from massive clusters of drifters in the Gulf of Mexico, *J. Geophys. Res. Oceans*, **124**, doi:10.1029/2018JC014813. [PDF](https://github.com/milancurcic/publications/blob/master/Haza_etal_JGR2019.pdf).
+
 * Li, G., M. Curcic, M. Iskandarani, S. S. Chen, and O. M. Knio, 2019: Uncertainty propagation in coupled atmosphere-wave-ocean system: A study of Hurricane Earl (2010), *Mon. Wea. Rev.*, **147**, 221-245, doi:10.1175/MWR-D-17-0371.1. [PDF](https://github.com/milancurcic/publications/blob/master/Li_etal_MWR2019.pdf)
 
 * Haza, A., E. D'Asaro, H. Cheng, S. S. Chen, M. Curcic, C. Guigand, H. S. Huntley, G. Jacobs, G. Novelli, T. M. Özgökmen, A. C. Poje, E. Ryan, and A. Scherbina, 2018: Drogue-loss detection for surface drifters during the Lagrangian Submesoscale Experiment (LASER), *J. Atmos. Oceanic Technol.*, **35(4)**, 705-725, doi:10.1175/JTECH-D-17-0143.1. [PDF](https://github.com/milancurcic/publications/blob/master/Haza_etal_JTECH2018.pdf)
