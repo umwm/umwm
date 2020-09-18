@@ -725,7 +725,7 @@ use umwm_mpi
 integer :: nn
 
 #ifdef ESMF
-integer :: extend, i, m, n
+integer :: i, m, n
 #endif
 
 #ifndef MPI
@@ -766,11 +766,11 @@ else
 end if
 
 ! Which direction for remapping? (matters only in parallel or global mode)
-!if (mm >= nm) then
-  remap_dir = 'v' ! Do always vertical due to a bug in halo exchange in horizontal remapping
-!else
-!  remap_dir  = 'h'
-!end if
+if (mm >= nm) then
+  remap_dir = 'v'
+else
+  remap_dir = 'h'
+end if
 
 if (isglobal) remap_dir = 'v'
 
@@ -779,64 +779,56 @@ if (isglobal) remap_dir = 'v'
 ! domains.
 
 #ifdef ESMF
-if(remap_dir=='h')then ! row-major remapping
+if (remap_dir == 'h') then ! row-major remapping
 
   ! adjust ends first:
-  i = 0 ; extend = 0
-  outer1:do n=1,nm
-    inner1:do m=1,mm
-      if(mask(m,n)==1)i = i+1
-      if(iend==i)then
-        if(m==mm)exit outer1
-        extend = count(mask(m+1:mm,n)==1)
-        iend   = iend+extend
+  i = 0
+  outer1: do n = 1, nm
+    inner1: do m = 1, mm
+      if (mask(m,n) == 1) i = i + 1
+      if (i == iend .and. m /= mm) then
+        iend = iend + count(mask(m+1:mm,n) == 1)
         exit outer1
       end if
     end do inner1
   end do outer1
 
   ! now adjust beginnings (all but proc 0):
-  if(nproc/=0)then
-    i = 0 ; extend = 0
-    outer2:do n=1,nm
-      inner2:do m=1,mm
-        if(mask(m,n)==1)i = i+1
-        if(istart==i)then
-          if(m==1)exit outer2
-          extend = count(mask(m:mm,n)==1)
-          istart = istart+extend
+  if (nproc /= 0) then
+    i = 0
+    outer2: do n = 1, nm
+      inner2: do m = 1, mm
+        if (mask(m,n) == 1) i = i + 1
+        if (i == istart .and. m /= 1 .and. count(mask(1:m-1,n) == 1) > 0) then
+          istart = istart + count(mask(m:mm,n) == 1)
           exit outer2
         end if
       end do inner2
     end do outer2
   end if
 
-elseif(remap_dir=='v')then ! column-major remapping
+else if (remap_dir == 'v') then ! column-major remapping
 
   ! adjust ends first:
-  i = 0 ; extend = 0
-  outer3:do m=1,mm
-    inner3:do n=1,nm
-      if(mask(m,n)==1)i = i+1
-      if(iend==i)then
-        if(n==nm)exit outer3
-        extend = count(mask(m,n+1:nm)==1)
-        iend   = iend+extend
+  i = 0
+  outer3: do m = 1, mm
+    inner3: do n = 1, nm
+      if (mask(m,n) == 1) i = i + 1
+      if (i == iend .and. n /= nm) then
+        iend = iend + count(mask(m,n+1:nm) == 1)
         exit outer3
       end if
     end do inner3
   end do outer3
 
   ! now adjust beginnings (all but proc 0):
-  if(nproc/=0)then
-    i = 0 ; extend = 0
-    outer4:do m=1,mm
-      inner4:do n=1,nm
-        if(mask(m,n)==1)i = i+1
-        if(istart==i)then
-          if(n==1)exit outer4
-          extend = count(mask(m,n:nm)==1)
-          istart = istart+extend
+  if (nproc /= 0) then
+    i = 0
+    outer4: do m = 1, mm
+      inner4: do n = 1, nm
+        if (mask(m,n) == 1) i = i + 1
+        if (i == istart .and. n /= 1 .and. count(mask(m,1:n-1) == 1) > 0) then
+          istart = istart + count(mask(m,n:nm) == 1)
           exit outer4
         end if
       end do inner4
@@ -846,7 +838,7 @@ elseif(remap_dir=='v')then ! column-major remapping
 end if
 
 ! adjust tile length:
-ilen = iend-istart+1
+ilen = iend - istart + 1
 
 #endif
 
