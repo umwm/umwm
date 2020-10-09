@@ -5,7 +5,7 @@ module umwm_stress
   use umwm_module
   use umwm_advection, only: zerocurrents
   use umwm_constants, only: rk
-  use umwm_stokes, only: util
+  use umwm_stokes, only: u_stokes => us, v_stokes => vs
 
   implicit none
 
@@ -23,14 +23,10 @@ contains
     real(rk) :: taux_util(om, istart:iend), tauy_util(om, istart:iend)
     real(rk) :: tail(istart:iend)
 
-    ! x- and y-components of surface stokes drift velocities
-    real(rk) :: usurf(istart:iend), vsurf(istart:iend)
-
     ! wind speed and direction relative to surface velocity
     real(rk) :: wspdrel(istart:iend), wdirrel(istart:iend)
 
     real(rk) :: cd_form(istart:iend), cd_skin(istart:iend)
-    real(rk) :: spectrum_integral
 
     ! evaluate wind speed dependent tail
     tail = stress_tail(wspd(istart:iend), k(om,istart:iend))
@@ -240,16 +236,10 @@ contains
 
       end do
 
-      ! compute surface stokes drift velocities:
-      do concurrent(i = istart:iend, p = 1:pm)
-        spectrum_integral = sum(util(:,i,1) * e(:,p,i))
-        usurf(i) = spectrum_integral * cth(p)
-        vsurf(i) = spectrum_integral * sth(p)
-      end do
-
       ! wind speed and direction relative to surface velocity
-      call wind_relative(wspd(istart:iend), wdir(istart:iend),&
-                         uc(istart:iend) + usurf, vc(istart:iend) + vsurf,&
+      call wind_relative(wspd(istart:iend), wdir(istart:iend), &
+                         uc(istart:iend) + u_stokes(:,1),      &
+                         vc(istart:iend) + v_stokes(:,1),      &
                          wspdrel, wdirrel)
 
       ! form-induced drag coefficient
@@ -257,20 +247,19 @@ contains
                                  rhoa(istart:iend), wspd(istart:iend))
 
       ! skin-induced drag coefficient
-      cd_skin = drag_coefficient_skin(cd_form, wspd(istart:iend), z, nu_air, kappa)
+      cd_skin = drag_coefficient_skin(cd_form, wspd(istart:iend), wspdrel, z, nu_air, kappa)
 
-      taux_skin = rhoa(istart:iend) * cd_skin * cos(wdirrel)
-      tauy_skin = rhoa(istart:iend) * cd_skin * sin(wdirrel)
+      taux_skin = rhoa(istart:iend) * cd_skin * wspdrel**2 * cos(wdirrel)
+      tauy_skin = rhoa(istart:iend) * cd_skin * wspdrel**2 * sin(wdirrel)
 
       taux = taux_form + taux_skin
       tauy = tauy_form + tauy_skin
 
       ! total (form + skin) drag coefficient
       cd = drag_coefficient(taux, tauy, rhoa(istart:iend), wspd(istart:iend))
-      where (cd > 5e-3) cd = 5e-3
 
-      ! update friction velocity (form + skin)
-      ustar = sqrt(cd) * wspd(istart:iend)
+      ! Update friction velocity based on total (form + skin) stress
+      ustar = sqrt(sqrt(taux**2 + tauy**2) / rhoa(istart:iend))
 
     end if ! if(option=='atm')
 
@@ -283,19 +272,20 @@ contains
     cd = sqrt(taux**2 + tauy**2) / (rhoa * wspd**2)
   end function drag_coefficient
 
-  real(rk) pure elemental function drag_coefficient_skin(cd_form, wspd, z, air_viscosity, von_karman) result(cd)
+  real(rk) pure elemental function drag_coefficient_skin(cd_form, wspd, wspdrel, z, air_viscosity, von_karman) result(cd)
     !! Computes the skin drag coefficient attenuated by from drag,
-    !! given input wind speed (m/s), height z (m), air viscosity (m^2/s),
-    !! and Von Karman constant.
-    real(rk), intent(in) :: cd_form, wspd, z, air_viscosity, von_karman
-    cd = friction_velocity_skin(wspd, z, air_viscosity, von_karman)**2 / wspd**2
-    cd = wspd**2 * cd * (1 + 2 * cd / (cd + cd_form + tiny(cd))) / 3
+    !! given input absolute (wspd) and relative (wspdrel) wind speed (m/s),
+    !! height z (m), air viscosity (m^2/s), and Von Karman constant.
+    real(rk), intent(in) :: cd_form, wspd, wspdrel, z, air_viscosity, von_karman
+    cd = friction_velocity_skin(wspdrel, z, air_viscosity, von_karman)**2 / wspd**2
+    cd = cd * (1 + 2 * cd / (cd + cd_form + tiny(cd))) / 3
   end function drag_coefficient_skin
 
   real(rk) pure elemental function friction_velocity_skin(wspd, z, air_viscosity, von_karman) result(ustar)
     !! Computes the skin friction velocity (flow over smooth surface) in m/s
     !! given input wind speed (m/s), height z (m), air viscosity (m^2/s),
-    !! and Von Karman constant.
+    !! and Von Karman constant. Input wind speed should relative to the
+    !! water surface.
     real(rk), intent(in) :: wspd, z, air_viscosity, von_karman
     real(rk) :: z0
     integer :: n
