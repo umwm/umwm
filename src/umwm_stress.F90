@@ -267,10 +267,9 @@ contains
 
       ! total (form + skin) drag coefficient
       cd = drag_coefficient(taux, tauy, rhoa(istart:iend), wspd(istart:iend))
-      where (cd > 5e-3) cd = 5e-3
 
-      ! update friction velocity (form + skin)
-      ustar = sqrt(cd) * wspd(istart:iend)
+      ! Update friction velocity based on total (form + skin) stress
+      ustar = sqrt(sqrt(taux**2 + tauy**2) / rhoa(istart:iend))
 
     end if ! if(option=='atm')
 
