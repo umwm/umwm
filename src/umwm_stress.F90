@@ -5,7 +5,7 @@ module umwm_stress
   use umwm_module
   use umwm_advection, only: zerocurrents
   use umwm_constants, only: rk
-  use umwm_stokes, only: util
+  use umwm_stokes, only: u_stokes => us, v_stokes => vs
 
   implicit none
 
@@ -23,14 +23,10 @@ contains
     real(rk) :: taux_util(om, istart:iend), tauy_util(om, istart:iend)
     real(rk) :: tail(istart:iend)
 
-    ! x- and y-components of surface stokes drift velocities
-    real(rk) :: usurf(istart:iend), vsurf(istart:iend)
-
     ! wind speed and direction relative to surface velocity
     real(rk) :: wspdrel(istart:iend), wdirrel(istart:iend)
 
     real(rk) :: cd_form(istart:iend), cd_skin(istart:iend)
-    real(rk) :: spectrum_integral
 
     ! evaluate wind speed dependent tail
     tail = stress_tail(wspd(istart:iend), k(om,istart:iend))
@@ -240,16 +236,10 @@ contains
 
       end do
 
-      ! compute surface stokes drift velocities:
-      do concurrent(i = istart:iend, p = 1:pm)
-        spectrum_integral = sum(util(:,i,1) * e(:,p,i))
-        usurf(i) = spectrum_integral * cth(p)
-        vsurf(i) = spectrum_integral * sth(p)
-      end do
-
       ! wind speed and direction relative to surface velocity
-      call wind_relative(wspd(istart:iend), wdir(istart:iend),&
-                         uc(istart:iend) + usurf, vc(istart:iend) + vsurf,&
+      call wind_relative(wspd(istart:iend), wdir(istart:iend), &
+                         uc(istart:iend) + u_stokes(:,1),      &
+                         vc(istart:iend) + v_stokes(:,1),      &
                          wspdrel, wdirrel)
 
       ! form-induced drag coefficient
