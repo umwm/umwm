@@ -250,6 +250,9 @@ elseif(option==2)then
   allocate(shelt(istart:iend))     ! sheltering coefficient
   shelt = 0
 
+  allocate(physics_time_step(istart:iend))
+  physics_time_step = 0 
+
   ! mean spectrum quantities:
   allocate(mwd(istart:iend)) ! direction
   allocate(mwp(istart:iend)) ! period

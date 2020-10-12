@@ -150,6 +150,7 @@ real,dimension(:),allocatable :: oneovar,oneovdx,oneovdy
 
 real,dimension(:),allocatable :: momx,momy ! momentum in x- and y-direction
 real,dimension(:),allocatable :: cgmxx,cgmxy,cgmyy ! horizontal momentum fluxes
+real,dimension(:),allocatable :: physics_time_step
 
 ! air and water density:
 real,dimension(:),allocatable :: rhoab,rhoa,rhoaf
