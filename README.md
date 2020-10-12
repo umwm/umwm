@@ -6,7 +6,8 @@
 A third-generation spectral ocean wave model.
 
 This is the reference implementation of UMWM, 
-described by [Donelan et al. (2012)](https://github.com/milancurcic/publications/blob/master/Donelan_etal_JGR2012.pdf).
+described by [Donelan et al. (2012)](https://github.com/milancurcic/publications/blob/master/Donelan_etal_JGR2012.pdf),
+with later improvements and bug fixes.
 UMWM solves the wave energy balance equation on a curvilinear grid.
 It has been used to simulate:
 
@@ -27,7 +28,7 @@ git clone https://github.com/umwm/umwm
 ### System dependencies
 
 * `make`
-* GNU, Intel, or Cray Fortran compiler
+* A recent Fortran compiler (known to work with GNU, Intel, Cray, and IBM)
 * NetCDF for I/O
 * MPI for parallel processing (optional)
 
@@ -67,7 +68,7 @@ Read the [docs](docs) for more information.
 
 ## Publications
 
-See [publications](PUBLICATIONS.md) for a full list of publications.
+See the full list of publications [here](PUBLICATIONS.md).
 
 ## Thanks
 
