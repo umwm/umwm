@@ -345,6 +345,7 @@ integer :: tailocnxid,tailocnyid
 integer :: dwdid,dwlid,dwpid,mwdid,mwlid,ucid,vcid
 integer :: cdid,mssid,ustid,sheltid
 integer :: dcpid,dcp0id,dcgid,dcg0id
+integer :: physics_time_stepid
 
 integer :: l
 
@@ -637,6 +638,10 @@ if(nproc == 0)then
   stat = nf90_put_att(ncid,dcgid,name='description',values='dominant group speed')
   stat = nf90_put_att(ncid,dcgid,name='units',values='m/s')
 
+  stat = nf90_def_var(ncid,'physics_time_step',nf90_float,[xdimid,ydimid,tdimid],physics_time_stepid)
+  stat = nf90_put_att(ncid,physics_time_stepid,name='description',values='Physics time step')
+  stat = nf90_put_att(ncid,physics_time_stepid,name='units',values='s')
+
   stat = nf90_enddef(ncid)
 
 end if
@@ -705,6 +710,9 @@ if(nproc == 0)stat = nf90_put_var(ncid,epsx_ocnid,output_field,start=[1,1,1],cou
 
 call gatherfield(epsy_ocn,output_field)
 if(nproc == 0)stat = nf90_put_var(ncid,epsy_ocnid,output_field,start=[1,1,1],count=[mm,nm,1])
+
+call gatherfield(physics_time_step, output_field)
+if(nproc == 0)stat = nf90_put_var(ncid,physics_time_stepid,output_field,start=[1,1,1],count=[mm,nm,1])
 
 call gatherfield(taux_form,output_field)
 if(nproc == 0)stat = nf90_put_var(ncid,taux_formid,output_field,start=[1,1,1],count=[mm,nm,1])
