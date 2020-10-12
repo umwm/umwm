@@ -15,7 +15,7 @@ use mpi
 #endif
 
 integer :: i,o,p
-real    :: maxarg,send_buff
+real :: send_buff
 
 !real,save :: explim_ramp
 
@@ -37,10 +37,11 @@ end do
 !  explim_ramp = (0.01+0.99*sumt/dtg)*explim
 !end if
 
+! Compute maximum physics time step for diagnostics
+physics_time_step = explim / maxval(maxval(abs(ef), dim=1), dim=1)
+
 ! compute the dynamic time step and update in-step model time:
-maxarg = maxval(abs(ef))
-!dts = min(explim_ramp/maxarg,dtamin,dtg-sumt)
-dts = min(explim/maxarg,dtamin,dtg-sumt)
+dts = min(maxval(physics_time_step), dtamin, dtg - sumt)
 
 #ifdef MPI
 send_buff = dts
