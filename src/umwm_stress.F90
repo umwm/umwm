@@ -279,6 +279,7 @@ contains
     real(rk), intent(in) :: cd_form, wspd, wspdrel, z, air_viscosity, von_karman
     cd = friction_velocity_skin(wspdrel, z, air_viscosity, von_karman)**2 / wspd**2
     cd = cd * (1 + 2 * cd / (cd + cd_form + tiny(cd))) / 3
+    if (cd > 1e-2) cd = 1e-2
   end function drag_coefficient_skin
 
   real(rk) pure elemental function friction_velocity_skin(wspd, z, air_viscosity, von_karman) result(ustar)
