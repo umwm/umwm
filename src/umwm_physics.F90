@@ -41,7 +41,7 @@ end do
 physics_time_step = explim / maxval(maxval(abs(ef), dim=1), dim=1)
 
 ! compute the dynamic time step and update in-step model time:
-dts = min(maxval(physics_time_step), dtamin, dtg - sumt)
+dts = min(minval(physics_time_step), dtamin, dtg - sumt)
 
 #ifdef MPI
 send_buff = dts
