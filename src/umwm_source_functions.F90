@@ -1,6 +1,8 @@
 module umwm_source_functions
   ! Module that provides wave source functions.
+#ifndef GEOS
   use umwm_io, only: currents,seaice
+#endif
   use umwm_module
   use umwm_constants, only: rk
   use umwm_sheltering, only: sheltering_coare35, sheltering_reynolds
@@ -97,6 +99,12 @@ contains
     end if
 
     dummy = (1 + mss_fac * dummy)**2
+
+#if defined GEOS && defined DEBUG
+if (any(e(:,:,istart:iend) < 0)) then 
+    print *, 'DEBUG:UMWM:sds_d12()  e, k4 = ', minval(e(:,:,istart:iend)), maxval(e(:,:,istart:iend)),minval(k4), maxval(k4)
+endif
+#endif
 
     do concurrent(o = 1:om, p = 1:pm, i = istart:iend)
       sds(o,p,i) = twopisds_fac * f(o) * dummy(o,p,i) * (e(o,p,i) * k4(o,i))**sds_power

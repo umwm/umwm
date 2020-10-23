@@ -53,6 +53,7 @@ subroutine greeting
 end subroutine greeting
 
 
+#ifndef GEOS
 subroutine nmlread
 ! Opens namelist file namelists/main.nml and reads runtime input parameters.
 use umwm_module,only:starttimestr_nml,stoptimestr_nml
@@ -191,6 +192,7 @@ starttimestr_nml = starttimestr
 stoptimestr_nml = stoptimestr
 
 end subroutine nmlread
+#endif
 
 
 subroutine alloc(option)
@@ -200,7 +202,14 @@ integer,intent(in) :: option
 
 ! allocate 2-d native arrays:
 if(option==1)then
-
+#ifdef GEOS
+  allocate(curv(mm,nm))
+  allocate(d_2d(mm,nm),dx_2d(mm,nm),dy_2d(mm,nm))
+  allocate(dlon(mm,nm),dlat(mm,nm))
+  allocate(ii(mm,nm))
+  allocate(lat(mm,nm),lon(mm,nm))
+  allocate(mask(mm,nm))
+#else
   allocate(ar_2d(mm,nm))
   allocate(curv(mm,nm))
   allocate(d_2d(mm,nm),dx_2d(mm,nm),dy_2d(mm,nm))
@@ -219,9 +228,14 @@ if(option==1)then
   allocate(vw(mm,nm),vwb(mm,nm),vwf(mm,nm))
   allocate(wdir_2d(mm,nm))
   allocate(fice_2d(mm,nm),ficeb(mm,nm),ficef(mm,nm))
+#endif
 
 ! allocate remapped arrays:
 elseif(option==2)then
+#ifdef GEOS
+  allocate(nu_water_(istart:iend))
+  allocate(ii_(imm))
+#endif
 
   ! 1-d arrays:
   allocate(dom(om),f(om))
@@ -245,6 +259,10 @@ elseif(option==2)then
   allocate(dyw(istart:iend),dye(istart:iend)) ! cell edges
   allocate(fcutoff(istart:iend))   ! cutoff frequency
   allocate(ht(istart:iend))        ! significant wave height
+#ifdef GEOS
+  allocate(hts(istart:iend))       ! significant wave height of total swell
+  allocate(htw(istart:iend))       ! significant wave height of wind waves
+#endif
   allocate(mss(istart:iend))       ! mean-squared slope
 
   allocate(shelt(istart:iend))     ! sheltering coefficient
@@ -334,9 +352,15 @@ elseif(option==2)then
   allocate(uc(imm),vc(imm)) ! ocean currents
   uc = 0; vc = 0
 
+#ifdef GEOS
+  allocate(rhoa(imm))                       ! air density
+  allocate(rhow(imm))                       ! water density
+  allocate(rhorat(imm))                     ! air/water density ratio
+#else
   allocate(rhoa(imm),rhoab(imm),rhoaf(imm)) ! air density
   allocate(rhow(imm),rhowb(imm),rhowf(imm)) ! water density
   allocate(rhorat(imm))                     ! air/water density ratio
+#endif
 
   allocate(psim(imm)) ! integrated stability function for momentum
   psim = 0
@@ -380,9 +404,13 @@ end subroutine alloc
 
 subroutine grid
 ! Defines grid spacing and grid cell areas
+#ifndef GEOS
 use netcdf
 use umwm_io,  only:nc_check
 use umwm_util,only:raiseexception, distance_haversine
+#else
+use umwm_util,only:distance_haversine
+#endif
 
 logical :: loniscontinuous = .true.
 
@@ -394,6 +422,114 @@ real,parameter :: r_earth = 6.371009e6
 real,dimension(:,:),allocatable :: abscoslat,lon_tmp,rotx,roty
 real,dimension(:,:),allocatable :: rlon,rlat
 
+#ifdef GEOS
+  allocate(abscoslat(mm,nm),lon_tmp(mm,nm),rotx(mm,nm),roty(mm,nm))
+  allocate(rlon(mm,nm),rlat(mm,nm))
+
+  ! figure out if longitude field is continuous:
+  if(minval(lon) <- 175 .and. maxval(lon) >175)loniscontinuous = .false.
+
+  ! TODO: verify whether lonIsContinuous is set correctly in GEOS
+  loniscontinuous = .true.
+
+
+  lon_tmp = lon
+
+  ! store original lon array before modifying:
+  if(.not.loniscontinuous)where(lon < 0)lon = lon+360
+
+  do n=1,nm
+    do m=2,mm-1
+      dlon(m,n) = 0.5*(lon(m+1,n)-lon(m-1,n))
+    end do
+  end do
+
+  dlon(1,:)  = 2*dlon(2,:)-dlon(3,:)
+  dlon(mm,:) = 2*dlon(mm-1,:)-dlon(mm-2,:)
+
+  do n=2,nm-1
+    do m=1,mm
+      dlat(m,n) = 0.5*(lat(m,n+1)-lat(m,n-1))
+    end do
+  end do
+  dlat(:,1)  = 2*dlat(:,2)-dlat(:,3)
+  dlat(:,nm) = 2*dlat(:,nm-1)-dlat(:,nm-2)
+
+  abscoslat = abs(cos(dr*lat))
+
+  ! revert to original lon array:
+  lon = lon_tmp
+
+  rlon = lon*twopi/360.
+  rlat = lat*twopi/360.
+
+  do n=1,nm
+    do m=2,mm-1
+      dx_2d(m,n) = r_earth * distance_haversine(0.5*(rlon(m-1,n) + rlon(m  ,n)), &
+                                                0.5*(rlon(m  ,n) + rlon(m+1,n)), &
+                                                0.5*(rlat(m-1,n) + rlat(m  ,n)), &
+                                                0.5*(rlat(m  ,n) + rlat(m+1,n)))
+    end do
+  end do
+
+  ! TODO: this can break reproducibility
+  dx_2d(1,:)  = 2*dx_2d(2,:)-dx_2d(3,:)
+  dx_2d(mm,:) = 2*dx_2d(mm-1,:)-dx_2d(mm-2,:)
+
+  do n=2,nm-1
+    do m=1,mm
+      dy_2d(m,n) = r_earth * distance_haversine(0.5*(rlon(m,n-1) + rlon(m,n  )), &
+                                                0.5*(rlon(m,n  ) + rlon(m,n+1)), &
+                                                0.5*(rlat(m,n-1) + rlat(m,n  )), &
+                                                0.5*(rlat(m,n  ) + rlat(m,n+1)))
+    end do
+  end do
+
+  ! TODO: this can break reproducibility
+  dy_2d(:,1)  = 2*dy_2d(:,2)-dy_2d(:,3)
+  dy_2d(:,nm) = 2*dy_2d(:,nm-1)-dy_2d(:,nm-2)
+
+#if (defined DEBUG) || (0)
+  print *, 'UMWM:advection_init()::dx_2d = ', minval(dx_2d), maxval(dx_2d), dy_2d(1,1), dy_2d(1,nm), dy_2d(mm,1), dy_2d(mm,nm)
+#endif
+
+  ! compute grid rotation for great circle propagation
+  curv = 0
+  do n = 1,nm
+    do m = 2,mm-1
+      curv(m,n) = atan2(sin(rlon(m+1,n)-rlon(m-1,n))*cos(rlat(m+1,n)),&
+                        cos(rlat(m-1,n))*sin(rlat(m+1,n))&
+                       -sin(rlat(m-1,n))*cos(rlat(m+1,n))*cos(rlon(m+1,n)-rlon(m-1,n)))
+    end do
+  end do
+
+  ! TODO: this can break reproducibility
+  ! TODO: doublecheck which one to use with GEOS, and whether 
+  !       this matters in the halo
+#if (0)
+  if(isglobal)then
+    m = 1
+    curv(m,:) = atan2(sin(rlon(m+1,:)-rlon(mm,:))*cos(rlat(m+1,:)),&
+                      cos(rlat(mm,:))*sin(rlat(m+1,:))&
+                     -sin(rlat(mm,:))*cos(rlat(m+1,:))*cos(rlon(m+1,:)-rlon(mm,:)))
+    m = mm
+    curv(m,:) = atan2(sin(rlon(1,:)-rlon(m-1,:))*cos(rlat(1,:)),&
+                      cos(rlat(m-1,:))*sin(rlat(1,:))&
+                     -sin(rlat(m-1,:))*cos(rlat(1,:))*cos(rlon(1,:)-rlon(m-1,:)))
+  else
+    curv(1,:) = curv(2,:)
+    curv(mm,:) = curv(mm-1,:)
+  end if
+#else
+    curv(1,:) = curv(2,:)
+    curv(mm,:) = curv(mm-1,:)
+#endif
+
+  curv = curv-0.5*pi
+
+  deallocate(abscoslat,lon_tmp,rotx,roty,rlon,rlat)
+
+#else
 if(gridfromfile)then
 
   stat = nf90_open('input/umwm.gridtopo',nf90_nowrite,ncid)
@@ -564,6 +700,7 @@ if(nproc == 0)then
 end if
 
 101 format(a,3(f15.2,1x))
+#endif
 
 end subroutine grid
 
@@ -576,6 +713,41 @@ logical :: iterate
 integer :: m, n
 integer :: exm, exn
 integer :: cnt, fillcount
+#ifdef GEOS
+  ! set initial seamask everywhere:
+  mask = 1
+
+#if (0)  
+  where ((dx_2d < 1.0)) 
+      mask = 0
+      dx_2d = 1.0
+  end where
+
+  where ((dy_2d < 1.0))
+      mask = 0
+      dy_2d = 1.0
+  end where
+#endif
+
+  ! set land mask where depth is non-negative, and then
+  ! set depth to dmin:
+  where (d_2d >= 0)
+    mask = 0
+    d_2d = dmin
+  end where
+
+  ! make depths positive and limit to dmin:
+  d_2d = abs(d_2d)
+  where (d_2d < dmin) d_2d = dmin
+
+  ! TODO: this is redunant    
+  where (mask == 0) d_2d = dmin
+
+  ! calculate the upper index for 1-d arrays:
+  im = count(mask==1)
+  imm = mm*nm
+
+#else
 
 ! set masks:
 if(topofromfile)then
@@ -691,6 +863,7 @@ end if
 305 format('umwm: masks: shallowest point:            ',f9.3,' meters')
 306 format('umwm: masks: deepest point:               ',f9.3,' meters')
 
+#endif
 end subroutine masks
 
 
@@ -895,13 +1068,20 @@ integer, dimension(:), allocatable :: n_exchange_indices
 
 ! in serial mode this does not matter, but we must pick one:
 #ifndef MPI
+#ifdef GEOS
+  remap_dir = 'h'
+#else
   remap_dir = 'v'
+#endif
 #endif
 
 ! first construct (m,n)->(i) transformation:
 ii = 0
 i  = 0
 if(remap_dir == 'h')then ! column-major
+#ifdef GEOS
+  ii_ = 0
+#endif
 
   ! sea points:
   do n=1,nm
@@ -912,6 +1092,12 @@ if(remap_dir == 'h')then ! column-major
         dx(i) = dx_2d(m,n)
         dy(i) = dy_2d(m,n)
         d(i)  = d_2d(m,n)
+#ifdef GEOS
+        ! define a 1D mask with water points in the computational domain (excluding halo)
+        if ((n > 1 .and. n < nm) .and. (m > 1 .and. m < mm)) then 
+            ii_(i) = 1
+        end if
+#endif
       end if
     end do
   end do
@@ -930,6 +1116,9 @@ if(remap_dir == 'h')then ! column-major
   end do
 
 elseif(remap_dir == 'v')then ! row-major
+#ifdef GEOS
+  ii_ = 0
+#endif
 
   ! sea points:
   do m=1,mm
@@ -940,6 +1129,12 @@ elseif(remap_dir == 'v')then ! row-major
         dx(i) = dx_2d(m,n)
         dy(i) = dy_2d(m,n)
         d(i)  = d_2d(m,n)
+#ifdef GEOS
+        ! define a 1D mask with water points in the computational domain (excluding halo)
+        if ((n > 1 .and. n < nm) .and. (m > 1 .and. m < mm)) then 
+            ii_(i) = 1
+        end if
+#endif
       end if
     end do
   end do
@@ -989,6 +1184,7 @@ do n=2,nm-1
   end do
 end do
 
+#ifndef GEOS
 ! adjust periodic boundary:
 if(isglobal)then
   do n=2,nm-1
@@ -1005,6 +1201,7 @@ if(isglobal)then
 
   end do
 end if
+#endif
 
 ! true indices:
 ! (is,in,iw,ie will be aliased for land points)
@@ -1014,7 +1211,17 @@ iiw = iw
 iie = ie
 
 ! cell edges in x and y:
+#ifdef GEOS
+  dxn = 0.0
+  dxs = 0.0
+  dye = 0.0
+  dyw = 0.0
+#endif
+
 do i = istart,iend
+#ifdef GEOS
+  if (ii_(i) == 0) cycle
+#endif
   dxn(i) = 0.5*(dx(i)+dx(iin(i)))
   dxs(i) = 0.5*(dx(i)+dx(iis(i)))
   dye(i) = 0.5*(dy(i)+dy(iie(i)))
@@ -1244,9 +1451,10 @@ subroutine init
 use umwm_mpi, only:istart_,iend_
 #endif
 use umwm_util,only:raiseexception
-
+#ifndef GEOS
 use umwm_io, only: winds,seaice
 use umwm_util, only: remap_mn2i
+#endif
 
 integer :: i, n, o, p, pp, ind
 
@@ -1335,7 +1543,12 @@ end do
 ! compute wave numbers, phase speeds, and group velocities:
 call dispersion(1e-2)
 
+#ifdef GEOS
+mindelx = min(minval(dx_2d(2:mm-1,2:nm-1),mask(2:mm-1,2:nm-1)==1), &
+              minval(dy_2d(2:mm-1,2:nm-1),mask(2:mm-1,2:nm-1)==1))
+#else
 mindelx = min(minval(dx_2d,mask==1),minval(dy_2d,mask==1))
+#endif
 cgmax   = maxval(cg0(:,istart:iend))
 dtamin  = 0.98*cfllim*mindelx/cgmax
 
@@ -1347,6 +1560,7 @@ else
   firstdtg = .true.
 end if
 
+#ifndef GEOS
 ! if sea ice from file, update the fice field
 if (seaice) fice = remap_mn2i(ficef)
 
@@ -1363,6 +1577,7 @@ end do
 do i=istart,iend
   ustar(i) = sqrt(cd(i))*wspd(i)
 end do
+#endif
 
 #ifdef MPI
 
@@ -1390,13 +1605,13 @@ call mpi_bcast(nproc_plot,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
 call mpi_bcast(iip,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
 
 #else
-
+#ifndef GEOS
 iip = ii(xpl,ypl)
-
+#endif
 #endif
 
 #ifndef MPI
-
+#ifndef GEOS
 write(*,fmt=102)
 write(*,*)'initialization summary:'
 write(*,fmt=103)
@@ -1413,7 +1628,7 @@ write(*,fmt=102)
 
 102 format('!',77('='),'!')
 103 format('!',77('-'),'!')
-
+#endif
 #endif
 
 end subroutine init
@@ -1437,7 +1652,9 @@ real :: dk
 real,dimension(istart:iend) :: b
 real,dimension(om,istart:iend) :: f_nd,kd,t
 
+#if defined GEOS && defined DEBUG
 if(nproc==0)write(*,'(a)')'umwm: dispersion: solving for dispersion relationship;'
+#endif
 
 ! non-dimesionalize frequencies, and use deep water limit
 ! as initial guess:
@@ -1475,7 +1692,9 @@ do i=istart,iend
   end do
 end do
 
+#if defined GEOS && defined DEBUG
 if(nproc==0)write(*,'(a)')'umwm: dispersion: dispersion relationship done;'
+#endif
 
 do concurrent (o=1:om, i=istart:iend)
   kd(o,i) = k(o,i) * d(i)
@@ -1509,8 +1728,11 @@ do concurrent (o=1:om, i=istart:iend)
   invcp0(o,i)    = 1./cp0(o,i)                                  ! 1/cp
   sbf(o,i)       = sbf_fac*k(o,i)/(sinh(2.*kd(o,i)))&           ! bottom friction
                   +sbp_fac*k(o,i)/(cosh(kd(o,i))*cosh(kd(o,i))) ! bottom percolation
+#ifdef GEOS
+  sdv(o,i)       = 4.*nu_water_(i)*k(o,i)**2.                   ! Prognostic water viscosity
+#else
   sdv(o,i)       = 4.*nu_water*k(o,i)**2.                       ! viscosity
-
+#endif
 end do
 
 ! compute renormalization factors for snl:

@@ -98,7 +98,108 @@ allowedoutputtimes = [-1,0,1,2,3,4,6,8,12,24]
 ! allocatable arrays
 
 ! 1-dimensional arrays:
+#ifdef GEOS
+! neighbor grid indices, aliased
+integer,dimension(:),allocatable :: iw,ie,is,in
 
+! neighbor grid indices, true
+integer,dimension(:),allocatable :: iiw,iie,iis,iin
+
+! exchange indices for periodic bc
+integer,dimension(:),allocatable :: i_exchange_indices
+
+! indices m and n as functions of i
+integer,dimension(:),allocatable :: mi,ni,ii_
+
+! cut-off frequency index (maximum prognostic)
+integer,dimension(:),allocatable :: oc
+
+! directional indices, anti-clockwise and clockwise
+integer,dimension(:),allocatable :: pl,pr
+
+real,dimension(:),allocatable :: th,cth,sth
+real,dimension(:),allocatable :: cth2
+real,dimension(:),allocatable :: dom
+real,dimension(:),allocatable :: f
+
+! wave ray directions with grid curvature correction:
+real,dimension(:,:),allocatable :: cth_curv,sth_curv
+
+integer,dimension(:,:),allocatable :: ii
+integer,dimension(:,:),allocatable :: mask
+
+! 2-dimensional, unrolled arrays:
+real,dimension(:,:),allocatable :: curv
+real,dimension(:,:),allocatable :: d_2d,dlon,dlat,dx_2d,dy_2d
+real,dimension(:,:),allocatable :: lat,lon
+
+real,dimension(:),allocatable :: ar,cd,d,dx,dy,dwd,dwl,dwp,fcutoff,mwf,pwf
+real,dimension(:),allocatable :: dxn,dxs,dyw,dye
+real,dimension(:),allocatable :: dcp0,dcp,dcg0,dcg
+real,dimension(:),allocatable :: ht,hts,htw,mss,mwd,mwl,mwp,shelt
+real,dimension(:),allocatable :: oneovar,oneovdx,oneovdy
+
+real,dimension(:),allocatable :: momx,momy ! momentum in x- and y-direction
+real,dimension(:),allocatable :: cgmxx,cgmxy,cgmyy ! horizontal momentum fluxes
+real,dimension(:),allocatable :: physics_time_step
+
+! air and water density:
+real,dimension(:),allocatable :: rhoa
+real,dimension(:),allocatable :: rhow
+real,dimension(:),allocatable :: rhorat
+
+! viscosity of water
+real,dimension(:),allocatable :: nu_water_
+
+! stability function
+real,dimension(:),allocatable :: psim
+
+! stress (momentum flux) arrays [n/m^2]
+real,dimension(:),allocatable :: taux,tauy
+real,dimension(:),allocatable :: taux_form,tauy_form
+real,dimension(:),allocatable :: taux_skin,tauy_skin
+real,dimension(:),allocatable :: taux_diag,tauy_diag
+real,dimension(:),allocatable :: taux_ocntop,tauy_ocntop
+real,dimension(:),allocatable :: taux_ocnbot,tauy_ocnbot
+real,dimension(:),allocatable :: taux_snl,tauy_snl
+
+! wave energy growth flux [kg/s^3]
+real,dimension(:),allocatable :: epsx_atm, epsy_atm
+
+! wave energy dissipation flux [kg/s^3]
+real,dimension(:),allocatable :: epsx_ocn, epsy_ocn
+
+! form drag components:
+real,dimension(:),allocatable :: taux1,tauy1
+real,dimension(:),allocatable :: taux2,tauy2
+real,dimension(:),allocatable :: taux3,tauy3
+
+! tail stress components:
+real,dimension(:),allocatable :: tailatmx,tailatmy
+real,dimension(:),allocatable :: tailocnx,tailocny
+
+real,dimension(:),allocatable :: uc,vc,ustar
+real,dimension(:),allocatable :: wspd,wdir
+real,dimension(:),allocatable :: fice
+
+! snl downshifting weights, used in snl routine:
+real,dimension(:,:),allocatable :: bf1_renorm,bf2_renorm
+
+! utility array used for mss in sds routine:
+real,dimension(:,:),allocatable :: cth2pp
+
+! group and phase velocities:
+real,dimension(:,:),allocatable :: cg0,cp0
+
+real,dimension(:,:),allocatable :: cothkd
+real,dimension(:,:),allocatable :: dwn,invcp0
+real,dimension(:,:),allocatable :: fkovg
+real,dimension(:,:),allocatable :: k,k4,kdk,k3dk
+real,dimension(:,:),allocatable :: l2,logl2overz,oneoverk4,psiml2
+real,dimension(:,:),allocatable :: sbf,sdv,sdt,snl_arg,sice
+
+real,dimension(:,:,:),allocatable :: dummy,e,ef,rotl,rotr,sds,snl,ssin
+#else
 ! neighbor grid indices, aliased
 integer,dimension(:),allocatable :: iw,ie,is,in
 
@@ -205,6 +306,7 @@ real,dimension(:,:),allocatable :: l2,logl2overz,oneoverk4,psiml2
 real,dimension(:,:),allocatable :: sbf,sdv,sdt,snl_arg,sice
 
 real,dimension(:,:,:),allocatable :: dummy,e,ef,rotl,rotr,sds,snl,ssin
+#endif
 
 !=======================================================================
 end module umwm_module

@@ -43,9 +43,13 @@ physics_time_step = explim / maxval(maxval(abs(ef), dim=1), dim=1)
 ! compute the dynamic time step and update in-step model time:
 dts = min(minval(physics_time_step), dtamin, dtg - sumt)
 
+#ifdef GEOS
+!TODO: MPI_Allreduce will be needed for reproducibility
+#else
 #ifdef MPI
 send_buff = dts
 call mpi_allreduce(send_buff,dts,1,MPI_REAL,mpi_min,MPI_COMM_WORLD,ierr)
+#endif
 #endif
 
 ! if first time step, set time step to zero and
@@ -81,7 +85,11 @@ do i = istart, iend
   end do
 end do
 
+#ifndef GEOS
 e(:,:,istart:iend) = 0.5*(e(:,:,istart:iend)+ef(:,:,istart:iend))
+#else
+e(:,:,istart:iend) = ef(:,:,istart:iend)
+#endif
 
 endsubroutine source
 
@@ -99,6 +107,11 @@ real,dimension(istart:iend) :: m0,m2
 real,dimension(om,pm)       :: spectrumbin
 
 real :: ekdkovcp
+
+#ifdef GEOS
+real, parameter :: f_swell = 0.1 ! Hz
+real            :: cp0_swell
+#endif
 
 m0 = 0
 m2 = 0
@@ -146,12 +159,38 @@ do i=istart,iend
 
   ! significant wave height:
   ht(i) = 0.
+#ifdef GEOS
+  hts(i) = 0.0
+  htw(i) = 0.0
+#endif
   do p=1,pm
+    cp0_swell = 28*1.2*ustar(i)*cos(th(p)-wdir(i))
+
     do o=1,om
       ht(i) = ht(i)+e(o,p,i)*kdk(o,i)
+
+#ifdef GEOS
+#if (1)
+      if (cp0_swell < cp0(o,i)) then
+        hts(i) = hts(i)+e(o,p,i)*kdk(o,i)
+      else
+        htw(i) = htw(i)+e(o,p,i)*kdk(o,i)
+      end if
+#else
+      if (f(o) < f_swell) then
+        hts(i) = hts(i)+e(o,p,i)*kdk(o,i)
+      else
+        htw(i) = htw(i)+e(o,p,i)*kdk(o,i)
+      end if
+#endif
+#endif
     end do
   end do
   ht(i) = 4*sqrt(ht(i)*dth)
+#ifdef GEOS
+  hts(i) = 4*SQRT(hts(i)*dth)
+  htw(i) = 4*SQRT(htw(i)*dth)
+#endif
 
   ! mean wave direction:
   xcomp = 0.

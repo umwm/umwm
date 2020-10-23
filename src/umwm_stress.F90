@@ -5,7 +5,9 @@ module umwm_stress
   use umwm_module
   use umwm_advection, only: zerocurrents
   use umwm_constants, only: rk
+#ifndef GEOS
   use umwm_stokes, only: u_stokes => us, v_stokes => vs
+#endif
 
   implicit none
 
@@ -237,10 +239,17 @@ contains
       end do
 
       ! wind speed and direction relative to surface velocity
+#ifndef GEOS
       call wind_relative(wspd(istart:iend), wdir(istart:iend), &
                          uc(istart:iend) + u_stokes(:,1),      &
                          vc(istart:iend) + v_stokes(:,1),      &
                          wspdrel, wdirrel)
+#else
+      call wind_relative(wspd(istart:iend), wdir(istart:iend), &
+                         uc(istart:iend) + 0.0,                &
+                         vc(istart:iend) + 0.0,                &
+                         wspdrel, wdirrel)
+#endif
 
       ! form-induced drag coefficient
       cd_form = drag_coefficient(taux_form, tauy_form,&
