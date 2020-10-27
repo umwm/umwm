@@ -4,7 +4,9 @@ module umwm_module
 ! description: a global definitions module and main memory pool.
 !
 !=======================================================================
+#ifndef GEOS
 use datetime_module,only:datetime
+#endif
 
 implicit none
 
@@ -13,10 +15,12 @@ character(len=5),parameter :: version = '2.0.0'
 ! use blocking mpi routines?
 logical,parameter :: mpiisblocking = .false.
 
+#ifndef GEOS
 ! time objects
 type(datetime) :: starttime,stoptime,currenttime
 
 character(len=19) :: starttimestr_nml,stoptimestr_nml
+#endif
 
 ! domain dimensions
 integer :: mm  ! domain mpisize in x
