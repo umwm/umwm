@@ -189,23 +189,28 @@ if(firstrun)then
 
   ! loop over points in the list:
   do
-    npts=npts+1
+    npts = npts + 1
 
-    if(coord_input == 'xy')then
+    if (any(coord_input == ['xy', 'XY'])) then
 
-      read(unit=21,fmt=*,end=100)mspec(npts),nspec(npts),spectrumid(npts)
+      read(21, *, end=100) mspec(npts), nspec(npts), spectrumid(npts)
 
-    elseif(coord_input == 'll')then
+      if (mspec(npts) < 2 .or. mspec(npts) > mm - 1 .or. &
+          nspec(npts) < 2 .or. nspec(npts) > nm - 1) &
+          stop 'umwm: output_nc: error: a requested point ' &
+            // 'in spectrum.nml is out of bounds'
 
-      read(unit=21,fmt=*,end=100)lonspec,latspec,spectrumid(npts)
-      xy_coords   = minloc((lonspec-lon)**2.+(latspec-lat)**2.)
+    else if (any(coord_input == ['ll', 'LL'])) then
+
+      read(21, *, end=100) lonspec, latspec, spectrumid(npts)
+      xy_coords = minloc((lonspec - lon)**2 + (latspec - lat)**2)
       mspec(npts) = xy_coords(1)
       nspec(npts) = xy_coords(2)
 
     else
 
-      write(*,'(a)')'umwm: output_nc: error: first line in lists/spectrum.list must contain "xy" or "ll"'
-      stop
+      stop 'umwm: output_nc: error: first line in namelists/spectrum.nml must' &
+        // 'contain "xy" (or "XY") or "ll" (or "LL").'
 
     end if
 
