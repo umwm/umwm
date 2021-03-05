@@ -1,21 +1,22 @@
 module umwm_domain
 
-  ! Under construction. The Domain_type will supersede 
-  ! the global namespace in umwm_module.
+  !! domain_type is the main UMWM derived type.
+  !! Its components are an instance of grid_type, which defines its geographical
+  !! grid, and an instance of spectrum_type, which defines its spectral space.
 
   use umwm_constants, only: rk
-  !use umwm_grid, only: Grid_type
-  use umwm_spectrum, only: Spectrum_type
+  use umwm_grid, only: grid_type
+  use umwm_spectrum, only: spectrum_type
 
   implicit none
 
   private
-  public :: Domain_type
+  public :: domain_type
 
-  type :: Domain_type
-    !type(Grid_type) :: grid
-    type(Spectrum_type) :: spectrum
-  end type Domain_type
+  type :: domain_type
+    type(grid_type) :: grid
+    type(spectrum_type) :: spectrum
+  end type domain_type
 
 contains
 
