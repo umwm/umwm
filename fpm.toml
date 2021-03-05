@@ -1,0 +1,4 @@
+name = "umwm"
+
+[library]
+source-dir="staging"

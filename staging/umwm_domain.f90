@@ -4,7 +4,6 @@ module umwm_domain
   !! Its components are an instance of grid_type, which defines its geographical
   !! grid, and an instance of spectrum_type, which defines its spectral space.
 
-  use umwm_constants, only: rk
   use umwm_grid, only: grid_type
   use umwm_spectrum, only: spectrum_type
 
