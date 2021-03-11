@@ -13,6 +13,8 @@ module umwm_config
     integer :: grid_size_y
     integer :: num_frequencies
     integer :: num_directions
+    real :: frequency_min
+    real :: frequency_max
   end type config_type
 
   interface config_type
@@ -58,6 +60,8 @@ contains
     ! TODO CHECK 1 < res % grid_size_y
     call get_value(spectrum_table, 'num_frequencies', res % num_frequencies)
     call get_value(spectrum_table, 'num_directions', res % num_directions)
+    call get_value(spectrum_table, 'frequency_min', res % frequency_min)
+    call get_value(spectrum_table, 'frequency_max', res % frequency_max)
 
   end function config_type_cons
 
