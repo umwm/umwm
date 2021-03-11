@@ -15,6 +15,7 @@ module umwm_domain
   type :: domain_type
     type(grid_type) :: grid
     type(spectrum_type) :: spectrum
+    real, allocatable :: variance(:,:)
   end type domain_type
 
 contains

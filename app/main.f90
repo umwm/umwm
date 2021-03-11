@@ -18,5 +18,6 @@ program umwm
   domain = domain_type(grid_type(config), spectrum_type(config))
 
   print *, domain % spectrum % frequency
+  print *, domain % spectrum % direction
 
 end program umwm

@@ -1,5 +1,6 @@
 module umwm_spectrum
 
+  use iso_fortran_env, only: real64
   use umwm_config, only: config_type
 
   implicit none
@@ -31,15 +32,11 @@ contains
     res % frequency_min = config % frequency_min
     res % frequency_max = config % frequency_max
 
-    !allocate(res % frequency(res % num_frequencies), stat=stat)
-    !if (stat /= 0) error stop 'Error allocating spectrum_type % frequency.'
     res % frequency = frequency_logspace(res % frequency_min, &
                                          res % frequency_max, &
                                          res % num_frequencies)
 
-    allocate(res % direction(res % num_directions), stat=stat)
-    if (stat /= 0) error stop 'Error allocating spectrum_type % direction.'
-    res % direction = 0
+    res % direction = direction(res % num_directions)
 
   end function spectrum_type_cons
 
@@ -58,12 +55,24 @@ contains
     integer :: n
 
     frequency_spacing = (log(frequency_max) - log(frequency_min)) &
-                      / real(num_frequencies - 1)
+                      / (num_frequencies - 1)
 
-    do concurrent(n = 1:num_frequencies)
-      res(n) = exp(log(frequency_min) + (n - 1) * frequency_spacing)
-    end do
+    res = [(exp(log(frequency_min) + (n - 1) * frequency_spacing), &
+            n = 1, num_frequencies)]
 
   end function frequency_logspace
+
+  pure function direction(num_directions) result(res)
+    integer, intent(in) :: num_directions
+    real :: res(num_directions)
+    real, parameter :: PI = 4 * atan(1._real64)
+    real :: directional_spacing
+    integer :: n
+
+    directional_spacing = 2 * PI / num_directions
+
+    res = [((n - 0.5 * (num_directions + 1)) * directional_spacing, n = 1, num_directions)]
+
+  end function direction
 
 end module umwm_spectrum
