@@ -4,4 +4,5 @@ name = "umwm"
 source-dir="staging"
 
 [dependencies]
+datetime = {git="https://github.com/wavebitscientific/datetime-fortran"}
 toml-f = {git="https://github.com/toml-f/toml-f"}

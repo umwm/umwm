@@ -1,6 +1,8 @@
 name = "Blackwater Bay"
 
 [domain]
+start_time = "2021-01-01 00:00:00"
+stop_time = "2021-01-02 00:00:00"
 grid_size_x = 120
 grid_size_y = 80
 

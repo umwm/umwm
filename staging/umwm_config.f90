@@ -1,5 +1,6 @@
 module umwm_config
 
+  use datetime_module, only: datetime, strptime
   use tomlf, only: get_value, toml_parse, toml_table
 
   implicit none
@@ -8,6 +9,8 @@ module umwm_config
   public :: config_type
 
   type :: config_type
+    type(datetime) :: start_time
+    type(datetime) :: stop_time
     character(:), allocatable :: name
     integer :: grid_size_x
     integer :: grid_size_y
@@ -30,6 +33,7 @@ contains
     type(toml_table), allocatable :: table
     type(toml_table), pointer :: domain_table, spectrum_table
     !type(toml_key), allocatable :: keys(:)
+    character(:), allocatable :: start_time_str, stop_time_str
 
     ! If file name is provided we'll use that,
     ! otherwise we default to umwm.toml.
@@ -54,6 +58,8 @@ contains
     ! TODO CHECK len(res % name) > 0
     call get_value(table, 'domain', domain_table)
     call get_value(table, 'spectrum', spectrum_table)
+    call get_value(domain_table, 'start_time', start_time_str)
+    call get_value(domain_table, 'stop_time', stop_time_str)
     call get_value(domain_table, 'grid_size_x', res % grid_size_x)
     ! TODO CHECK 1 < res % grid_size_x
     call get_value(domain_table, 'grid_size_y', res % grid_size_y)
@@ -62,6 +68,10 @@ contains
     call get_value(spectrum_table, 'num_directions', res % num_directions)
     call get_value(spectrum_table, 'frequency_min', res % frequency_min)
     call get_value(spectrum_table, 'frequency_max', res % frequency_max)
+
+    res % start_time = strptime(start_time_str, '%Y-%m-%d %H:%M:%S')
+    res % stop_time = strptime(stop_time_str, '%Y-%m-%d %H:%M:%S')
+    ! TODO CHECK stop_time >= start_time
 
   end function config_type_cons
 
