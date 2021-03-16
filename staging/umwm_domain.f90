@@ -4,7 +4,7 @@ module umwm_domain
   !! Its components are an instance of grid_type, which defines its geographical
   !! grid, and an instance of spectrum_type, which defines its spectral space.
 
-  use datetime_module, only: datetime
+  use datetime_module, only: datetime, timedelta
   use umwm_grid, only: grid_type
   use umwm_spectrum, only: spectrum_type
 
@@ -16,9 +16,13 @@ module umwm_domain
   type :: domain_type
     type(datetime) :: start_time
     type(datetime) :: stop_time
+    type(datetime) :: current_time
     type(grid_type) :: grid
     type(spectrum_type) :: spectrum
     real, allocatable :: variance(:,:,:,:)
+  contains
+    procedure :: run
+    procedure :: step
   end type domain_type
 
   interface domain_type
@@ -36,6 +40,7 @@ contains
 
     res % start_time = start_time
     res % stop_time = stop_time
+    res % current_time = res % start_time
     res % grid = grid
     res % spectrum = spectrum
 
@@ -44,7 +49,23 @@ contains
                             grid % size_x, &
                             grid % size_y), stat=stat)
     if (stat /= 0) error stop 'Error allocating domain % variance.'
+    res % variance = 0
 
   end function domain_type_cons
+
+
+  subroutine run(self)
+    class(domain_type), intent(inout) :: self
+    do while (self % current_time < self % stop_time)
+      print *, self % current_time % strftime('%Y-%m-%d %H:%M:%S')
+      call self % step()
+    end do
+  end subroutine run
+
+
+  subroutine step(self)
+    class(domain_type), intent(inout) :: self
+    self % current_time = self % current_time + timedelta(hours=1)
+  end subroutine step
 
 end module umwm_domain

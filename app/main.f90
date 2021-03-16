@@ -25,4 +25,6 @@ program umwm
   print *, domain % spectrum % frequency
   print *, domain % spectrum % direction
 
+  call domain % run()
+
 end program umwm
