@@ -3,6 +3,13 @@ module umwm_domain
   !! domain_type is the main UMWM derived type.
   !! Its components are an instance of grid_type, which defines its geographical
   !! grid, and an instance of spectrum_type, which defines its spectral space.
+  !!
+  !! +-----------------------+
+  !! | domain                |
+  !! | +------+ +----------+ |
+  !! | | grid | | spectrum | |
+  !! | +------+ +----------+ |
+  !! +-----------------------+
 
   use datetime_module, only: datetime, timedelta
   use umwm_grid, only: grid_type
