@@ -38,7 +38,9 @@ module umwm_domain
 
 contains
 
-  type(domain_type) pure function domain_type_cons(start_time, stop_time, grid, spectrum) result(res)
+  type(domain_type) elemental function domain_type_cons( &
+    start_time, stop_time, grid, spectrum) result(res)
+
     type(datetime), intent(in) :: start_time
     type(datetime), intent(in) :: stop_time
     type(grid_type), intent(in) :: grid
@@ -61,7 +63,7 @@ contains
   end function domain_type_cons
 
 
-  subroutine run(self)
+  impure elemental subroutine run(self)
     class(domain_type), intent(inout) :: self
     do while (self % current_time < self % stop_time)
       print *, self % current_time % strftime('%Y-%m-%d %H:%M:%S')
@@ -70,7 +72,7 @@ contains
   end subroutine run
 
 
-  subroutine step(self)
+  elemental subroutine step(self)
     class(domain_type), intent(inout) :: self
     self % current_time = self % current_time + timedelta(hours=1)
   end subroutine step
