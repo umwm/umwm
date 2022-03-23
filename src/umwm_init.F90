@@ -15,6 +15,10 @@ contains
 
 subroutine environment(option)
 
+#ifdef MPI 
+use umwm_mpi, only: istart_, iend_, ilen_, iistart_, iiend_
+#endif
+
 character(4), intent(in) :: option
 
 if(option == 'init')then
@@ -34,6 +38,11 @@ if(option == 'stop')then
 #if defined(MPI) && !defined(ESMF)
   call mpi_barrier(MPI_COMM_WORLD,ierr) ! wait for all
   call mpi_finalize(ierr)               ! finalize mpi
+#endif
+
+#ifdef MPI
+  deallocate(istart_, iend_, ilen_)
+  deallocate(iistart_, iiend_)
 #endif
 end if
 
@@ -203,12 +212,15 @@ integer,intent(in) :: option
 ! allocate 2-d native arrays:
 if(option==1)then
 #ifdef GEOS
+  allocate(ar_2d(mm,nm))
   allocate(curv(mm,nm))
   allocate(d_2d(mm,nm),dx_2d(mm,nm),dy_2d(mm,nm))
   allocate(dlon(mm,nm),dlat(mm,nm))
   allocate(ii(mm,nm))
   allocate(lat(mm,nm),lon(mm,nm))
+  allocate(x(mm,nm),y(mm,nm))
   allocate(mask(mm,nm))
+  allocate(nproc_out(mm,nm))
 #else
   allocate(ar_2d(mm,nm))
   allocate(curv(mm,nm))
@@ -234,7 +246,6 @@ if(option==1)then
 elseif(option==2)then
 #ifdef GEOS
   allocate(nu_water_(istart:iend))
-  allocate(ii_(imm))
 #endif
 
   ! 1-d arrays:
@@ -422,116 +433,8 @@ real,parameter :: r_earth = 6.371009e6
 real,dimension(:,:),allocatable :: abscoslat,lon_tmp,rotx,roty
 real,dimension(:,:),allocatable :: rlon,rlat
 
-#ifdef GEOS
-  allocate(abscoslat(mm,nm),lon_tmp(mm,nm),rotx(mm,nm),roty(mm,nm))
-  allocate(rlon(mm,nm),rlat(mm,nm))
-
-  ! figure out if longitude field is continuous:
-  if(minval(lon) <- 175 .and. maxval(lon) >175)loniscontinuous = .false.
-
-  ! TODO: verify whether lonIsContinuous is set correctly in GEOS
-  loniscontinuous = .true.
-
-
-  lon_tmp = lon
-
-  ! store original lon array before modifying:
-  if(.not.loniscontinuous)where(lon < 0)lon = lon+360
-
-  do n=1,nm
-    do m=2,mm-1
-      dlon(m,n) = 0.5*(lon(m+1,n)-lon(m-1,n))
-    end do
-  end do
-
-  dlon(1,:)  = 2*dlon(2,:)-dlon(3,:)
-  dlon(mm,:) = 2*dlon(mm-1,:)-dlon(mm-2,:)
-
-  do n=2,nm-1
-    do m=1,mm
-      dlat(m,n) = 0.5*(lat(m,n+1)-lat(m,n-1))
-    end do
-  end do
-  dlat(:,1)  = 2*dlat(:,2)-dlat(:,3)
-  dlat(:,nm) = 2*dlat(:,nm-1)-dlat(:,nm-2)
-
-  abscoslat = abs(cos(dr*lat))
-
-  ! revert to original lon array:
-  lon = lon_tmp
-
-  rlon = lon*twopi/360.
-  rlat = lat*twopi/360.
-
-  do n=1,nm
-    do m=2,mm-1
-      dx_2d(m,n) = r_earth * distance_haversine(0.5*(rlon(m-1,n) + rlon(m  ,n)), &
-                                                0.5*(rlon(m  ,n) + rlon(m+1,n)), &
-                                                0.5*(rlat(m-1,n) + rlat(m  ,n)), &
-                                                0.5*(rlat(m  ,n) + rlat(m+1,n)))
-    end do
-  end do
-
-  ! TODO: this can break reproducibility
-  dx_2d(1,:)  = 2*dx_2d(2,:)-dx_2d(3,:)
-  dx_2d(mm,:) = 2*dx_2d(mm-1,:)-dx_2d(mm-2,:)
-
-  do n=2,nm-1
-    do m=1,mm
-      dy_2d(m,n) = r_earth * distance_haversine(0.5*(rlon(m,n-1) + rlon(m,n  )), &
-                                                0.5*(rlon(m,n  ) + rlon(m,n+1)), &
-                                                0.5*(rlat(m,n-1) + rlat(m,n  )), &
-                                                0.5*(rlat(m,n  ) + rlat(m,n+1)))
-    end do
-  end do
-
-  ! TODO: this can break reproducibility
-  dy_2d(:,1)  = 2*dy_2d(:,2)-dy_2d(:,3)
-  dy_2d(:,nm) = 2*dy_2d(:,nm-1)-dy_2d(:,nm-2)
-
-#if (defined DEBUG) || (0)
-  print *, 'UMWM:advection_init()::dx_2d = ', minval(dx_2d), maxval(dx_2d), dy_2d(1,1), dy_2d(1,nm), dy_2d(mm,1), dy_2d(mm,nm)
-#endif
-
-  ! compute grid rotation for great circle propagation
-  curv = 0
-  do n = 1,nm
-    do m = 2,mm-1
-      curv(m,n) = atan2(sin(rlon(m+1,n)-rlon(m-1,n))*cos(rlat(m+1,n)),&
-                        cos(rlat(m-1,n))*sin(rlat(m+1,n))&
-                       -sin(rlat(m-1,n))*cos(rlat(m+1,n))*cos(rlon(m+1,n)-rlon(m-1,n)))
-    end do
-  end do
-
-  ! TODO: this can break reproducibility
-  ! TODO: doublecheck which one to use with GEOS, and whether 
-  !       this matters in the halo
-#if (0)
-  if(isglobal)then
-    m = 1
-    curv(m,:) = atan2(sin(rlon(m+1,:)-rlon(mm,:))*cos(rlat(m+1,:)),&
-                      cos(rlat(mm,:))*sin(rlat(m+1,:))&
-                     -sin(rlat(mm,:))*cos(rlat(m+1,:))*cos(rlon(m+1,:)-rlon(mm,:)))
-    m = mm
-    curv(m,:) = atan2(sin(rlon(1,:)-rlon(m-1,:))*cos(rlat(1,:)),&
-                      cos(rlat(m-1,:))*sin(rlat(1,:))&
-                     -sin(rlat(m-1,:))*cos(rlat(1,:))*cos(rlon(1,:)-rlon(m-1,:)))
-  else
-    curv(1,:) = curv(2,:)
-    curv(mm,:) = curv(mm-1,:)
-  end if
-#else
-    curv(1,:) = curv(2,:)
-    curv(mm,:) = curv(mm-1,:)
-#endif
-
-  curv = curv-0.5*pi
-
-  deallocate(abscoslat,lon_tmp,rotx,roty,rlon,rlat)
-
-#else
 if(gridfromfile)then
-
+#ifndef GEOS
   stat = nf90_open('input/umwm.gridtopo',nf90_nowrite,ncid)
 
   if(stat/=0)then
@@ -561,7 +464,7 @@ if(gridfromfile)then
   call nc_check(nf90_inq_varid(ncid,'lat',varid))
   call nc_check(nf90_get_var(ncid,varid,lat))
   call nc_check(nf90_close(ncid))
-
+#endif
   allocate(abscoslat(mm,nm),lon_tmp(mm,nm),rotx(mm,nm),roty(mm,nm))
   allocate(rlon(mm,nm),rlat(mm,nm))
 
@@ -675,12 +578,12 @@ else ! use constant value from namelist
 end if
 
 if(topofromfile)then ! read depth field from file
-
+#ifndef GEOS
   call nc_check(nf90_open('input/umwm.gridtopo',nf90_nowrite,ncid))
   call nc_check(nf90_inq_varid(ncid,'z',varid))
   call nc_check(nf90_get_var(ncid,varid,d_2d))
   call nc_check(nf90_close(ncid))
-
+#endif
 else ! use constant value from namelist
 
   d_2d = dpt
@@ -700,7 +603,6 @@ if(nproc == 0)then
 end if
 
 101 format(a,3(f15.2,1x))
-#endif
 
 end subroutine grid
 
@@ -713,41 +615,6 @@ logical :: iterate
 integer :: m, n
 integer :: exm, exn
 integer :: cnt, fillcount
-#ifdef GEOS
-  ! set initial seamask everywhere:
-  mask = 1
-
-#if (0)  
-  where ((dx_2d < 1.0)) 
-      mask = 0
-      dx_2d = 1.0
-  end where
-
-  where ((dy_2d < 1.0))
-      mask = 0
-      dy_2d = 1.0
-  end where
-#endif
-
-  ! set land mask where depth is non-negative, and then
-  ! set depth to dmin:
-  where (d_2d >= 0)
-    mask = 0
-    d_2d = dmin
-  end where
-
-  ! make depths positive and limit to dmin:
-  d_2d = abs(d_2d)
-  where (d_2d < dmin) d_2d = dmin
-
-  ! TODO: this is redunant    
-  where (mask == 0) d_2d = dmin
-
-  ! calculate the upper index for 1-d arrays:
-  im = count(mask==1)
-  imm = mm*nm
-
-#else
 
 ! set masks:
 if(topofromfile)then
@@ -863,7 +730,6 @@ end if
 305 format('umwm: masks: shallowest point:            ',f9.3,' meters')
 306 format('umwm: masks: deepest point:               ',f9.3,' meters')
 
-#endif
 end subroutine masks
 
 
@@ -913,6 +779,24 @@ iiend   = iend
 
 allocate(istart_(0:mpisize-1),iend_(0:mpisize-1),ilen_(0:mpisize-1))
 
+#if (1)
+im_mod = mod(im,mpisize)
+if(im_mod==0)then
+  ilen   = im/mpisize
+  istart = nproc*ilen+1
+  iend   = istart+ilen-1
+else
+  ilen   = floor(float(im)/float(mpisize))
+  istart = nproc*ilen+1
+  iend   = istart+ilen-1
+
+  if (nproc == mpisize-1) then
+    ilen = ilen + im_mod
+    iend = iend + im_mod
+  end if 
+end if
+
+#else
 ! find out what is the length of my part:
 im_mod = mod(im,mpisize)
 if(im_mod==0)then
@@ -940,6 +824,7 @@ else
   istart = istart+im_mod
   iend   = istart+ilen-1
 end if
+#endif
 
 ! Which direction for remapping? (matters only in parallel or global mode)
 if (mm >= nm) then
@@ -949,12 +834,14 @@ else
 end if
 
 if (isglobal) remap_dir = 'v'
+if (isglobal) remap_dir = 'v' !!! just testing:: 'h' -> out of bounds; 'v' -> negative counts
+
 
 ! The code below adjusts the start and end indices of each tile
 ! because currently ESMF DEBlockList accepts only regular rectangular
 ! domains.
 
-#ifdef ESMF
+#if defined(ESMF) && !defined(GEOS)
 if (remap_dir == 'h') then ! row-major remapping
 
   ! adjust ends first:
@@ -1022,7 +909,7 @@ ilen = iend - istart + 1
 call mpi_gather(istart,1,MPI_INTEGER,istart_,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
 call mpi_gather(iend,1,MPI_INTEGER,iend_,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
 call mpi_gather(ilen,1,MPI_INTEGER,ilen_,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
-
+#if (1)
 if(nproc==0)then
 
   write(*,fmt='(a)')'umwm: partition: tiling summary:'
@@ -1039,7 +926,7 @@ if(nproc==0)then
 end if
 
 307 format('| ',i7,' | ',i10,' | ',2(i14,' | '))
-
+#endif
 #endif
 
 end subroutine partition
@@ -1068,20 +955,13 @@ integer, dimension(:), allocatable :: n_exchange_indices
 
 ! in serial mode this does not matter, but we must pick one:
 #ifndef MPI
-#ifdef GEOS
-  remap_dir = 'h'
-#else
   remap_dir = 'v'
-#endif
 #endif
 
 ! first construct (m,n)->(i) transformation:
 ii = 0
 i  = 0
 if(remap_dir == 'h')then ! column-major
-#ifdef GEOS
-  ii_ = 0
-#endif
 
   ! sea points:
   do n=1,nm
@@ -1092,12 +972,6 @@ if(remap_dir == 'h')then ! column-major
         dx(i) = dx_2d(m,n)
         dy(i) = dy_2d(m,n)
         d(i)  = d_2d(m,n)
-#ifdef GEOS
-        ! define a 1D mask with water points in the computational domain (excluding halo)
-        if ((n > 1 .and. n < nm) .and. (m > 1 .and. m < mm)) then 
-            ii_(i) = 1
-        end if
-#endif
       end if
     end do
   end do
@@ -1116,9 +990,6 @@ if(remap_dir == 'h')then ! column-major
   end do
 
 elseif(remap_dir == 'v')then ! row-major
-#ifdef GEOS
-  ii_ = 0
-#endif
 
   ! sea points:
   do m=1,mm
@@ -1129,12 +1000,6 @@ elseif(remap_dir == 'v')then ! row-major
         dx(i) = dx_2d(m,n)
         dy(i) = dy_2d(m,n)
         d(i)  = d_2d(m,n)
-#ifdef GEOS
-        ! define a 1D mask with water points in the computational domain (excluding halo)
-        if ((n > 1 .and. n < nm) .and. (m > 1 .and. m < mm)) then 
-            ii_(i) = 1
-        end if
-#endif
       end if
     end do
   end do
@@ -1184,7 +1049,6 @@ do n=2,nm-1
   end do
 end do
 
-#ifndef GEOS
 ! adjust periodic boundary:
 if(isglobal)then
   do n=2,nm-1
@@ -1201,7 +1065,6 @@ if(isglobal)then
 
   end do
 end if
-#endif
 
 ! true indices:
 ! (is,in,iw,ie will be aliased for land points)
@@ -1211,17 +1074,7 @@ iiw = iw
 iie = ie
 
 ! cell edges in x and y:
-#ifdef GEOS
-  dxn = 0.0
-  dxs = 0.0
-  dye = 0.0
-  dyw = 0.0
-#endif
-
 do i = istart,iend
-#ifdef GEOS
-  if (ii_(i) == 0) cycle
-#endif
   dxn(i) = 0.5*(dx(i)+dx(iin(i)))
   dxs(i) = 0.5*(dx(i)+dx(iis(i)))
   dye(i) = 0.5*(dy(i)+dy(iie(i)))
@@ -1421,7 +1274,7 @@ nproc_out = -1
     end do
   end do
 end if
-
+#if (1)
 if(nproc==0)then
 
   write(*,fmt='(a)')'umwm: remap: tiling with halo summary:'
@@ -1438,7 +1291,7 @@ if(nproc==0)then
 end if
 
 310 format('| ',i7,' | ',i10,' | ',2(i14,' | '))
-
+#endif
 #endif
 
 end subroutine remap
@@ -1543,12 +1396,7 @@ end do
 ! compute wave numbers, phase speeds, and group velocities:
 call dispersion(1e-2)
 
-#ifdef GEOS
-mindelx = min(minval(dx_2d(2:mm-1,2:nm-1),mask(2:mm-1,2:nm-1)==1), &
-              minval(dy_2d(2:mm-1,2:nm-1),mask(2:mm-1,2:nm-1)==1))
-#else
 mindelx = min(minval(dx_2d,mask==1),minval(dy_2d,mask==1))
-#endif
 cgmax   = maxval(cg0(:,istart:iend))
 dtamin  = 0.98*cfllim*mindelx/cgmax
 
@@ -1579,6 +1427,7 @@ do i=istart,iend
 end do
 #endif
 
+#ifndef GEOS
 #ifdef MPI
 
 ! figure out which process will print to screen:
@@ -1605,13 +1454,14 @@ call mpi_bcast(nproc_plot,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
 call mpi_bcast(iip,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
 
 #else
-#ifndef GEOS
+
 iip = ii(xpl,ypl)
+
 #endif
 #endif
 
 #ifndef MPI
-#ifndef GEOS
+
 write(*,fmt=102)
 write(*,*)'initialization summary:'
 write(*,fmt=103)
@@ -1628,7 +1478,7 @@ write(*,fmt=102)
 
 102 format('!',77('='),'!')
 103 format('!',77('-'),'!')
-#endif
+
 #endif
 
 end subroutine init
@@ -1652,9 +1502,7 @@ real :: dk
 real,dimension(istart:iend) :: b
 real,dimension(om,istart:iend) :: f_nd,kd,t
 
-#if defined GEOS && defined DEBUG
 if(nproc==0)write(*,'(a)')'umwm: dispersion: solving for dispersion relationship;'
-#endif
 
 ! non-dimesionalize frequencies, and use deep water limit
 ! as initial guess:
@@ -1692,9 +1540,7 @@ do i=istart,iend
   end do
 end do
 
-#if defined GEOS && defined DEBUG
 if(nproc==0)write(*,'(a)')'umwm: dispersion: dispersion relationship done;'
-#endif
 
 do concurrent (o=1:om, i=istart:iend)
   kd(o,i) = k(o,i) * d(i)
@@ -1760,6 +1606,12 @@ if(nproc<mpisize-1)then ! communicate with process above:
   sendcount = om*(iend-iistart_(nproc+1)+1) ; dest = nproc+1 ; sendtag = nproc
   recvcount = om*(iiend-iend)               ; src  = nproc+1 ; recvtag = src
 
+  if (sendcount < 1 .or. recvcount < 1) then
+      print *, '***** L1589', nproc, sendcount, recvcount, istart, iend, iistart, iiend, iistart_(nproc+1)
+!            ----------------------------------------------------------------------------------------------
+!                ***** L1589   0     -1632662    6105       1       116   -163     281    44243
+!                ***** L1589   382    5994      -1632662    44062   44176  43900   50     44015
+  end if
   call mpi_sendrecv(cp0(:,iistart_(nproc+1):iend),sendcount,&
                     MPI_REAL,dest,sendtag,                  &
                     cp0(:,iend+1:iiend),recvcount,          &
@@ -1773,6 +1625,9 @@ if(nproc>0)then ! communicate with process below:
   sendcount = om*(iiend_(nproc-1)-istart+1) ; dest = nproc-1 ; sendtag = nproc
   recvcount = om*(istart-iistart)           ; src  = nproc-1 ; recvtag = src
 
+  if (sendcount < 1 .or. recvcount < 1) then
+  !    print *, '***** L1605', nproc, sendcount, recvcount, istart, iend, iistart, iiend, iistart_(nproc+1) 
+  end if
   call mpi_sendrecv(cp0(:,istart:iiend_(nproc-1)),sendcount,&
                     MPI_REAL,dest,sendtag,                  &
                     cp0(:,iistart:istart-1),recvcount,      &
@@ -1788,6 +1643,9 @@ if(nproc<mpisize-1)then ! communicate with process above:
   sendcount = om*(iend-iistart_(nproc+1)+1) ; dest = nproc+1 ; sendtag = nproc
   recvcount = om*(iiend-iend)               ; src  = nproc+1 ; recvtag = src
 
+  if (sendcount < 1 .or. recvcount < 1) then
+  !    print *, '***** L1623', nproc, sendcount, recvcount, istart, iend, iistart, iiend, iistart_(nproc+1) 
+  end if
   call mpi_sendrecv(cg0(:,iistart_(nproc+1):iend),sendcount,&
                     MPI_REAL,dest,sendtag,                  &
                     cg0(:,iend+1:iiend),recvcount,          &
@@ -1801,6 +1659,9 @@ if(nproc>0)then ! communicate with process below:
   sendcount = om*(iiend_(nproc-1)-istart+1) ; dest = nproc-1 ; sendtag = nproc
   recvcount = om*(istart-iistart)           ; src  = nproc-1 ; recvtag = src
 
+  if (sendcount < 1 .or. recvcount < 1) then
+  !    print *, '***** L1639', nproc, sendcount, recvcount, istart, iend, iistart, iiend, iistart_(nproc+1) 
+  end if  
   call mpi_sendrecv(cg0(:,istart:iiend_(nproc-1)),sendcount,&
                     MPI_REAL,dest,sendtag,                  &
                     cg0(:,iistart:istart-1),recvcount,      &
@@ -1819,6 +1680,9 @@ if(isglobal)then
     sendcount = om*first_col_len ; dest = mpisize-1 ; sendtag = nproc
     recvcount = om*last_col_len  ; src  = mpisize-1 ; recvtag = src
 
+    if (sendcount < 1 .or. recvcount < 1) then
+    !  print *, '***** L1660', nproc, sendcount, recvcount, istart, iend, iistart, iiend, iistart_(nproc+1) 
+    end if
     call mpi_sendrecv(cp0(:,istart:(istart+first_col_len-1)),sendcount,&
                       MPI_REAL,dest,sendtag,                           &
                       cp0(:,iistart:istart-1),recvcount,               &
@@ -1832,6 +1696,9 @@ if(isglobal)then
     sendcount = om*last_col_len  ; dest = 0 ; sendtag = nproc
     recvcount = om*first_col_len ; src  = 0 ; recvtag = src
 
+    if (sendcount < 1 .or. recvcount < 1) then
+    !  print *, '***** L1676', nproc, sendcount, recvcount, istart, iend, iistart, iiend, iistart_(nproc+1) 
+    end if
     call mpi_sendrecv(cp0(:,(iend-last_col_len+1):iend),sendcount,&
                       MPI_REAL,dest,sendtag,                      &
                       cp0(:,iend+1:iiend),recvcount,              &
@@ -1847,6 +1714,9 @@ if(isglobal)then
     sendcount = om*first_col_len ; dest = mpisize-1 ; sendtag = nproc
     recvcount = om*last_col_len  ; src  = mpisize-1 ; recvtag = src
 
+    if (sendcount < 1 .or. recvcount < 1) then
+    !  print *, '***** L1694', nproc, sendcount, recvcount, istart, iend, iistart, iiend, iistart_(nproc+1) 
+    end if
     call mpi_sendrecv(cg0(:,istart:(istart+first_col_len-1)),sendcount,&
                       MPI_REAL,dest,sendtag,                           &
                       cg0(:,iistart:istart-1),recvcount,               &
@@ -1860,6 +1730,9 @@ if(isglobal)then
     sendcount = om*last_col_len  ; dest = 0 ; sendtag = nproc
     recvcount = om*first_col_len ; src  = 0 ; recvtag = src
 
+    if (sendcount < 1 .or. recvcount < 1) then
+    !  print *, '***** L1710', nproc, sendcount, recvcount, istart, iend, iistart, iiend, iistart_(nproc+1) 
+    end if
     call mpi_sendrecv(cg0(:,(iend-last_col_len+1):iend),sendcount,&
                       MPI_REAL,dest,sendtag,                      &
                       cg0(:,iend+1:iiend),recvcount,              &

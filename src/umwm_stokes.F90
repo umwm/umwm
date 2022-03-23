@@ -57,8 +57,11 @@ contains
             do o = 1, om
 
               arg(o,i,l) = 2 * k(o,i) * (depth(l) + d(i))
-
+#ifndef GEOS
               if(abs(arg(o,i,l)) > 50 .or. kd(o,i) > 50) then
+#else
+              if(abs(arg(o,i,l)) > 40 .or. kd(o,i) > 40) then
+#endif
                 ! hyperbolic trig. functions would overflow;
                 ! use deep water approximation instead
                 util(o,i,l) = twopi * f(o) * 2 * k(o,i)**2 &

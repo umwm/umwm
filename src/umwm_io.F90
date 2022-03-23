@@ -1,15 +1,16 @@
 module umwm_io
 ! Provides input/output routines for the wave model
 use umwm_module
+#ifndef GEOS
 use netcdf
 
 logical :: readfile
 logical :: winds,currents,air_density,water_density,seaice
-
+#endif
 contains
 
 
-
+#ifndef GEOS
 subroutine input_nc(timestr)
 ! Reads input data files for atmospheric and oceanic fields.
 use umwm_util, only: remap_mn2i
@@ -847,7 +848,7 @@ if(nproc == 0)then
 end if
 
 end subroutine output_grid_nc
-
+#endif
 
 subroutine gatherfield(field, field_mn)
 ! This subroutine gathers a field on root processor 
@@ -890,13 +891,17 @@ end if
 #endif
 
 if(nproc == 0)then
+  
+  print *, '**** UMWM::gatherfield ', minval(field(istart:iend)), maxval(field(istart:iend))  
+
   field_ii(istart:iend) = field(istart:iend)
   field_mn = remap_i2mn(field_ii)
 end if
 
+call mpi_barrier(MPI_COMM_WORLD,ierr)
 end subroutine gatherfield
 
-
+#ifndef GEOS
 subroutine nc_check(stat)
 ! Checks for netcdf errors and if any, print and abort.
 
@@ -909,5 +914,5 @@ if(stat /= nf90_noerr)then
 end if
 
 end subroutine nc_check
-
+#endif
 end module umwm_io

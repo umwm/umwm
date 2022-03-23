@@ -7,7 +7,7 @@ module umwm_advection
   use mpi
 #endif
   use umwm_module
-#ifndef GEOS
+#ifndef ESMF
   use umwm_io, only: currents
 #endif
 
@@ -30,9 +30,6 @@ contains
     flux = 0
 
     do concurrent(i = istart:iend)
-#ifdef GEOS
-      if (ii_(i) == 0) cycle
-#endif
       do concurrent(o = 1:oc(i), p = 1:pm)
 
         !  double group velocity at east, west, north, south cell edges
@@ -65,9 +62,7 @@ contains
     if (.not. zerocurrents) then ! advect wave energy by currents
 
       do concurrent(i = istart:iend)
-#ifdef GEOS
-        if (ii_(i) == 0) cycle
-#endif
+
         ! x-direction
         feup = (uc(i) + uc(iie(i)) + abs(uc(i) + uc(iie(i)))) * dye(i)
         fedn = (uc(i) + uc(iie(i)) - abs(uc(i) + uc(iie(i)))) * dye(i)
@@ -94,9 +89,6 @@ contains
 
     ! integrate in time
     do concurrent(i = istart:iend)
-#ifdef GEOS
-      if (ii_(i) == 0) cycle
-#endif
       do concurrent(o = 1:oc(i), p = 1:pm)
           ef(o,p,i) = ef(o,p,i) - 0.25 * dta * flux(o,p,i) * oneovar(i)
 
@@ -121,7 +113,7 @@ contains
 
     real :: flux(om,pm,istart:iend)
 
-#if defined ESMF || defined GEOS
+#ifdef ESMF
     ! always compute in coupled mode:
     compute_rotation_tendency = .true.
 #else
@@ -129,19 +121,11 @@ contains
     compute_rotation_tendency = currents .or. first
 #endif
 
-#ifdef GEOS
-   !!! TODO: just to make things work, needs to be revisited!
-   dts = dta
-#endif
-
     if (compute_rotation_tendency) then
 
       ! compute rotation
       flux = 0
       do concurrent(i = istart:iend)
-#ifdef GEOS
-        if (ii_(i) == 0) cycle
-#endif
         do concurrent(o = 1:oc(i), p = 1:pm)
           flux(o,p,i) = 0.5 * (((cp0(o,ie(i)) - cp0(o,iw(i))) * sth(p) &
                                + vc(iie(i)) - vc(iiw(i))) * oneovdx(i) &
@@ -154,9 +138,6 @@ contains
       rotl = 0
       rotr = 0
       do concurrent(i = istart:iend)
-#ifdef GEOS
-        if (ii_(i) == 0) cycle
-#endif
         do concurrent(o = 1:oc(i), p = 1:pm)
           rotl(o,p,i) = 0.5 * (flux(o,p,i) + flux(o,pl(p),i))
           rotr(o,p,i) = 0.5 * (flux(o,p,i) + flux(o,pr(p),i))
@@ -180,9 +161,6 @@ contains
 
     flux = 0
     do concurrent(i = istart:iend)
-#ifdef GEOS
-      if (ii_(i) == 0) cycle
-#endif
       do concurrent(o = 1:oc(i), p = 1:pm)
 
         ! compute tendencies

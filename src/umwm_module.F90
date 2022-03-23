@@ -113,7 +113,7 @@ integer,dimension(:),allocatable :: iiw,iie,iis,iin
 integer,dimension(:),allocatable :: i_exchange_indices
 
 ! indices m and n as functions of i
-integer,dimension(:),allocatable :: mi,ni,ii_
+integer,dimension(:),allocatable :: mi,ni
 
 ! cut-off frequency index (maximum prognostic)
 integer,dimension(:),allocatable :: oc
@@ -131,11 +131,14 @@ real,dimension(:,:),allocatable :: cth_curv,sth_curv
 
 integer,dimension(:,:),allocatable :: ii
 integer,dimension(:,:),allocatable :: mask
+integer,dimension(:,:),allocatable :: nproc_out
 
 ! 2-dimensional, unrolled arrays:
+real,dimension(:,:),allocatable :: ar_2d
 real,dimension(:,:),allocatable :: curv
 real,dimension(:,:),allocatable :: d_2d,dlon,dlat,dx_2d,dy_2d
 real,dimension(:,:),allocatable :: lat,lon
+real,dimension(:,:),allocatable :: x,y
 
 real,dimension(:),allocatable :: ar,cd,d,dx,dy,dwd,dwl,dwp,fcutoff,mwf,pwf
 real,dimension(:),allocatable :: dxn,dxs,dyw,dye

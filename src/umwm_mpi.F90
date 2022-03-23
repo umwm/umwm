@@ -106,7 +106,7 @@ contains
   subroutine gather_array_1d(srcarray, tgtarray)
     ! Gathers an array of shape (im) to root processor.
     ! Non-blocking implementation.
-
+#ifndef GEOS
     real, intent(in) :: srcarray(istart:iend)
     real, intent(out) :: tgtarray(im)
 
@@ -128,7 +128,28 @@ contains
       call mpi_isend(srcarray(istart:iend), ilen,&
                      MPI_REAL, 0, nproc, MPI_COMM_WORLD, requests(nproc), ierr)
     end if
+#else
+    real, intent( in) :: srcarray(istart:iend)
+    real, intent(out) :: tgtarray(im)
 
+    integer :: nn
+
+    integer, dimension(0:mpisize) :: displs
+    integer, dimension(0:mpisize) :: counts
+
+    counts = 0
+    displs = 0
+    
+    if (nproc == 0) then
+      do nn = 0, mpisize-1
+        counts(nn)   = (iend_(nn) - istart_(nn)) + 1
+        displs(nn+1) = displs(nn) + counts(nn)
+      end do
+    end if
+
+    call mpi_gatherv(srcarray, (iend - istart) + 1, MPI_REAL, &
+                     tgtarray, counts, displs, MPI_REAL, 0, MPI_COMM_WORLD, ierr)
+#endif
   end subroutine gather_array_1d
 
 

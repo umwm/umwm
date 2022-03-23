@@ -100,12 +100,6 @@ contains
 
     dummy = (1 + mss_fac * dummy)**2
 
-#if defined GEOS && defined DEBUG
-if (any(e(:,:,istart:iend) < 0)) then 
-    print *, 'DEBUG:UMWM:sds_d12()  e, k4 = ', minval(e(:,:,istart:iend)), maxval(e(:,:,istart:iend)),minval(k4), maxval(k4)
-endif
-#endif
-
     do concurrent(o = 1:om, p = 1:pm, i = istart:iend)
       sds(o,p,i) = twopisds_fac * f(o) * dummy(o,p,i) * (e(o,p,i) * k4(o,i))**sds_power
     end do
@@ -128,7 +122,7 @@ endif
     real :: ht_
   
     sice = 0.0
-
+#if (0)
     do i = istart, iend
 
       if (fice(i) > fice_lth) then
@@ -157,7 +151,7 @@ endif
       end if
  
     end do
-
+#endif
   end subroutine s_ice
 
   
