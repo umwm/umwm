@@ -14,6 +14,7 @@ module umwm_domain
   use datetime_module, only: datetime, timedelta
   use umwm_grid, only: grid_type
   use umwm_spectrum, only: spectrum_type
+  use umwm_state, only: state_type
 
   implicit none
 
@@ -26,7 +27,7 @@ module umwm_domain
     type(datetime) :: current_time
     type(grid_type) :: grid
     type(spectrum_type) :: spectrum
-    real, allocatable :: variance(:,:,:,:)
+    type(state_type) :: state
   contains
     procedure :: run
     procedure :: step
@@ -52,13 +53,7 @@ contains
     res % current_time = res % start_time
     res % grid = grid
     res % spectrum = spectrum
-
-    allocate(res % variance(spectrum % num_frequencies, &
-                            spectrum % num_directions, &
-                            grid % size_x, &
-                            grid % size_y), stat=stat)
-    if (stat /= 0) error stop 'Error allocating domain % variance.'
-    res % variance = 0
+    res % state = state_type(grid, spectrum)
 
   end function domain_type_cons
 
