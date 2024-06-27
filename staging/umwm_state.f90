@@ -10,6 +10,7 @@ module umwm_state
 
   type :: state_type
     real, allocatable :: action(:,:,:,:)
+    real, allocatable :: wavenumber(:,:,:,:)
   end type state_type
 
   interface state_type
@@ -28,8 +29,15 @@ contains
                           spectrum % num_directions, &
                           grid % size_x, &
                           grid % size_y), stat=stat)
-    if (stat /= 0) error stop 'Error allocating domain % action.'
+    if (stat /= 0) error stop 'Error allocating domain % state % action.'
     res % action = 0
+
+    allocate(res % wavenumber(spectrum % num_frequencies, &
+                              spectrum % num_directions, &
+                              grid % size_x, &
+                              grid % size_y), stat=stat)
+    if (stat /= 0) error stop 'Error allocating domain % state % wavenumber.'
+    res % wavenumber = 0
 
   end function state_type_cons
 
