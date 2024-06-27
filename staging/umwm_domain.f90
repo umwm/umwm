@@ -12,6 +12,7 @@ module umwm_domain
   !! +-----------------------+
 
   use datetime_module, only: datetime, timedelta
+  use umwm_clock, only: clock_type
   use umwm_grid, only: grid_type
   use umwm_spectrum, only: spectrum_type
   use umwm_state, only: state_type
@@ -22,9 +23,8 @@ module umwm_domain
   public :: domain_type
 
   type :: domain_type
-    type(datetime) :: start_time
-    type(datetime) :: stop_time
     type(datetime) :: current_time
+    type(clock_type) :: clock
     type(grid_type) :: grid
     type(spectrum_type) :: spectrum
     type(state_type) :: state
@@ -40,17 +40,15 @@ module umwm_domain
 contains
 
   type(domain_type) elemental function domain_type_cons( &
-    start_time, stop_time, grid, spectrum) result(res)
+    clock, grid, spectrum &
+  ) result(res)
 
-    type(datetime), intent(in) :: start_time
-    type(datetime), intent(in) :: stop_time
+    type(clock_type), intent(in) :: clock
     type(grid_type), intent(in) :: grid
     type(spectrum_type), intent(in) :: spectrum
-    integer :: stat
 
-    res % start_time = start_time
-    res % stop_time = stop_time
-    res % current_time = res % start_time
+    res % clock = clock
+    res % current_time = clock % start
     res % grid = grid
     res % spectrum = spectrum
     res % state = state_type(grid, spectrum)
@@ -60,7 +58,7 @@ contains
 
   impure elemental subroutine run(self)
     class(domain_type), intent(inout) :: self
-    do while (self % current_time < self % stop_time)
+    do while (self % current_time < self % clock % stop)
       print *, self % current_time % strftime('%Y-%m-%d %H:%M:%S')
       call self % step()
     end do

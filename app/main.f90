@@ -1,5 +1,6 @@
 program umwm
   
+  use umwm_clock, only: clock_type
   use umwm_config, only: config_type
   use umwm_domain, only: domain_type
   use umwm_grid, only: grid_type
@@ -15,13 +16,12 @@ program umwm
   print *, config % grid_size_x
   print *, config % grid_size_y
 
-  domain = domain_type(config % start_time, &
-                       config % stop_time, &
+  domain = domain_type(clock_type(config % start_time, config % stop_time), &
                        grid_type(config), &
                        spectrum_type(config))
 
-  print *, domain % start_time % strftime('%Y-%m-%d %H:%M:%S')
-  print *, domain % stop_time % strftime('%Y-%m-%d %H:%M:%S')
+  print *, domain % clock % start % strftime('%Y-%m-%d %H:%M:%S')
+  print *, domain % clock % stop % strftime('%Y-%m-%d %H:%M:%S')
   print *, domain % spectrum % frequency
   print *, domain % spectrum % direction
 

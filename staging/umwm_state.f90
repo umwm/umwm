@@ -10,7 +10,6 @@ module umwm_state
 
   type :: state_type
     real, allocatable :: variance(:,:,:,:)
-  contains
   end type state_type
 
   interface state_type
