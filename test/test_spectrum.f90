@@ -38,6 +38,16 @@ program test_spectrum
     ok = .false.
   end if
 
+  if (.not. minval(spectrum % frequency) == frequency_min) then
+    write(stderr, '(a)') 'spectrum % frequency_min is expected.. failed'
+    ok = .false.
+  end if
+
+  if (.not. maxval(spectrum % frequency) == frequency_max) then
+    write(stderr, '(a)') 'spectrum % frequency_max is expected.. failed'
+    ok = .false.
+  end if
+
   if (ok) then
     write(stdout, '(a)') 'test_spectrum: All tests passed.'
   else
