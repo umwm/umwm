@@ -1,0 +1,13 @@
+name = "Blackwater Bay"
+
+[domain]
+start_time = "2024-01-01 00:00:00"
+stop_time = "2024-01-02 00:00:00"
+grid_size_x = 80
+grid_size_y = 60
+
+[spectrum]
+num_frequencies = 50
+num_directions = 36
+frequency_min = 0.04
+frequency_max = 2

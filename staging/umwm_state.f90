@@ -19,7 +19,7 @@ module umwm_state
 
 contains
 
-  type(state_type) elemental function state_type_cons(grid, spectrum) result(res)
+  elemental type(state_type) function state_type_cons(grid, spectrum) result(res)
 
     type(grid_type), intent(in) :: grid
     type(spectrum_type), intent(in) :: spectrum

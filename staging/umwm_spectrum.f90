@@ -23,14 +23,20 @@ module umwm_spectrum
 
 contains
 
-  type(spectrum_type) pure function spectrum_type_cons(config) result(res)
-    type(config_type), intent(in) :: config
+  pure type(spectrum_type) function spectrum_type_cons( &
+    num_frequencies, num_directions, frequency_min, frequency_max &
+  ) result(res)
+
+    integer, intent(in) :: num_frequencies
+    integer, intent(in) :: num_directions
+    real, intent(in) :: frequency_min
+    real, intent(in) :: frequency_max
     integer :: stat
 
-    res % num_frequencies = config % num_frequencies
-    res % num_directions = config % num_directions
-    res % frequency_min = config % frequency_min
-    res % frequency_max = config % frequency_max
+    res % num_frequencies = num_frequencies
+    res % num_directions = num_directions
+    res % frequency_min = frequency_min
+    res % frequency_max = frequency_max
 
     res % frequency = frequency_logspace(res % frequency_min, &
                                          res % frequency_max, &
@@ -61,6 +67,7 @@ contains
             n = 1, num_frequencies)]
 
   end function frequency_logspace
+
 
   pure function direction(num_directions) result(res)
     integer, intent(in) :: num_directions

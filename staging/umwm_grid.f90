@@ -1,6 +1,5 @@
 module umwm_grid
 
-  use umwm_config, only: config_type
   use umwm_parallel, only: tile_indices
 
   implicit none
@@ -22,13 +21,13 @@ module umwm_grid
 
 contains
 
-  pure type(grid_type) function grid_type_cons(config) result(res)
-    type(config_type), intent(in) :: config
+  pure type(grid_type) function grid_type_cons(grid_size_x, grid_size_y) result(res)
+    integer, intent(in) :: grid_size_x, grid_size_y
     integer :: stat
     integer :: tile_start_end(4) ! [is, ie, js, je]
 
-    res % size_x = config % grid_size_x
-    res % size_y = config % grid_size_y
+    res % size_x = grid_size_x
+    res % size_y = grid_size_y
 
     allocate(res % lon(res % size_x, res % size_y), stat=stat)
     res % lon = 0

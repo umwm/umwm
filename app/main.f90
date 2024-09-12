@@ -9,21 +9,25 @@ program umwm
   implicit none
 
   type(config_type) :: config
+  type(clock_type) :: clock
+  type(grid_type) :: grid
+  type(spectrum_type) :: spectrum
   type(domain_type) :: domain
 
   config = config_type()
-  print *, config % name
-  print *, config % grid_size_x
-  print *, config % grid_size_y
 
-  domain = domain_type(clock_type(config % start_time, config % stop_time), &
-                       grid_type(config), &
-                       spectrum_type(config))
+  clock = clock_type(config % start_time, config % stop_time)
 
-  print *, domain % clock % start % strftime('%Y-%m-%d %H:%M:%S')
-  print *, domain % clock % stop % strftime('%Y-%m-%d %H:%M:%S')
-  print *, domain % spectrum % frequency
-  print *, domain % spectrum % direction
+  grid = grid_type(config % grid_size_x, config % grid_size_y)
+
+  spectrum = spectrum_type( &
+    config % num_frequencies, &
+    config % num_directions, &
+    config % frequency_min, &
+    config % frequency_max &
+  )
+
+  domain = domain_type(clock, grid, spectrum)
 
   call domain % run()
 

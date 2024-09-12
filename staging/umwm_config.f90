@@ -1,5 +1,6 @@
 module umwm_config
 
+  use, intrinsic :: iso_fortran_env, only: stdout => output_unit, stderr => error_unit
   use datetime_module, only: datetime, strptime
   use tomlf, only: get_value, toml_parse, toml_table
 
@@ -34,6 +35,7 @@ contains
     type(toml_table), pointer :: domain_table, spectrum_table
     !type(toml_key), allocatable :: keys(:)
     character(:), allocatable :: start_time_str, stop_time_str
+    logical :: ok = .true.
 
     ! If file name is provided we'll use that,
     ! otherwise we default to umwm.toml.
@@ -44,26 +46,17 @@ contains
     end if
 
     ! Open a file in read-only mode. It must already exist.
-    open(newunit=unit, file='umwm.toml', status='old', action='read')
+    open(newunit=unit, file=fn, status='old', action='read')
     call toml_parse(table, unit)
     close(unit)
 
-    !print *, 'Keys in umwm.toml:'
-    !call table % get_keys(keys)
-    !do n = 1, size(keys)
-    !  print *, n, keys(n) % key
-    !end do
-
     call get_value(table, 'name', res % name)
-    ! TODO CHECK len(res % name) > 0
     call get_value(table, 'domain', domain_table)
     call get_value(table, 'spectrum', spectrum_table)
     call get_value(domain_table, 'start_time', start_time_str)
     call get_value(domain_table, 'stop_time', stop_time_str)
     call get_value(domain_table, 'grid_size_x', res % grid_size_x)
-    ! TODO CHECK 1 < res % grid_size_x
     call get_value(domain_table, 'grid_size_y', res % grid_size_y)
-    ! TODO CHECK 1 < res % grid_size_y
     call get_value(spectrum_table, 'num_frequencies', res % num_frequencies)
     call get_value(spectrum_table, 'num_directions', res % num_directions)
     call get_value(spectrum_table, 'frequency_min', res % frequency_min)
@@ -71,7 +64,43 @@ contains
 
     res % start_time = strptime(start_time_str, '%Y-%m-%d %H:%M:%S')
     res % stop_time = strptime(stop_time_str, '%Y-%m-%d %H:%M:%S')
-    ! TODO CHECK stop_time >= start_time
+
+    if (len(res % name) == 0) then
+      ok = .false.
+      write(stderr, '(a)') 'Error: Lenght of name in ' // fn // ' must be > 0.'
+    end if
+
+    if (res % stop_time < res % start_time) then
+      ok = .false.
+      write(stderr, '(a)') 'Error: stop_time in ' // fn // ' must be >= start_time.'
+    end if
+
+    if (res % grid_size_x < 1) then
+      ok = .false.
+      write(stderr, '(a)') 'Error: grid_size_x in ' // fn // ' must be > 0.'
+    end if
+
+    if (res % grid_size_x < 1) then
+      ok = .false.
+      write(stderr, '(a)') 'Error: grid_size_y in ' // fn // ' must be > 0.'
+    end if
+
+    if (res % num_frequencies < 1) then
+      ok = .false.
+      write(stderr, '(a)') 'Error: num_frequencies in ' // fn // ' must be > 0.'
+    end if
+
+    if (res % num_directions < 1) then
+      ok = .false.
+      write(stderr, '(a)') 'Error: num_directions in ' // fn // ' must be > 0.'
+    end if
+
+    if (res % frequency_min > res % frequency_max) then
+      ok = .false.
+      write(stderr, '(a)') 'Error: frequency_min in ' // fn // ' must be <= frequency_max.'
+    end if
+
+    if (.not. ok) error stop 1
 
   end function config_type_cons
 
