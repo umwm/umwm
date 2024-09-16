@@ -30,6 +30,11 @@ program test_state
 
   state = state_type(grid, spectrum)
   
+  if (.not. allocated(state % depth)) then
+    write(stderr, '(a)') 'state % depth is allocated.. failed'
+    ok = .false.
+  end if
+
   if (.not. allocated(state % variance)) then
     write(stderr, '(a)') 'state % variance is allocated.. failed'
     ok = .false.

@@ -9,6 +9,7 @@ module umwm_state
   public :: state_type
 
   type :: state_type
+    real, allocatable :: depth(:,:) ! Mean water depth; may vary in time.
     real, allocatable :: variance(:,:,:,:)
     real, allocatable :: wavenumber(:,:,:,:)
   end type state_type
@@ -24,6 +25,10 @@ contains
     type(grid_type), intent(in) :: grid
     type(spectrum_type), intent(in) :: spectrum
     integer :: stat
+   
+    allocate(res % depth(grid % size_x, grid % size_y), stat=stat)
+    if (stat /= 0) error stop 'Error allocating domain % state % action.'
+    res % depth = 100 ! FIXME load from file, CLI, or config file
 
     allocate(res % variance(spectrum % num_frequencies, &
                             spectrum % num_directions, &
