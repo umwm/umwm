@@ -50,8 +50,18 @@ program test_state
     ok = .false.
   end if
 
-  if (.not. all(shape(state % wavenumber) == [num_frequencies, num_directions, grid % size_x, grid % size_y])) then
+  if (.not. all(shape(state % wavenumber) == [num_frequencies, grid % size_x, grid % size_y])) then
     write(stderr, '(a)') 'state % wavenumber has expected shape.. failed'
+    ok = .false.
+  end if
+
+  if (.not. all(state % wavenumber == state % wavenumber)) then
+    write(stderr, '(a)') 'All state % wavenumber values are finite.. failed'
+    ok = .false.
+  end if
+
+  if (.not. all(state % wavenumber > 0)) then
+    write(stderr, '(a)') 'All state % wavenumber values are positive.. failed'
     ok = .false.
   end if
 
