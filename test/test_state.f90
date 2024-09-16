@@ -30,8 +30,8 @@ program test_state
 
   state = state_type(grid, spectrum)
   
-  if (.not. allocated(state % action)) then
-    write(stderr, '(a)') 'state % action is allocated.. failed'
+  if (.not. allocated(state % variance)) then
+    write(stderr, '(a)') 'state % variance is allocated.. failed'
     ok = .false.
   end if
 
@@ -40,8 +40,8 @@ program test_state
     ok = .false.
   end if
 
-  if (.not. all(shape(state % action) == [num_frequencies, num_directions, grid % size_x, grid % size_y])) then
-    write(stderr, '(a)') 'state % action has expected shape.. failed'
+  if (.not. all(shape(state % variance) == [num_frequencies, num_directions, grid % size_x, grid % size_y])) then
+    write(stderr, '(a)') 'state % variance has expected shape.. failed'
     ok = .false.
   end if
 

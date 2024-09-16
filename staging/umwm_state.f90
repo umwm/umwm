@@ -9,7 +9,7 @@ module umwm_state
   public :: state_type
 
   type :: state_type
-    real, allocatable :: action(:,:,:,:)
+    real, allocatable :: variance(:,:,:,:)
     real, allocatable :: wavenumber(:,:,:,:)
   end type state_type
 
@@ -25,12 +25,12 @@ contains
     type(spectrum_type), intent(in) :: spectrum
     integer :: stat
 
-    allocate(res % action(spectrum % num_frequencies, &
-                          spectrum % num_directions, &
-                          grid % size_x, &
-                          grid % size_y), stat=stat)
+    allocate(res % variance(spectrum % num_frequencies, &
+                            spectrum % num_directions, &
+                            grid % size_x, &
+                            grid % size_y), stat=stat)
     if (stat /= 0) error stop 'Error allocating domain % state % action.'
-    res % action = 0
+    res % variance = 0
 
     allocate(res % wavenumber(spectrum % num_frequencies, &
                               spectrum % num_directions, &
