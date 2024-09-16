@@ -3,7 +3,7 @@ module umwm_dispersion
   implicit none
 
   private
-  public :: wavenumber
+  public :: frequency, wavenumber
 
 contains
 
@@ -21,7 +21,8 @@ contains
     real, intent(in) :: surface_tension
 
     real :: dk, b, frequency_nondim, tanhk
-    real, parameter :: eps = 1e-5
+    integer, parameter :: max_iter = 100
+    real, parameter :: eps = 1e-6
     integer :: counter
 
     real, parameter :: twopi = 2 * acos(-1.)
@@ -38,13 +39,34 @@ contains
         / (3 * b * k**2 * tanhk + tanhk + k * (1 + b * k**2) * (1 - tanhk**2))
       k = k - dk
 
-      if (abs(dk) < eps .or. counter > 100) exit
-      counter = counter+1
+      if (abs(dk) < eps .or. counter > max_iter) exit
+      counter = counter + 1
 
     end do
 
     k = k / depth
 
   end function wavenumber
+
+
+  elemental real function frequency( &
+    wavenumber, depth, water_density, gravity, surface_tension &
+  )
+
+    ! Return the (non-angular) frequency using the linear water wave dispersion
+    ! relationship.
+
+    real, intent(in) :: wavenumber
+    real, intent(in) :: depth
+    real, intent(in) :: water_density
+    real, intent(in) :: gravity
+    real, intent(in) :: surface_tension
+
+    real, parameter :: twopi = 2 * acos(-1.)
+
+    frequency = sqrt(gravity * wavenumber + surface_tension * wavenumber**3 &
+      / (water_density * depth)) / twopi
+
+  end function frequency
 
 end module umwm_dispersion
