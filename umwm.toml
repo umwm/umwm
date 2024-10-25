@@ -3,6 +3,7 @@ name = "Blackwater Bay"
 [domain]
 start_time = "2021-01-01 00:00:00"
 stop_time = "2021-01-02 00:00:00"
+output_interval_seconds = 3600
 grid_size_x = 120
 grid_size_y = 80
 
@@ -11,3 +12,6 @@ num_frequencies = 37
 num_directions = 36
 frequency_min = 0.0313
 frequency_max = 2.0
+
+[forcing]
+wind_speed = 10

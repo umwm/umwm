@@ -1,7 +1,7 @@
 module umwm_config
 
   use, intrinsic :: iso_fortran_env, only: stdout => output_unit, stderr => error_unit
-  use datetime_module, only: datetime, strptime
+  use datetime_module, only: datetime, strptime, timedelta
   use tomlf, only: get_value, toml_parse, toml_table
 
   implicit none
@@ -12,6 +12,7 @@ module umwm_config
   type :: config_type
     type(datetime) :: start_time
     type(datetime) :: stop_time
+    type(timedelta) :: interval
     character(:), allocatable :: name
     integer :: grid_size_x
     integer :: grid_size_y
@@ -35,6 +36,7 @@ contains
     type(toml_table), pointer :: domain_table, spectrum_table
     !type(toml_key), allocatable :: keys(:)
     character(:), allocatable :: start_time_str, stop_time_str
+    integer :: output_interval_seconds
     logical :: ok = .true.
 
     ! If file name is provided we'll use that,
@@ -55,6 +57,7 @@ contains
     call get_value(table, 'spectrum', spectrum_table)
     call get_value(domain_table, 'start_time', start_time_str)
     call get_value(domain_table, 'stop_time', stop_time_str)
+    call get_value(domain_table, 'output_interval_seconds', output_interval_seconds)
     call get_value(domain_table, 'grid_size_x', res % grid_size_x)
     call get_value(domain_table, 'grid_size_y', res % grid_size_y)
     call get_value(spectrum_table, 'num_frequencies', res % num_frequencies)
@@ -64,6 +67,7 @@ contains
 
     res % start_time = strptime(start_time_str, '%Y-%m-%d %H:%M:%S')
     res % stop_time = strptime(stop_time_str, '%Y-%m-%d %H:%M:%S')
+    res % interval = timedelta(seconds=output_interval_seconds)
 
     if (len(res % name) == 0) then
       ok = .false.
@@ -73,6 +77,11 @@ contains
     if (res % stop_time < res % start_time) then
       ok = .false.
       write(stderr, '(a)') 'Error: stop_time in ' // fn // ' must be >= start_time.'
+    end if
+
+    if (output_interval_seconds <= 0) then
+      ok = .false.
+      write(stderr, '(a)') 'Error: output_interval_seconds in ' // fn // ' must be > 0.'
     end if
 
     if (res % grid_size_x < 1) then

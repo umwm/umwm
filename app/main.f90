@@ -16,7 +16,7 @@ program umwm
 
   config = config_type()
 
-  clock = clock_type(config % start_time, config % stop_time)
+  clock = clock_type(config % start_time, config % stop_time, config % interval)
 
   grid = grid_type(config % grid_size_x, config % grid_size_y)
 

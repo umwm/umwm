@@ -7,7 +7,7 @@ module umwm_clock
     
   type :: clock_type
     type(datetime) :: start, stop, current
-    type(timedelta) :: step
+    type(timedelta) :: interval
   contains
     procedure :: tick
   end type clock_type
@@ -18,18 +18,18 @@ module umwm_clock
 
 contains
 
-  type(clock_type) elemental function clock_type_cons(start, stop) result(res)
+  type(clock_type) elemental function clock_type_cons(start, stop, interval) result(res)
       type(datetime), intent(in) :: start, stop
-      !type(timedelta), intent(in) :: step
+      type(timedelta), intent(in) :: interval
       res % start = start
       res % stop = stop
       res % current = start
-      !res % step = step
+      res % interval = interval
   end function clock_type_cons
     
-  impure elemental subroutine tick(self)
+  elemental subroutine tick(self)
     class(clock_type), intent(inout) :: self
-    self % current = self % current + self % step
+    self % current = self % current + self % interval
   end subroutine tick
 
 end module umwm_clock

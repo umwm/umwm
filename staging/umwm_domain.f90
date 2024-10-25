@@ -58,8 +58,8 @@ contains
 
   impure elemental subroutine run(self)
     class(domain_type), intent(inout) :: self
-    do while (self % current_time < self % clock % stop)
-      print *, self % current_time % strftime('%Y-%m-%d %H:%M:%S')
+    do while (self % clock % current < self % clock % stop)
+      print *, self % clock % current % strftime('%Y-%m-%d %H:%M:%S')
       call self % step()
     end do
   end subroutine run
@@ -67,7 +67,7 @@ contains
 
   elemental subroutine step(self)
     class(domain_type), intent(inout) :: self
-    self % current_time = self % current_time + timedelta(hours=1)
+    call self % clock % tick()
   end subroutine step
 
 end module umwm_domain
