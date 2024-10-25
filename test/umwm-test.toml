@@ -3,6 +3,7 @@ name = "Blackwater Bay"
 [domain]
 start_time = "2024-01-01 00:00:00"
 stop_time = "2024-01-02 00:00:00"
+output_interval_seconds = 3600
 grid_size_x = 80
 grid_size_y = 60
 
