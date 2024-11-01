@@ -6,28 +6,29 @@ program test_dispersion
   implicit none
 
   integer :: num_frequencies
-  real :: frequency_min, frequency_max
+  real :: frequency_min, frequency_max, depth
   type(spectrum_type) :: spectrum
   real, allocatable :: f(:), k(:), reldiff(:)
   logical :: ok = .true.
 
-  num_frequencies = 100
-  frequency_min = 0.02
-  frequency_max = 10
+  num_frequencies = 1000
+  frequency_min = 0.01
+  frequency_max = 100
+  depth = 1e2
 
   spectrum = spectrum_type(num_frequencies, 1, frequency_min, frequency_max)
 
-  k = wavenumber(spectrum % frequency, 1e3, 1e3, 9.8, 0.074)
-  f = frequency(k, 1e3, 1e3, 9.8, 0.074)
+  k = wavenumber(spectrum % frequency, depth, 1e3, 9.8, 0.074)
+  f = frequency(k, depth, 1e3, 9.8, 0.074)
   reldiff = (f - spectrum % frequency) / spectrum % frequency * 100
 
-  if (maxval(abs(reldiff)) > 20) then
-    write(stderr, '(a)') 'test_dispersion: Maximum relative error < 20%.. failed.'
+  if (maxval(abs(reldiff)) > 1e-4) then
+    write(stderr, '(a)') 'test_dispersion: Maximum relative error < 0.01%.. failed.'
     ok = .false.
   end if
 
-  if (sum(abs(reldiff)) / num_frequencies > 2) then
-    write(stderr, '(a)') 'test_dispersion: Mean relative error < 2%.. failed'
+  if (sum(abs(reldiff)) / num_frequencies > 1e-5) then
+    write(stderr, '(a)') 'test_dispersion: Mean relative error < 0.001%.. failed'
     ok = .false.
   end if
 
