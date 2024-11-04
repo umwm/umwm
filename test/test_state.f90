@@ -65,6 +65,11 @@ program test_state
     ok = .false.
   end if
 
+  if (.not. all(state % phase_speed > 0)) then
+    write(stderr, '(a)') 'All state % phase_speed values are positive.. failed'
+    ok = .false.
+  end if
+
   if (ok) then
     write(stdout, '(a)') 'test_state: All tests passed.'
   else

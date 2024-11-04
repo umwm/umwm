@@ -20,6 +20,11 @@ module umwm_config
     integer :: num_directions
     real :: frequency_min
     real :: frequency_max
+    real :: gravity
+    real :: surface_tension
+    real :: wind_speed
+    real :: gas_density
+    real :: liquid_density
   end type config_type
 
   interface config_type
@@ -33,7 +38,7 @@ contains
     character(:), allocatable :: fn
     integer :: unit
     type(toml_table), allocatable :: table
-    type(toml_table), pointer :: domain_table, spectrum_table
+    type(toml_table), pointer :: domain_table, spectrum_table, physics_table, forcing_table
     !type(toml_key), allocatable :: keys(:)
     character(:), allocatable :: start_time_str, stop_time_str
     integer :: output_interval_seconds
@@ -55,15 +60,26 @@ contains
     call get_value(table, 'name', res % name)
     call get_value(table, 'domain', domain_table)
     call get_value(table, 'spectrum', spectrum_table)
+    call get_value(table, 'physics', physics_table)
+    call get_value(table, 'forcing', forcing_table)
+
     call get_value(domain_table, 'start_time', start_time_str)
     call get_value(domain_table, 'stop_time', stop_time_str)
     call get_value(domain_table, 'output_interval_seconds', output_interval_seconds)
     call get_value(domain_table, 'grid_size_x', res % grid_size_x)
     call get_value(domain_table, 'grid_size_y', res % grid_size_y)
+
     call get_value(spectrum_table, 'num_frequencies', res % num_frequencies)
     call get_value(spectrum_table, 'num_directions', res % num_directions)
     call get_value(spectrum_table, 'frequency_min', res % frequency_min)
     call get_value(spectrum_table, 'frequency_max', res % frequency_max)
+
+    call get_value(physics_table, 'gravity', res % gravity)
+    call get_value(physics_table, 'surface_tension', res % surface_tension)
+
+    call get_value(forcing_table, 'wind_speed', res % wind_speed)
+    call get_value(forcing_table, 'gas_density', res % gas_density)
+    call get_value(forcing_table, 'liquid_density', res % liquid_density)
 
     res % start_time = strptime(start_time_str, '%Y-%m-%d %H:%M:%S')
     res % stop_time = strptime(stop_time_str, '%Y-%m-%d %H:%M:%S')
@@ -107,6 +123,26 @@ contains
     if (res % frequency_min > res % frequency_max) then
       ok = .false.
       write(stderr, '(a)') 'Error: frequency_min in ' // fn // ' must be <= frequency_max.'
+    end if
+
+    if (res % gravity <= 0) then
+      ok = .false.
+      write(stderr, '(a)') 'Error: gravity in ' // fn // ' must be > 0.'
+    end if
+
+    if (res % surface_tension <= 0) then
+      ok = .false.
+      write(stderr, '(a)') 'Error: surface_tension in ' // fn // ' must be > 0.'
+    end if
+
+    if (res % gas_density <= 0) then
+      ok = .false.
+      write(stderr, '(a)') 'Error: gas_density in ' // fn // ' must be > 0.'
+    end if
+
+    if (res % liquid_density <= 0) then
+      ok = .false.
+      write(stderr, '(a)') 'Error: liquid_density in ' // fn // ' must be > 0.'
     end if
 
     if (.not. ok) error stop 1

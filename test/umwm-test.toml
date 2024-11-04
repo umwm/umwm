@@ -12,3 +12,12 @@ num_frequencies = 50
 num_directions = 36
 frequency_min = 0.04
 frequency_max = 2
+
+[physics]
+gravity = 9.8
+surface_tension = 0.074
+
+[forcing]
+wind_speed = 10
+gas_density = 1.2
+liquid_density = 1025

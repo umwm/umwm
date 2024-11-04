@@ -23,7 +23,6 @@ module umwm_domain
   public :: domain_type
 
   type :: domain_type
-    type(datetime) :: current_time
     type(clock_type) :: clock
     type(grid_type) :: grid
     type(spectrum_type) :: spectrum
@@ -48,7 +47,6 @@ contains
     type(spectrum_type), intent(in) :: spectrum
 
     res % clock = clock
-    res % current_time = clock % start
     res % grid = grid
     res % spectrum = spectrum
     res % state = state_type(grid, spectrum)

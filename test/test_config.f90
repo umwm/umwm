@@ -55,6 +55,16 @@ program test_config
     ok = .false.
   end if
 
+  if (config % gravity /= 9.8) then
+    write(stderr, '(a)') 'config % gravity is expected.. failed'
+    ok = .false.
+  end if
+
+  if (config % surface_tension /= 0.074) then
+    write(stderr, '(a)') 'config % surface_tension is expected.. failed'
+    ok = .false.
+  end if
+
   if (ok) then
     write(stdout, '(a)') 'test_config: All tests passed.'
   else
