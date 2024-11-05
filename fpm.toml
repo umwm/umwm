@@ -1,4 +1,5 @@
 name = "umwm"
+version = "2025.1.0"
 
 [library]
 source-dir="staging"
