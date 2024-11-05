@@ -1,6 +1,6 @@
 program test_dispersion
   use, intrinsic :: iso_fortran_env, only: stdout => output_unit, stderr => error_unit
-  use umwm_dispersion, only: frequency, wavenumber
+  use umwm_dispersion, only: angular_frequency, group_speed, wavenumber
   use umwm_spectrum, only: spectrum_type
 
   implicit none
@@ -11,6 +11,8 @@ program test_dispersion
   real, allocatable :: f(:), k(:), reldiff(:)
   logical :: ok = .true.
 
+  real, parameter :: twopi = 2 * acos(-1.d0)
+
   num_frequencies = 1000
   frequency_min = 0.01
   frequency_max = 100
@@ -19,7 +21,7 @@ program test_dispersion
   spectrum = spectrum_type(num_frequencies, 1, frequency_min, frequency_max)
 
   k = wavenumber(spectrum % frequency, depth, 1e3, 9.8, 0.074)
-  f = frequency(k, depth, 1e3, 9.8, 0.074)
+  f = angular_frequency(k, depth, 1e3, 9.8, 0.074) / twopi
   reldiff = (f - spectrum % frequency) / spectrum % frequency * 100
 
   if (maxval(abs(reldiff)) > 1e-4) then

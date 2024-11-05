@@ -3,11 +3,51 @@ module umwm_dispersion
   implicit none
 
   private
-  public :: frequency, wavenumber
+  public :: angular_frequency, group_speed, wavenumber
 
   real, parameter :: twopi = 2 * acos(-1.0d0)
 
 contains
+
+  elemental real function angular_frequency( &
+    wavenumber, depth, water_density, gravity, surface_tension &
+  )
+    ! Return the (non-angular) frequency using the linear water wave dispersion
+    ! relationship.
+    real, intent(in) :: wavenumber
+    real, intent(in) :: depth
+    real, intent(in) :: water_density
+    real, intent(in) :: gravity
+    real, intent(in) :: surface_tension
+
+    angular_frequency = sqrt( &
+      (gravity * wavenumber + surface_tension * wavenumber**3 / water_density) &
+      * tanh(wavenumber * depth) &
+    )
+
+  end function angular_frequency
+
+
+  elemental real function group_speed( &
+    wavenumber, depth, water_density, gravity, surface_tension &
+  )
+    real, intent(in) :: wavenumber
+    real, intent(in) :: depth
+    real, intent(in) :: water_density
+    real, intent(in) :: gravity
+    real, intent(in) :: surface_tension
+
+    real :: omega
+
+    omega = angular_frequency(wavenumber, depth, water_density, gravity, surface_tension)
+
+    group_speed = 0.5 * tanh(wavenumber * depth) &
+      * (gravity + 3 * surface_tension / water_density * wavenumber**2) &
+      + (gravity * wavenumber + surface_tension / water_density * wavenumber**3) &
+      * depth / cosh(wavenumber * depth)**2 / omega
+
+  end function group_speed
+
 
   elemental real function wavenumber( &
     frequency, depth, water_density, gravity, surface_tension &
@@ -44,24 +84,5 @@ contains
     k = k / depth
 
   end function wavenumber
-
-
-  elemental real function frequency( &
-    wavenumber, depth, water_density, gravity, surface_tension &
-  )
-    ! Return the (non-angular) frequency using the linear water wave dispersion
-    ! relationship.
-    real, intent(in) :: wavenumber
-    real, intent(in) :: depth
-    real, intent(in) :: water_density
-    real, intent(in) :: gravity
-    real, intent(in) :: surface_tension
-
-    frequency = sqrt( &
-      (gravity * wavenumber + surface_tension * wavenumber**3 / water_density) &
-      * tanh(wavenumber * depth) &
-    ) / twopi
-
-  end function frequency
 
 end module umwm_dispersion

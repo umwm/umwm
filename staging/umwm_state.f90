@@ -1,6 +1,6 @@
 module umwm_state
 
-  use umwm_dispersion, only: wavenumber
+  use umwm_dispersion, only: wavenumber, group_speed
   use umwm_grid, only: grid_type
   use umwm_spectrum, only: spectrum_type
 
@@ -34,7 +34,7 @@ contains
    
     allocate(res % depth(grid % size_x, grid % size_y), stat=stat)
     if (stat /= 0) error stop 'Error allocating domain % state % action.'
-    res % depth = 100 ! FIXME load from file, CLI, or config file
+    res % depth = 1000 ! FIXME load from file, CLI, or config file
 
     allocate(res % variance(spectrum % num_frequencies, &
                             spectrum % num_directions, &
@@ -73,7 +73,11 @@ contains
     end do
 
     ! Initialize group speed.
-    !TODO
+    do j = 1, grid % size_y
+      do i = 1, grid % size_x
+        res % group_speed(:,i,j) = group_speed(res % wavenumber(:,i,j), res % depth(i,j), 1e3, 9.8, 0.074)
+      end do
+    end do
 
   end function state_type_cons
 
