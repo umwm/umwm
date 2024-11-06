@@ -17,6 +17,7 @@ module umwm_state
     real, allocatable :: wavenumber(:,:,:)
     real, allocatable :: phase_speed(:,:,:)
     real, allocatable :: group_speed(:,:,:)
+    real, allocatable :: dk(:,:,:)
   end type state_type
 
   interface state_type
@@ -58,6 +59,11 @@ contains
                                 grid % size_y), stat=stat)
     if (stat /= 0) error stop 'Error allocating domain % state % group_speed.'
 
+    allocate(res % dk(spectrum % num_frequencies, &
+                       grid % size_x, &
+                       grid % size_y), stat=stat)
+    if (stat /= 0) error stop 'Error allocating domain % state % dk.'
+
     ! Initialize wavenumber by solving the dispersion relationship.
     do j = 1, grid % size_y
       do i = 1, grid % size_x
@@ -76,6 +82,12 @@ contains
     do j = 1, grid % size_y
       do i = 1, grid % size_x
         res % group_speed(:,i,j) = group_speed(res % wavenumber(:,i,j), res % depth(i,j), 1e3, 9.8, 0.074)
+      end do
+    end do
+
+    do j = 1, grid % size_y
+      do i = 1, grid % size_x
+        res % dk(:,i,j) = twopi * spectrum % frequency * spectrum % dlnf / res % group_speed(:,i,j)
       end do
     end do
 

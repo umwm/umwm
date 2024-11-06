@@ -15,6 +15,7 @@ module umwm_spectrum
     real :: frequency_max
     real, allocatable :: frequency(:)
     real, allocatable :: direction(:)
+    real :: dlnf
   end type spectrum_type
 
   interface spectrum_type
@@ -43,6 +44,9 @@ contains
                                          res % num_frequencies)
 
     res % direction = direction(res % num_directions)
+    
+    res % dlnf = (log(res % frequency_max) - log(res % frequency_min)) &
+      / (res % num_frequencies - 1)
 
   end function spectrum_type_cons
 

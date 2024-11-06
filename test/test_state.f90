@@ -75,6 +75,11 @@ program test_state
     ok = .false.
   end if
 
+  if (.not. all(state % dk > 0)) then
+    write(stderr, '(a)') 'All state % dk values are positive.. failed'
+    ok = .false.
+  end if
+  
   if (ok) then
     write(stdout, '(a)') 'test_state: All tests passed.'
   else
