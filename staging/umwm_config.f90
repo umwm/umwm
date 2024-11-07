@@ -16,6 +16,8 @@ module umwm_config
     character(:), allocatable :: name
     integer :: grid_size_x
     integer :: grid_size_y
+    real :: dx
+    real :: dy
     integer :: num_frequencies
     integer :: num_directions
     real :: frequency_min
@@ -68,6 +70,8 @@ contains
     call get_value(domain_table, 'output_interval_seconds', output_interval_seconds)
     call get_value(domain_table, 'grid_size_x', res % grid_size_x)
     call get_value(domain_table, 'grid_size_y', res % grid_size_y)
+    call get_value(domain_table, 'dx', res % dx)
+    call get_value(domain_table, 'dy', res % dy)
 
     call get_value(spectrum_table, 'num_frequencies', res % num_frequencies)
     call get_value(spectrum_table, 'num_directions', res % num_directions)
@@ -108,6 +112,16 @@ contains
     if (res % grid_size_x < 1) then
       ok = .false.
       write(stderr, '(a)') 'Error: grid_size_y in ' // fn // ' must be > 0.'
+    end if
+
+    if (res % dx <= 0) then
+      ok = .false.
+      write(stderr, '(a)') 'Error: dx in ' // fn // ' must be > 0.'
+    end if
+
+    if (res % dy <= 0) then
+      ok = .false.
+      write(stderr, '(a)') 'Error: dy in ' // fn // ' must be > 0.'
     end if
 
     if (res % num_frequencies < 1) then

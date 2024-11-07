@@ -13,16 +13,19 @@ program test_state
   integer :: num_frequencies, num_directions
   real :: frequency_min, frequency_max
   integer :: grid_size_x, grid_size_y
+  real :: dx, dy
   logical :: ok = .true.
 
   grid_size_x = 80
   grid_size_y = 60
+  dx = 1000
+  dy = 1000
   num_frequencies = 50
   num_directions = 36
   frequency_min = 0.04
   frequency_max = 2
 
-  grid = grid_type(grid_size_x, grid_size_y)
+  grid = grid_type(grid_size_x, grid_size_y, dx, dy)
 
   spectrum = spectrum_type( &
     num_frequencies, num_directions, frequency_min, frequency_max &

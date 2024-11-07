@@ -6,12 +6,15 @@ program test_grid
 
   type(grid_type) :: grid
   integer :: grid_size_x, grid_size_y
+  real :: dx, dy
   logical :: ok = .true.
 
   grid_size_x = 80
   grid_size_y = 60
+  dx = 1000
+  dy = 1000
 
-  grid = grid_type(grid_size_x, grid_size_y)
+  grid = grid_type(grid_size_x, grid_size_y, dx, dy)
 
   if (grid % size_x /= grid_size_x) then
     write(stderr, '(a)') 'grid % size_x is expected.. failed'
@@ -23,28 +26,28 @@ program test_grid
     ok = .false.
   end if
 
-  if (.not. allocated(grid % lon)) then
-    write(stderr, '(a)') 'grid % lon is allocated.. failed'
+  if (.not. allocated(grid % x)) then
+    write(stderr, '(a)') 'grid % x is allocated.. failed'
     ok = .false.
   end if
 
-  if (.not. allocated(grid % lat)) then
-    write(stderr, '(a)') 'grid % lat is allocated.. failed'
+  if (.not. allocated(grid % y)) then
+    write(stderr, '(a)') 'grid % y is allocated.. failed'
     ok = .false.
   end if
 
-  if (.not. all(shape(grid % lon) == [grid_size_x, grid_size_y])) then
-    write(stderr, '(a)') 'grid % lon is expected shape.. failed'
+  if (.not. all(shape(grid % x) == [grid_size_x, grid_size_y])) then
+    write(stderr, '(a)') 'grid % x is expected shape.. failed'
     ok = .false.
   end if
 
-  if (.not. all(shape(grid % lat) == [grid_size_x, grid_size_y])) then
-    write(stderr, '(a)') 'grid % lat is expected shape.. failed'
+  if (.not. all(shape(grid % y) == [grid_size_x, grid_size_y])) then
+    write(stderr, '(a)') 'grid % y is expected shape.. failed'
     ok = .false.
   end if
 
   ! 1-d case
-  grid = grid_type(grid_size_x, 1)
+  grid = grid_type(grid_size_x, 1, dx, dy)
 
   if (grid % size_x /= grid_size_x) then
     write(stderr, '(a)') 'grid % size_x is expected.. failed'
@@ -56,7 +59,7 @@ program test_grid
     ok = .false.
   end if
 
-  grid = grid_type(1, grid_size_y)
+  grid = grid_type(1, grid_size_y, dx, dy)
 
   if (grid % size_x /= 1) then
     write(stderr, '(a)') 'grid % size_x is expected.. failed'

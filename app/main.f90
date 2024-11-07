@@ -18,7 +18,12 @@ program umwm
 
   clock = clock_type(config % start_time, config % stop_time, config % interval)
 
-  grid = grid_type(config % grid_size_x, config % grid_size_y)
+  grid = grid_type( &
+    config % grid_size_x, &
+    config % grid_size_y, &
+    config % dx, &
+    config % dy &
+  )
 
   spectrum = spectrum_type( &
     config % num_frequencies, &
