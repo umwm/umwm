@@ -4,15 +4,15 @@ module umwm_domain
   !! Its components are an instance of grid_type, which defines its geographical
   !! grid, and an instance of spectrum_type, which defines its spectral space.
   !!
-  !! +-----------------------+
-  !! | domain                |
-  !! | +------+ +----------+ |
-  !! | | grid | | spectrum | |
-  !! | +------+ +----------+ |
-  !! +-----------------------+
+  !! +-----------------------------------------------+
+  !! | domain                                        |
+  !! | +-------+------+----------+---------+-------+ |
+  !! | | clock | grid | spectrum | forcing | state | |
+  !! | +-----+ +------+----------+---------+-------+ |
+  !! +-----------------------------------------------+
 
-  use datetime_module, only: datetime, timedelta
   use umwm_clock, only: clock_type
+  use umwm_forcing, only: forcing_type
   use umwm_grid, only: grid_type
   use umwm_spectrum, only: spectrum_type
   use umwm_state, only: state_type
@@ -26,6 +26,7 @@ module umwm_domain
     type(clock_type) :: clock
     type(grid_type) :: grid
     type(spectrum_type) :: spectrum
+    type(forcing_type) :: forcing
     type(state_type) :: state
   contains
     procedure :: run
@@ -48,6 +49,7 @@ contains
 
     res % clock = clock
     res % grid = grid
+    res % forcing = forcing_type(grid)
     res % spectrum = spectrum
     res % state = state_type(grid, spectrum)
 

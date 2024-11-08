@@ -17,7 +17,7 @@ module umwm_state
     real, allocatable :: wavenumber(:,:,:)
     real, allocatable :: phase_speed(:,:,:)
     real, allocatable :: group_speed(:,:,:)
-    real, allocatable :: dk(:,:,:)
+    real, allocatable :: dk(:,:,:) ! Wavenumber spacing
   end type state_type
 
   interface state_type
