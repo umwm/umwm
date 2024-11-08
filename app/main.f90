@@ -32,7 +32,7 @@ program umwm
     config % frequency_max &
   )
 
-  domain = domain_type(clock, grid, spectrum)
+  domain = domain_type(clock, grid, spectrum, config)
 
   call domain % run()
 

@@ -1,23 +1,27 @@
 program test_forcing
   use, intrinsic :: iso_fortran_env, only: stdout => output_unit, stderr => error_unit
+  use umwm_config, only: config_type
   use umwm_grid, only: grid_type
   use umwm_forcing, only: forcing_type
 
   implicit none
 
+  type(config_type) :: config
   type(grid_type) :: grid
   type(forcing_type) :: forcing
   integer :: grid_size_x, grid_size_y
   real :: dx, dy
   logical :: ok = .true.
 
-  grid_size_x = 80
-  grid_size_y = 60
-  dx = 1000
-  dy = 1000
+  config = config_type('test/umwm-test.toml')
+
+  grid_size_x = config % grid_size_x
+  grid_size_y = config % grid_size_y
+  dx = config % dx
+  dy = config % dy
 
   grid = grid_type(grid_size_x, grid_size_y, dx, dy)
-  forcing = forcing_type(grid)
+  forcing = forcing_type(grid, config)
 
   if (.not. allocated(forcing % u_atmosphere)) then
     write(stderr, '(a)') 'forcing % u_atmosphere is allocated.. failed'

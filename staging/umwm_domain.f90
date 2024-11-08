@@ -12,6 +12,7 @@ module umwm_domain
   !! +-----------------------------------------------+
 
   use umwm_clock, only: clock_type
+  use umwm_config, only: config_type
   use umwm_forcing, only: forcing_type
   use umwm_grid, only: grid_type
   use umwm_spectrum, only: spectrum_type
@@ -24,6 +25,7 @@ module umwm_domain
 
   type :: domain_type
     type(clock_type) :: clock
+    type(config_type) :: config
     type(grid_type) :: grid
     type(spectrum_type) :: spectrum
     type(forcing_type) :: forcing
@@ -40,17 +42,19 @@ module umwm_domain
 contains
 
   type(domain_type) elemental function domain_type_cons( &
-    clock, grid, spectrum &
+    clock, grid, spectrum, config &
   ) result(res)
 
     type(clock_type), intent(in) :: clock
     type(grid_type), intent(in) :: grid
     type(spectrum_type), intent(in) :: spectrum
+    type(config_type), intent(in) :: config
 
     res % clock = clock
+    res % config = config
     res % grid = grid
-    res % forcing = forcing_type(grid)
     res % spectrum = spectrum
+    res % forcing = forcing_type(grid, config)
     res % state = state_type(grid, spectrum)
 
   end function domain_type_cons
@@ -67,6 +71,7 @@ contains
 
   elemental subroutine step(self)
     class(domain_type), intent(inout) :: self
+    call self % forcing % update(self % clock % current)
     call self % clock % tick()
   end subroutine step
 

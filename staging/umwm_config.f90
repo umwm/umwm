@@ -24,9 +24,11 @@ module umwm_config
     real :: frequency_max
     real :: gravity
     real :: surface_tension
+    logical :: forcing_from_file
     real :: wind_speed
-    real :: gas_density
-    real :: liquid_density
+    real :: current_speed
+    real :: air_density
+    real :: water_density
   end type config_type
 
   interface config_type
@@ -81,9 +83,11 @@ contains
     call get_value(physics_table, 'gravity', res % gravity)
     call get_value(physics_table, 'surface_tension', res % surface_tension)
 
+    call get_value(forcing_table, 'from_file', res % forcing_from_file)
     call get_value(forcing_table, 'wind_speed', res % wind_speed)
-    call get_value(forcing_table, 'gas_density', res % gas_density)
-    call get_value(forcing_table, 'liquid_density', res % liquid_density)
+    call get_value(forcing_table, 'current_speed', res % current_speed)
+    call get_value(forcing_table, 'air_density', res % air_density)
+    call get_value(forcing_table, 'water_density', res % water_density)
 
     res % start_time = strptime(start_time_str, '%Y-%m-%d %H:%M:%S')
     res % stop_time = strptime(stop_time_str, '%Y-%m-%d %H:%M:%S')
@@ -149,14 +153,14 @@ contains
       write(stderr, '(a)') 'Error: surface_tension in ' // fn // ' must be > 0.'
     end if
 
-    if (res % gas_density <= 0) then
+    if (res % air_density <= 0) then
       ok = .false.
-      write(stderr, '(a)') 'Error: gas_density in ' // fn // ' must be > 0.'
+      write(stderr, '(a)') 'Error: air_density in ' // fn // ' must be > 0.'
     end if
 
-    if (res % liquid_density <= 0) then
+    if (res % water_density <= 0) then
       ok = .false.
-      write(stderr, '(a)') 'Error: liquid_density in ' // fn // ' must be > 0.'
+      write(stderr, '(a)') 'Error: water_density in ' // fn // ' must be > 0.'
     end if
 
     if (.not. ok) error stop 1

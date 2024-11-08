@@ -65,6 +65,11 @@ program test_config
     ok = .false.
   end if
 
+  if (config % forcing_from_file) then
+    write(stderr, '(a)') 'config % forcing_from_file is false.. failed'
+    ok = .false.
+  end if
+
   if (ok) then
     write(stdout, '(a)') 'test_config: All tests passed.'
   else
