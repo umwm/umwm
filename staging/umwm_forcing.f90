@@ -16,6 +16,7 @@ module umwm_forcing
     real, allocatable :: u_ocean(:,:)
     real, allocatable :: v_ocean(:,:)
     real, allocatable :: density_ocean(:,:)
+    real, allocatable :: seaice_fraction(:,:)
   contains
     procedure :: load
     procedure :: set
@@ -56,6 +57,10 @@ contains
     allocate(res % density_ocean(grid % size_x, grid % size_y), stat=stat)
     if (stat /= 0) error stop 'Error allocating forcing % density_ocean.'
     res % density_ocean = 0
+
+    allocate(res % seaice_fraction(grid % size_x, grid % size_y), stat=stat)
+    if (stat /= 0) error stop 'Error allocating forcing % seaice_fraction.'
+    res % seaice_fraction = 0
 
     ! Set initial forcing from config
     if (.not. config % forcing_from_file) then

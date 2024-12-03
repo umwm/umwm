@@ -53,6 +53,11 @@ program test_forcing
     ok = .false.
   end if
 
+  if (.not. allocated(forcing % seaice_fraction)) then
+    write(stderr, '(a)') 'forcing % seaice_fraction is allocated.. failed'
+    ok = .false.
+  end if
+
   if (.not. all(shape(forcing % u_atmosphere) == [grid_size_x, grid_size_y])) then
     write(stderr, '(a)') 'forcing % u_atmosphere is expected shape.. failed'
     ok = .false.
@@ -80,6 +85,11 @@ program test_forcing
 
   if (.not. all(shape(forcing % density_ocean) == [grid_size_x, grid_size_y])) then
     write(stderr, '(a)') 'forcing % density_ocean is expected shape.. failed'
+    ok = .false.
+  end if
+
+  if (.not. all(shape(forcing % seaice_fraction) == [grid_size_x, grid_size_y])) then
+    write(stderr, '(a)') 'forcing % seaice_fraction is expected shape.. failed'
     ok = .false.
   end if
 

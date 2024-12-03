@@ -18,6 +18,7 @@ module umwm_state
     real, allocatable :: phase_speed(:,:,:)
     real, allocatable :: group_speed(:,:,:)
     real, allocatable :: dk(:,:,:) ! Wavenumber spacing
+    real, allocatable :: wind_input(:,:,:,:)
   end type state_type
 
   interface state_type
@@ -43,6 +44,13 @@ contains
                             grid % size_y), stat=stat)
     if (stat /= 0) error stop 'Error allocating domain % state % action.'
     res % variance = 0
+
+    allocate(res % wind_input(spectrum % num_frequencies, &
+                              spectrum % num_directions, &
+                              grid % size_x, &
+                              grid % size_y), stat=stat)
+    if (stat /= 0) error stop 'Error allocating domain % state % wind_input.'
+    res % wind_input = 0
 
     allocate(res % wavenumber(spectrum % num_frequencies, &
                               grid % size_x, &

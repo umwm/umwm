@@ -1,8 +1,9 @@
 module umwm_physics
-  !use umwm_io, only: currents,seaice
-  use umwm_state, only: state_type
+
   use umwm_forcing, only: forcing_type
+  use umwm_grid, only: grid_type
   use umwm_spectrum, only: spectrum_type
+  use umwm_state, only: state_type
 
   implicit none
 
@@ -21,67 +22,62 @@ contains
     ! and described by Donelan et al. (2012).
     type(state_type), intent(inout) :: state
     type(forcing_type), intent(in) :: forcing
+    type(grid_type), intent(in) :: grid
     type(spectrum_type), intent(in) :: spectrum
 
-    integer :: i, o, p
+    integer :: i, j, nf, nd
 
-    ! protection against low wind speed values
-    wspd = max(wspd, 1e-2)
+    associate( &
+      s_in => state % wind_input, &
+      wspd => sqrt(forcing % u_atmosphere**2 + forcing % v_atmosphere**2), &
+      wdir => atan2(forcing % v_atmosphere, forcing % u_atmosphere), &
+      uc => forcing % u_ocean, &
+      vc => forcing % v_ocean, &
+      density_ratio => forcing % density_atmosphere / forcing % density_ocean, &
+      cp0 => state % phase_speed, &
+      th => spectrum % direction, &
+      cth => cos(spectrum % direction), &
+      sth => sin(spectrum % direction), &
+      omega => 2 * pi * spectrum % frequency, &
+    )
 
-    ! cut-off frequency (4*pierson-moskowitz peak frequency)
-    fcutoff(istart:iend) = 0.53 * g / wspd(istart:iend)
+      do j = 1, grid % size_y
+        do i = 1, grid % size_x
 
-    where (fcutoff > fprog) fcutoff = fprog
+          ! TODO: prognostic/diagnostic cutoff frequency
+          ! based on 4*PM peak frequency
+          do nd = 1, spectrum % num_directions
+            do nf = 1, spectrum % num_frequencies
 
-    ! search for the cut-off frequency bin:
-    do i = istart, iend
-      do o = om-2, 1, -1
-        oc(i) = o
-        !oc(i) = om-2
-        if (fcutoff(i) > f(o)) exit
-      end do
-    end do
+              ! Compute wind input at height of half wavelength:
+              ! TODO: atmospheric stability
+              s_in(nf,nd,i,j) = ( &
+                wspd(i) + &
+                2.5 * ustar(i) * logl2overz(nf,i) * cos(wdir(i) - th(nd)) &
+                - cp0(nf,i,j) &
+                - uc(i,j) * cth(nd) &
+                - vc(i,j) * sth(nd) &
+              ) / cp0(nf,i,j)**2
 
-    ! compute wind input at height of half wavelenght:
-    do concurrent (o = 1:om,p = 1:pm, i = istart:iend)
-      ssin(o,p,i) = (wspd(i) + 2.5 * ustar(i) &
-                  * (logl2overz(o,i) + psim(i) - psiml2(o,i))) &
-                  * cos(wdir(i) - th(p)) - cp0(o,i) &
-                  - uc(i) * cth(p) - vc(i) * sth(p)
-    end do
+              ! TODO ice fraction
+              s_in(nf,nd,i,j) = density_ratio(i,j) * abs(s_in(nf,nd,i,j)) * s_in(nf,nd,i,j) * omega(nf)
 
-    ssin = sin_fac * abs(ssin) * ssin
+              ! TODO variable sheltering coefficient; hardcoded for now
+              if (s_in(nf,nd,i,j) > 0) then
+                ! Growth rate
+                s_in(nf,nd,i,j) = 0.11 * s_in(nf,nd,i,j)
+              else
+                ! Decay rate
+                ! TODO differentiate between opposing and outrunning waves
+                s_in(nf,nd,i,j) = 0.01 * s_in(nf,nd,i,j)
+              end if
 
-    ! compute variable sheltering coefficient
-    shelt = sheltering_coare35(wspd(istart:iend))
-
-    ! apply variable sheltering coefficient
-    do concurrent(o = 1:om, p = 1:pm, i = istart:iend, ssin(o,p,i) > 0)
-      ssin(o,p,i) = ssin(o,p,i) * shelt(i) / sin_fac
-    end do
-
-    ! adjust input for opposing winds
-    do concurrent (o = 1:om, p = 1:pm, i = istart:iend, ssin(o,p,i) < 0)
-      ssin(o,p,i) = ssin(o,p,i) * fieldscale1
-    end do
-
-    ! further reduce for swell that overruns the wind
-    do concurrent (o = 1:om, p = 1:pm, i = istart:iend, ssin(o,p,i) < 0 .and. cos(wdir(i)-th(p)) > 0)
-      ssin(o,p,i) = ssin(o,p,i) * fieldscale2
-    end do
-
-    do concurrent (o = 1:om, p = 1:pm, i = istart:iend)
-      ssin(o,p,i) = (1 - fice(i)) * twopi * rhorat(i) * ssin(o,p,i) * fkovg(o,i)
-    end do
-
-    ! prevent negative sin for diagnostic tail
-    do i = istart, iend
-      do p = 1, pm
-        do o = oc(i)+1, om
-          ssin(o,p,i) = max(ssin(o,p,i), 0._rk)
+            end do
+          end do
         end do
       end do
-    end do
+
+    end associate
 
   end subroutine wind_input_donelan2012
 
