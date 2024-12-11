@@ -1,11 +1,13 @@
 program test_state
   use, intrinsic :: iso_fortran_env, only: stdout => output_unit, stderr => error_unit
-  use umwm_state, only: state_type
+  use umwm_config, only: config_type
   use umwm_grid, only: grid_type
   use umwm_spectrum, only: spectrum_type
+  use umwm_state, only: state_type
 
   implicit none
 
+  type(config_type) :: config
   type(grid_type) :: grid
   type(spectrum_type) :: spectrum
   type(state_type) :: state
@@ -25,13 +27,14 @@ program test_state
   frequency_min = 0.04
   frequency_max = 2
 
+  config = config_type('test/umwm-test.toml')
   grid = grid_type(grid_size_x, grid_size_y, dx, dy)
 
   spectrum = spectrum_type( &
     num_frequencies, num_directions, frequency_min, frequency_max &
   )
 
-  state = state_type(grid, spectrum)
+  state = state_type(grid, spectrum, config)
   
   if (.not. allocated(state % depth)) then
     write(stderr, '(a)') 'state % depth is allocated.. failed'

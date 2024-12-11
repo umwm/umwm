@@ -4,17 +4,18 @@ module umwm_domain
   !! Its components are an instance of grid_type, which defines its geographical
   !! grid, and an instance of spectrum_type, which defines its spectral space.
   !!
-  !! +-----------------------------------------------+
-  !! | domain                                        |
-  !! | +-------+------+----------+---------+-------+ |
-  !! | | clock | grid | spectrum | forcing | state | |
-  !! | +-----+ +------+----------+---------+-------+ |
-  !! +-----------------------------------------------+
+  !! +--------------------------------------------------------+
+  !! | domain                                                 |
+  !! | +-------+------+----------+---------+-------+--------+ |
+  !! | | clock | grid | spectrum | forcing | state | config | |
+  !! | +-------+------+----------+---------+-------+--------+ |
+  !! +-------------------------------------------------------+
 
   use umwm_clock, only: clock_type
   use umwm_config, only: config_type
   use umwm_forcing, only: forcing_type
   use umwm_grid, only: grid_type
+  use umwm_physics, only: wind_input_donelan2012, wave_dissipation_donelan2012
   use umwm_spectrum, only: spectrum_type
   use umwm_state, only: state_type
 
@@ -55,7 +56,7 @@ contains
     res % grid = grid
     res % spectrum = spectrum
     res % forcing = forcing_type(grid, config)
-    res % state = state_type(grid, spectrum)
+    res % state = state_type(grid, spectrum, config)
 
   end function domain_type_cons
 
@@ -72,6 +73,8 @@ contains
   elemental subroutine step(self)
     class(domain_type), intent(inout) :: self
     call self % forcing % update(self % clock % current)
+    call wind_input_donelan2012(self % state, self % forcing, self % grid, self % spectrum)
+    call wave_dissipation_donelan2012(self % state, self % grid, self % spectrum)
     call self % clock % tick()
   end subroutine step
 
