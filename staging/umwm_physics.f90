@@ -95,12 +95,7 @@ contains
 
     integer :: i, j, nf, nd
 
-    real, dimension( &
-      spectrum % num_frequencies, &
-      spectrum % num_directions, &
-      grid % size_x, &
-      grid % size_y &
-    ) :: cum_mss
+    real :: cum_mss(spectrum % num_frequencies, spectrum % num_directions)
 
     real, parameter :: mss_fac = 360 ! FIXME: hardcoded for now
     real, parameter :: sds_fac = 42 ! FIXME: hardcoded for now
@@ -115,30 +110,28 @@ contains
       dissipation => state % dissipation &
     )
 
-      cum_mss = 0
-
       do j = 1, grid % size_y
         do i = 1, grid % size_x
+
+          cum_mss = 0
+
           do nd = 1, spectrum % num_directions
             do nf = 2, spectrum % num_frequencies
-              cum_mss(nf,nd,i,j) = cum_mss(nf-1,nd,i,j) + &
+              cum_mss(nf,nd) = cum_mss(nf-1,nd) + &
                 sum(state % variance(nf-1,:,i,j) * cos(direction(:))) * &
                 k(nf-1,i,j)**3 * dk(nf-1,i,j)
             end do
           end do
-        end do
-      end do
 
-      cum_mss = (1 + mss_fac * cum_mss)**2
+          cum_mss = (1 + mss_fac * cum_mss)**2
 
-      do j = 1, grid % size_y
-        do i = 1, grid % size_x
           do nd = 1, spectrum % num_directions
-            do nf = 2, spectrum % num_frequencies
-              dissipation(nf,nd,i,j) = sds_fac * omega(nf) * cum_mss(nf,nd,i,j) * &
+            do nf = 1, spectrum % num_frequencies
+              dissipation(nf,nd,i,j) = sds_fac * omega(nf) * cum_mss(nf,nd) * &
                 (variance(nf,nd,i,j) * k(nf,i,j)**4 * dk(nf,i,j))**sds_power
             end do
           end do
+
         end do
       end do
 
