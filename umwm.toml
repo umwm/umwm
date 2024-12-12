@@ -4,8 +4,8 @@ name = "Blackwater Bay"
 start_time = "2021-01-01 00:00:00"
 stop_time = "2021-01-02 00:00:00"
 output_interval_seconds = 3600
-grid_size_x = 120
-grid_size_y = 80
+grid_size_x = 60
+grid_size_y = 40
 dx = 1000
 dy = 1000
 
