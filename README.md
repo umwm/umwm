@@ -1,8 +1,5 @@
 # University of Miami Wave Model (UMWM)
 
-[![Build Status](https://travis-ci.org/umwm/umwm.svg?branch=master)](https://travis-ci.org/umwm/umwm)
-[![GitHub issues](https://img.shields.io/github/issues/umwm/umwm.svg)](https://github.com/umwm/umwm/issues)
-
 A third-generation spectral ocean wave model.
 
 This is the reference implementation of UMWM, 
@@ -72,8 +69,8 @@ See the full list of publications [here](PUBLICATIONS.md).
 
 ## Thanks
 
-UMWM development is currently supported by [NSF Award 1745384](https://www.nsf.gov/awardsearch/showAward?AWD_ID=1745384).
-It has previously been supported by the [Gulf of Mexico Research Initiative](http://gulfresearchinitiative.org/)
+UMWM development has been supported by [NSF Award 1745384](https://www.nsf.gov/awardsearch/showAward?AWD_ID=1745384),
+the [Gulf of Mexico Research Initiative](http://gulfresearchinitiative.org/),
 and the [National Oceanographic Partnership Program](https://www.nopp.org/).
 
 UMWM has also been improved by a number of [open source contributors](CONTRIBUTORS.md).
