@@ -26,7 +26,7 @@ OBJS = datetime_module.o \
        umwm_advection.o \
        umwm_constants.o \
        umwm_diagnostics.o \
-       umwm_domain.o \
+       umwm_env.o \
        umwm_forcing.o \
        umwm_init.o \
        umwm_io.o \
@@ -37,7 +37,6 @@ OBJS = datetime_module.o \
        umwm_restart.o \
        umwm_sheltering.o \
        umwm_source_functions.o \
-       umwm_spectrum.o \
        umwm_stokes.o \
        umwm_stress.o \
        umwm_top.o
@@ -53,25 +52,23 @@ umwm: umwm.F90 $(OBJS)
 
 %.o: %.mod
 
-# Object           Source              Dependencies
-datetime_module.o: datetime_module.f90
-umwm_domain.o: umwm_domain.F90 datetime_module.o umwm_constants.o umwm_spectrum.o
-umwm_top.o:        umwm_top.F90 datetime_module.o umwm_constants.o umwm_module.o umwm_mpi.o umwm_forcing.o umwm_physics.o umwm_advection.o umwm_io.o umwm_init.o umwm_restart.o umwm_source_functions.o umwm_stress.o
-umwm_module.o: umwm_module.F90    
-umwm_constants.o: umwm_constants.F90
+# Object            Source              Dependencies
+datetime_module.o:  datetime_module.f90
+umwm_top.o:         umwm_top.F90 datetime_module.o umwm_constants.o umwm_env.o umwm_module.o umwm_mpi.o umwm_forcing.o umwm_physics.o umwm_advection.o umwm_io.o umwm_init.o umwm_restart.o umwm_source_functions.o umwm_stress.o
+umwm_module.o:      umwm_module.F90     umwm_constants.o
+umwm_constants.o:   umwm_constants.F90
 umwm_diagnostics.o: umwm_diagnostics.F90 umwm_constants.o
-umwm_mpi.o:        umwm_mpi.F90
-umwm_init.o:       umwm_init.F90       umwm_module.o umwm_mpi.o umwm_util.o umwm_io.o umwm_constants.o
-umwm_physics.o:    umwm_physics.F90    umwm_module.o umwm_io.o  umwm_advection.o
-umwm_advection.o:  umwm_advection.F90  umwm_module.o umwm_io.o  umwm_constants.o
-umwm_io.o:         umwm_io.F90         umwm_module.o umwm_mpi.o umwm_util.o umwm_stokes.o
-umwm_forcing.o:    umwm_forcing.F90    umwm_module.o umwm_io.o  umwm_util.o
-umwm_util.o:       umwm_util.F90       umwm_module.o
-umwm_restart.o:    umwm_restart.F90    umwm_module.o umwm_io.o
-umwm_sheltering.o: umwm_sheltering.F90 umwm_constants.o
-umwm_spectrum.o: umwm_spectrum.F90 umwm_constants.o
-umwm_stokes.o:     umwm_stokes.F90     umwm_module.o umwm_constants.o
-umwm_stress.o:     umwm_stress.F90     umwm_advection.o umwm_module.o umwm_constants.o umwm_stokes.o
+umwm_mpi.o:         umwm_mpi.F90
+umwm_init.o:        umwm_init.F90       umwm_module.o umwm_mpi.o umwm_util.o umwm_io.o umwm_constants.o
+umwm_physics.o:     umwm_physics.F90    umwm_module.o umwm_io.o  umwm_advection.o
+umwm_advection.o:   umwm_advection.F90  umwm_module.o umwm_io.o  umwm_constants.o
+umwm_io.o:          umwm_io.F90         umwm_module.o umwm_mpi.o umwm_util.o umwm_stokes.o
+umwm_forcing.o:     umwm_forcing.F90    umwm_module.o umwm_io.o  umwm_util.o
+umwm_util.o:        umwm_util.F90       umwm_module.o
+umwm_restart.o:     umwm_restart.F90    umwm_module.o umwm_io.o
+umwm_sheltering.o:  umwm_sheltering.F90 umwm_constants.o
+umwm_stokes.o:      umwm_stokes.F90     umwm_module.o umwm_constants.o
+umwm_stress.o:      umwm_stress.F90     umwm_advection.o umwm_module.o umwm_constants.o umwm_stokes.o
 umwm_source_functions.o: umwm_source_functions.F90 umwm_constants.o umwm_io.o umwm_sheltering.o
 
 datetime_module.f90:

@@ -12,47 +12,6 @@ character :: remap_dir
 contains
 
 
-
-subroutine environment(option)
-
-character(4), intent(in) :: option
-
-if(option == 'init')then
-#ifdef MPI
-#ifndef ESMF
-  call mpi_init(ierr)                           ! initialize mpi
-#endif
-  call mpi_comm_rank(MPI_COMM_WORLD,nproc,ierr) ! who am i?
-  call mpi_comm_size(MPI_COMM_WORLD,mpisize,ierr)  ! how many processes?
-#else
-  nproc=0
-  mpisize=1
-#endif
-end if
-
-if(option == 'stop')then
-#if defined(MPI) && !defined(ESMF)
-  call mpi_barrier(MPI_COMM_WORLD,ierr) ! wait for all
-  call mpi_finalize(ierr)               ! finalize mpi
-#endif
-end if
-
-end subroutine environment
-
-
-subroutine greeting
-  use netcdf
-  if (nproc == 0) then
-    print '(a)'
-    print '(a)', ' University of Miami Wave Model v' // version
-    print '(a)', '~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~'
-    print '(a)'
-    print '(a)', ' compiled using NetCDF library version ' // trim(nf90_inq_libvers())
-    print '(a)'
-  end if
-end subroutine greeting
-
-
 subroutine nmlread
 ! Opens namelist file namelists/main.nml and reads runtime input parameters.
 use umwm_module,only:starttimestr_nml,stoptimestr_nml
@@ -381,18 +340,17 @@ end subroutine alloc
 subroutine grid
 ! Defines grid spacing and grid cell areas
 use netcdf
-use umwm_io,  only:nc_check
-use umwm_util,only:raiseexception, distance_haversine
+use umwm_constants, only: r_earth
+use umwm_io, only: nc_check
+use umwm_util, only: raiseexception, distance_haversine
 
 logical :: loniscontinuous = .true.
 
-integer :: m,n
-integer :: ncid,varid,stat
+integer :: m, n
+integer :: ncid, varid, stat
 
-real,parameter :: r_earth = 6.371009e6
-
-real,dimension(:,:),allocatable :: abscoslat,lon_tmp,rotx,roty
-real,dimension(:,:),allocatable :: rlon,rlat
+real, allocatable :: abscoslat(:,:), lon_tmp(:,:), rotx(:,:), roty(:,:)
+real, allocatable :: rlon(:,:), rlat(:,:)
 
 if(gridfromfile)then
 

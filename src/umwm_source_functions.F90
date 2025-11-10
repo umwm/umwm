@@ -167,6 +167,7 @@ contains
         snl(o,p,i) = bf1_renorm(o,i) * sds(o+1,p,i) * e(o+1,p,i)&
                    + bf2_renorm(o,i) * sds(o+2,p,i) * e(o+2,p,i)&
                    - snl_fac * sds(o,p,i) * e(o,p,i)
+        !snl(o,p,i) = snl_fac * (kdk(o+1,i) * e(o+1,p,i) - kdk(o,i) * e(o,p,i)) / dwn(o,i) ! WIP dk-invariant Snl
       end do
     end do
 

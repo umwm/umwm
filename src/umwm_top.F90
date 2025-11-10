@@ -6,24 +6,23 @@ contains
 
   subroutine umwm_initialize
 
+    use umwm_env, only: env_init
     use umwm_module,only: starttimestr => starttimestr_nml
-    use umwm_init,  only: environment, greeting, nmlread, alloc, grid, masks,&
-                          partition, alloc, remap, init
+    use umwm_init,  only: nmlread, alloc, grid, masks, partition, alloc, remap, init
     use umwm_io,    only: input_nc, output_grid
     use umwm_stokes,only: stokes_drift
 
-    call environment('init')    ! initialize processing environment
-    call greeting               ! print version number and license on screen
-    call nmlread                ! read the namelist
+    call env_init()             ! initialize the environment
+    call nmlread()              ! read the namelist
     call alloc(1)               ! allocate 2-d arrays
-    call grid                   ! define model grid
-    call masks                  ! define seamasks
-    call partition              ! domain partitioning
+    call grid()                 ! define model grid
+    call masks()                ! define seamasks
+    call partition()            ! domain partitioning
     call alloc(2)               ! allocate unrolled arrays
-    call remap                  ! remap 2-d arrays to 1-d
-    call output_grid            ! output a grid file
+    call remap()                ! remap 2-d arrays to 1-d
+    call output_grid()          ! output a grid file
     call input_nc(starttimestr) ! read initial fields
-    call init                   ! initialize model variables
+    call init()                 ! initialize model variables
     call stokes_drift('init')   ! initialize stokes drift arrays
 
   end subroutine umwm_initialize
@@ -198,9 +197,9 @@ contains
 
   subroutine umwm_finalize
     use umwm_util, only: dealloc
-    use umwm_init, only: environment
+    use umwm_env, only: env_stop
     call dealloc() ! deallocate arrays
-    call environment('stop') ! finalize the environment
+    call env_stop()
   end subroutine umwm_finalize
 
 end module umwm_top
