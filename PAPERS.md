@@ -1,6 +1,6 @@
-# Publications
+# Papers
 
-Publications about or using UMWM.
+Papers about or using UMWM.
 
 * Detelich, C. E., U. G. Schneck, A. G. Hayes, M. Curcic, R. V. Palermo, A. D. Ashton, J. T. Perron, J. M. Lora, and J. Steckloff, 2026: Modeling the seasonality of wind-driven hydrocarbon waves in Titan's polar lakes, *J. Geophys. Res. Planets*, **131**(5), e2026JE009693, doi:10.1029/2026JE009693. [Link](https://agupubs.onlinelibrary.wiley.com/doi/full/10.1029/2026JE009693)
 

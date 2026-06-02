@@ -61,11 +61,11 @@ Running in parallel, for example on 16 cores:
 mpiexec -n 16 ./umwm
 ```
 
-Read the [docs](docs) for more information.
+You can read the full technical reference doc [here](DOCS.md).
 
-## Publications
+## Papers
 
-See the full list of publications [here](PUBLICATIONS.md).
+A list of papers that use UMWM is [here](PAPERS.md).
 
 ## Thanks
 
