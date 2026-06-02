@@ -2,6 +2,14 @@
 
 Publications about or using UMWM.
 
+* Detelich, C. E., U. G. Schneck, A. G. Hayes, M. Curcic, R. V. Palermo, A. D. Ashton, J. T. Perron, J. M. Lora, and J. Steckloff, 2026: Modeling the seasonality of wind-driven hydrocarbon waves in Titan's polar lakes, *J. Geophys. Res. Planets*, **131**(5), e2026JE009693, doi:10.1029/2026JE009693. [Link](https://agupubs.onlinelibrary.wiley.com/doi/full/10.1029/2026JE009693)
+
+* Schneck, U. G., C. E. Detelich, M. Curcic, A. D. Ashton, A. G. Hayes, and J. T. Perron, 2026: Modeling wind-driven waves on other planets: Applications to Mars, Titan, and exoplanets, *J. Geophys. Res. Planets*, **131**(4), e2025JE009490, doi:10.1029/2025JE009490. [Link](https://agupubs.onlinelibrary.wiley.com/doi/full/10.1029/2025JE009490)
+
+* Barr, B. W. and S. S. Chen, 2025: Impacts of seastate-dependent sea spray heat fluxes on tropical cyclone structure and intensity in fully coupled atmosphere-wave-ocean model simulations, *J. Adv. Model. Earth Syst.*, **17**(7), e2024MS004550, doi:10.1029/2024MS004550. [Link](https://agupubs.onlinelibrary.wiley.com/doi/abs/10.1029/2024MS004550)
+
+* Barr, B. W., S. S. Chen, and C. W. Fairall, 2023: Sea-state-dependent sea spray and air-sea heat fluxes in tropical cyclones: A new parameterization for fully coupled atmosphere-wave-ocean models, *J. Atmos. Sci.*, **80**(4), 933-960, doi:10.1175/JAS-D-22-0126.1. [Link](https://journals.ametsoc.org/view/journals/atsc/80/4/JAS-D-22-0126.1.xml)
+
 * Haza A. C., N. Paldor, T. M. Özgökmen, M. Curcic, S. S. Chen, and G. Jacobs, 2019: Wind-based estimations of ocean surface currents from massive clusters of drifters in the Gulf of Mexico, *J. Geophys. Res. Oceans*, **124**, doi:10.1029/2018JC014813. [PDF](https://github.com/milancurcic/publications/blob/master/Haza_etal_JGR2019.pdf).
 
 * Li, G., M. Curcic, M. Iskandarani, S. S. Chen, and O. M. Knio, 2019: Uncertainty propagation in coupled atmosphere-wave-ocean system: A study of Hurricane Earl (2010), *Mon. Wea. Rev.*, **147**, 221-245, doi:10.1175/MWR-D-17-0371.1. [PDF](https://github.com/milancurcic/publications/blob/master/Li_etal_MWR2019.pdf)
