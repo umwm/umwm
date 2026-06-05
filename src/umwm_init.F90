@@ -681,12 +681,11 @@ subroutine partition
 
 #ifdef MPI
 use umwm_mpi
-#endif
 
 integer :: nn
-
 #ifdef ESMF
 integer :: i, m, n
+#endif
 #endif
 
 #ifndef MPI
@@ -840,10 +839,13 @@ subroutine remap
 use umwm_mpi
 #endif
 
-integer :: i,m,n,nn
-integer :: counter, itemp
+integer :: i,m,n
 
+#ifdef MPI
+integer :: nn
+integer :: counter, itemp
 integer, dimension(:), allocatable :: n_exchange_indices
+#endif
 
 ! remapping section:
 ! unroll 2-d array into a contiguous 1-d array of sea-only points.
@@ -1206,7 +1208,11 @@ use umwm_util,only:raiseexception
 use umwm_io, only: winds,seaice
 use umwm_util, only: remap_mn2i
 
-integer :: i, n, o, p, pp, ind
+integer :: i, o, p, pp, ind
+
+#ifdef MPI
+integer :: n
+#endif
 
 ! set frequency increment:
 dlnf = (log(fmax)-log(fmin))/float(om-1)
@@ -1384,9 +1390,11 @@ subroutine dispersion(tol)
 use umwm_mpi
 #endif
 
+#ifdef MPI
 integer :: sendcount, recvcount
 integer :: sendtag, recvtag
 integer :: src, dest
+#endif
 
 integer :: counter,i,o
 real,intent(in) :: tol

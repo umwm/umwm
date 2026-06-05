@@ -15,7 +15,10 @@ use mpi
 #endif
 
 integer :: i,o,p
+
+#ifdef MPI
 real :: send_buff
+#endif
 
 !real,save :: explim_ramp
 
