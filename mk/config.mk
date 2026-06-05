@@ -9,7 +9,7 @@ ifeq ($(UMWM_MPI_ENABLED),)
   UMWM_DEFAULT_FC := gfortran
 else
   UMWM_DEFAULT_FC := mpif90
-  CPPFLAGS += -DMPI
+  override CPPFLAGS += -DMPI
 endif
 
 ifeq ($(origin FC),default)
