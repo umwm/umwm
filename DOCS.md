@@ -620,7 +620,8 @@ $$
 \Lambda
 =
 S_{in}^*
-- S_{ds}^*\,\texttt{snl_arg}
+- S_{ds}^*
+- S_{ds}^*
 - S_{bottom}^*
 - S_{dt}^*
 - S_{dv}^*
