@@ -1,25 +1,14 @@
 # University of Miami Wave Model Makefile
-#
-# FC, FCFLAGS, and CPPFLAGS come from the top-level
-# Makefile. NETCDF comes from the environment.
-#
-# If your NetCDF libraries are in non-standard directory layout
-# (something other than $NETCDF/include and $NETCDF/lib, edit
-# NETCDFINC and NETCDFLIB below.
 
-NETCDFINC ?= -I$(NETCDF)/include
-NETCDFLIB ?= -L$(NETCDF)/lib -lnetcdf -lnetcdff
+include ../mk/config.mk
 
-# Rules, object list and dependencies start here.
+.SUFFIXES:
 
-.SUFFIXES: .F90 .f90 .o
+%.o: %.F90
+	$(FC) $(CPPFLAGS) $(FCFLAGS) $(NETCDF_FFLAGS) -c $<
 
-# Rule
-.F90.o:
-	$(FC) -c $(CPPFLAGS) $(FCFLAGS) $(NETCDFINC) $<
-
-.f90.o:
-	$(FC) -c $(CPPFLAGS) $(FCFLAGS) $(NETCDFINC) $<
+%.o: %.f90
+	$(FC) $(CPPFLAGS) $(FCFLAGS) $(NETCDF_FFLAGS) -c $<
 
 # Object list
 OBJS = datetime_module.o \
@@ -41,21 +30,22 @@ OBJS = datetime_module.o \
        umwm_stress.o \
        umwm_top.o
 
+.PHONY: all clean clean_all print-config
+.DEFAULT_GOAL := all
+
 all: umwm
 
 # Main target
-umwm: umwm.F90 $(OBJS)
-	$(FC) -c $(CPPFLAGS) $(FCFLAGS) $(NETCDFINC) $<
-	$(FC) $(FCFLAGS) -o $@ umwm.o $(OBJS) $(NETCDFLIB)
+umwm: umwm.o $(OBJS)
+	$(FC) $(FCFLAGS) $(LDFLAGS) -o $@ umwm.o $(OBJS) $(NETCDF_FLIBS) $(LDLIBS)
 	cp $@ ../.
-	ar r libumwm.a $(OBJS)
-
-%.o: %.mod
+	$(AR) rcs libumwm.a $(OBJS)
 
 # Object            Source              Dependencies
+umwm.o:            umwm.F90         umwm_module.o umwm_top.o
 datetime_module.o:  datetime_module.f90
 umwm_top.o:         umwm_top.F90 datetime_module.o umwm_constants.o umwm_env.o umwm_module.o umwm_mpi.o umwm_forcing.o umwm_physics.o umwm_advection.o umwm_io.o umwm_init.o umwm_restart.o umwm_source_functions.o umwm_stress.o
-umwm_module.o:      umwm_module.F90     umwm_constants.o
+umwm_module.o:      umwm_module.F90     datetime_module.o umwm_constants.o
 umwm_constants.o:   umwm_constants.F90
 umwm_diagnostics.o: umwm_diagnostics.F90 umwm_constants.o
 umwm_mpi.o:         umwm_mpi.F90
@@ -74,7 +64,6 @@ umwm_source_functions.o: umwm_source_functions.F90 umwm_constants.o umwm_io.o um
 datetime_module.f90:
 	curl -O https://raw.githubusercontent.com/wavebitscientific/datetime-fortran/master/src/datetime_module.f90
 
-.PHONY:
 clean:
 	$(RM) umwm *.o *.mod libumwm.a 
 

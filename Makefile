@@ -2,30 +2,24 @@
 
 # Top-level Makefile
 
-FC ?= mpif90
-FCFLAGS ?= -Ofast -march=native -ffast-math -funroll-loops -Wall
-CPPFLAGS ?= -DMPI
+include mk/config.mk
 
-# don't use make's implicit rule for FC
-ifeq ($(FC), f77)
-  FC = mpif90
-endif
+.PHONY: all umwm docs tools clean clean_all print-config
+.DEFAULT_GOAL := all
 
-.PHONY: all umwm docs tools clean clean_all
-
-all: umwm tools docs
+all: umwm tools
 
 umwm:
-	FC=$(FC) CPPFLAGS='$(CPPFLAGS)' FCFLAGS='$(FCFLAGS)' $(MAKE) --directory=src
+	$(MAKE) --directory=src
 
 docs:
 	cd docs && pdflatex umwm_manual_v2.tex
 	cd docs && pdflatex umwm_manual_v2.tex
 	cd docs && pdflatex umwm_manual_v2.tex
-	$(RM) docs/*.{aux,log,toc}
+	$(RM) docs/*.aux docs/*.log docs/*.toc
 
 tools:
-	FC=$(FC) FCFLAGS='$(FCFLAGS)' $(MAKE) --directory=tools/src
+	$(MAKE) --directory=tools/src
 
 clean:
 	$(RM) umwm

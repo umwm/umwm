@@ -31,21 +31,55 @@ git clone https://github.com/umwm/umwm
 
 ### Building UMWM
 
-Edit the following variables in the top-level Makefile:
+Type `make` to build the serial model and auxiliary tools:
 
-* `FC`: Fortran compiler (e.g. `mpif90` for parallel builds)
-* `FCFLAGS`: Flags to pass to the Fortran compiler
-* `CPPFLAGS`: Pre-processor flags -- set to `-DMPI` if building for parallel execution, 
-and leave blank for serial builds.
+```
+make
+```
 
-Path to the NetCDF library must be set as `NETCDF` environment variable.
-If your library is installed in non-standard directories (something 
-other than `$NETCDF/lib` for library files and `$NETCDF/include` for modules)
-edit the `NETCDFLIB` and `NETCDFINC` variables in `src/Makefile`.
+The default serial compiler is `gfortran`. Select another compiler by setting
+`FC`:
 
-Type `make`. Executable `umwm` will be built in the top-level directory. 
-Auxilliary tools executables will be built in `tools/`. 
-Documentation will be built in `docs/`.
+```
+make FC=ifx
+make FC=flang
+```
+
+The default `FCFLAGS` are aggressive GNU-style optimization flags:
+`-Ofast -march=native -ffast-math -funroll-loops -Wall`. Override `FCFLAGS`
+when using a compiler that needs different optimization options:
+
+```
+make FC=ifx FCFLAGS="-O3 -xHost -ipo -fp-model fast=2"
+```
+
+Build with MPI by setting `MPI=yes`. This defines `-DMPI` and defaults to the
+`mpif90` wrapper unless `FC` is set explicitly:
+
+```
+make MPI=yes
+make MPI=yes FC=mpiifx
+```
+
+NetCDF Fortran flags are discovered with `nf-config` by default. If you have
+multiple NetCDF installs, point to the matching `nf-config` for your compiler:
+
+```
+make NF_CONFIG=/path/to/nf-config
+```
+
+As a fallback, set `NETCDF` to an install prefix with `include` and `lib`
+subdirectories, or provide the flags manually:
+
+```
+make NETCDF=/path/to/netcdf
+make NETCDF_FFLAGS="-I/path/include" NETCDF_FLIBS="-L/path/lib -lnetcdff -lnetcdf"
+```
+
+Use `make print-config` to see the resolved compiler and NetCDF settings.
+Executable `umwm` will be built in the top-level directory and auxiliary tool
+executables will be built in `tools/`. Documentation can be built separately
+with `make docs`.
 
 ### Running UMWM
 
