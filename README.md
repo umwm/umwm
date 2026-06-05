@@ -1,9 +1,9 @@
 # University of Miami Wave Model (UMWM)
 
-A third-generation spectral ocean wave model.
+A tiny, fast, parallel spectral ocean wave model.
 
 This is the reference implementation of UMWM, 
-described by [Donelan et al. (2012)](https://github.com/milancurcic/publications/blob/master/Donelan_etal_JGR2012.pdf),
+described by [Donelan et al. (2012)](https://doi.org/10.1029/2011JC007787),
 with later improvements and bug fixes.
 UMWM solves the wave energy balance equation on a curvilinear grid.
 It has been used to simulate:
@@ -13,6 +13,13 @@ It has been used to simulate:
 * Wave-induced material transport (Stokes drift)
 * Ancient Martian seas and methane lakes on Titan
 * Waves in laboratory settings such as wave tanks
+
+UMWM was initially designed with a primary goal of accurate and conservative
+momentum coupling with atmosphere and ocean circulation models.
+That design goal remains a priority.
+Further, UMWM takes a highly simplified approach to nonlinear downshifting
+of wave energy; this allows it to run signinficantly faster than other
+spectral wave models.
 
 ## Getting started
 
@@ -78,8 +85,8 @@ make NETCDF_FFLAGS="-I/path/include" NETCDF_FLIBS="-L/path/lib -lnetcdff -lnetcd
 
 Use `make print-config` to see the resolved compiler and NetCDF settings.
 Executable `umwm` will be built in the top-level directory and auxiliary tool
-executables will be built in `tools/`. Documentation can be built separately
-with `make docs`.
+executables will be built in `tools/`.
+PDF documentation can be built separately with `make docs`.
 
 ### Running UMWM
 

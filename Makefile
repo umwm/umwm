@@ -13,16 +13,14 @@ umwm:
 	$(MAKE) --directory=src
 
 docs:
-	cd docs && pdflatex umwm_manual_v2.tex
-	cd docs && pdflatex umwm_manual_v2.tex
-	cd docs && pdflatex umwm_manual_v2.tex
-	$(RM) docs/*.aux docs/*.log docs/*.toc
+	pandoc DOCS.md -o umwm-docs.pdf
 
 tools:
 	$(MAKE) --directory=tools/src
 
 clean:
 	$(RM) umwm
+	$(RM) umwm-docs.pdf
 	$(RM) tools/umwm_gridgen
 	$(RM) tools/umwm_topogen
 	$(RM) tools/wrf2umwmgrid
