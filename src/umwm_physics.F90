@@ -1,6 +1,14 @@
 module umwm_physics
 
-  use umwm_module
+  use umwm_module, only: cg0, cgmxx, cgmxy, cgmyy, cothkd, cp0, cth, &
+                         dcg, dcg0, dcp, dcp0, dta, dtamin, dtg, dth, &
+                         dthg, dts, dummy, dwd, dwl, dwp, e, ef, explim, &
+                         f, first, ht, iend, ierr, inv_sds_power, invcp0, &
+                         istart, k, k3dk, kdk, momx, momy, mss, mwd, mwl, &
+                         mwp, oc, om, oneoverk4, physics_time_step, pm, &
+                         restart, rhow, sbf, sds, sdt, sdv, sice, snl, &
+                         snl_arg, ssin, sth, sumt, th, twopi, &
+                         twopisds_fac, uc, vc
 
   implicit none
 

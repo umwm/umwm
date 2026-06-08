@@ -161,7 +161,27 @@ subroutine dealloc
 ! deallocates umwm arrays                                              !
 !                                                                      !
 !======================================================================>
-use umwm_module
+use umwm_module, only: ar, ar_2d, bf1_renorm, bf2_renorm, cd, cg0, &
+                       cgmxx, cgmxy, cgmyy, cothkd, cp0, cth, cth2, &
+                       cth_curv, curv, d, d_2d, dcg, dcg0, dcp, &
+                       dcp0, dlat, dlon, dom, dummy, dwd, dwl, dwn, &
+                       dwp, dx, dx_2d, dxn, dxs, dy, dy_2d, dye, dyw, &
+                       e, ef, epsx_atm, epsx_ocn, epsy_atm, epsy_ocn, &
+                       f, fice, fice_2d, ficeb, ficef, fkovg, fcutoff, &
+                       gustu, gustv, ht, invcp0, k, k3dk, k4, kdk, l2, &
+                       lat, logl2overz, lon, momx, momy, mss, mwd, mwl, &
+                       mwp, oneovar, oneovdx, oneovdy, oneoverk4, &
+                       physics_time_step, psim, psiml2, rhoa, rhoa_2d, &
+                       rhoab, rhoaf, rhorat, rhow, rhow_2d, rhowb, rhowf, &
+                       rotl, rotr, sbf, sds, sdt, sdv, shelt, sice, snl, &
+                       snl_arg, ssin, sth, sth_curv, tailatmx, tailatmy, &
+                       tailocnx, tailocny, taux, taux1, taux2, taux3, &
+                       taux_diag, taux_form, taux_ocnbot, taux_ocntop, &
+                       taux_skin, taux_snl, tauy, tauy1, tauy2, tauy3, &
+                       tauy_diag, tauy_form, tauy_ocnbot, tauy_ocntop, &
+                       tauy_skin, tauy_snl, th, uc, uc_2d, ucb, ucf, &
+                       ustar, uw, uwb, uwf, vc, vc_2d, vcb, vcf, vw, &
+                       vwb, vwf, wdir, wdir_2d, wspd, wspd_2d, x, y
 !======================================================================>
 
 deallocate(ar_2d,d_2d,dlon,dlat,dx_2d,dy_2d)

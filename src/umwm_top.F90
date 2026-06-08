@@ -32,10 +32,15 @@ contains
 
 #ifdef MPI
     use umwm_mpi, only: exchange_halo
+    use umwm_module, only: ierr
     use mpi
 #endif
 
-    use umwm_module
+    use umwm_module, only: cd, currenttime, dtg, dts, e, ef, f, first, &
+                           firstdtg, iend, iip, istart, nproc, &
+                           nproc_plot, oc, outgrid, outspec, outrst, &
+                           restart, starttime, stokes, stoptime, sumt, &
+                           wdir, wspd
     use umwm_physics, only: source, diag
     use umwm_advection,only: propagation, refraction
     use umwm_forcing, only: forcinginput, forcinginterpolate

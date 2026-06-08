@@ -2,7 +2,16 @@ module umwm_stress
 
   !! Module with functions and subroutines to evaluate stresses.
 
-  use umwm_module
+  use umwm_module, only: bf1, bf2, cd, cp0, cth, dthg, dummy, e, &
+                         epsx_atm, epsx_ocn, epsy_atm, epsy_ocn, iend, &
+                         invcp0, istart, k, kappa, kdk, nu_air, oc, om, &
+                         pm, rhoa, rhow, sbf, sds, sdt, sdv, snl, ssin, &
+                         sth, tailatmx, tailatmy, tailocnx, tailocny, &
+                         taux, taux1, taux2, taux3, taux_diag, taux_form, &
+                         taux_ocnbot, taux_ocntop, taux_skin, taux_snl, &
+                         tauy, tauy1, tauy2, tauy3, tauy_diag, tauy_form, &
+                         tauy_ocnbot, tauy_ocntop, tauy_skin, tauy_snl, &
+                         th, uc, ustar, vc, wdir, wspd, z
   use umwm_advection, only: zerocurrents
   use umwm_constants, only: rk
   use umwm_stokes, only: u_stokes => us, v_stokes => vs

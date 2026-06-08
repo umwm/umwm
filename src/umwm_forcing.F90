@@ -1,7 +1,11 @@
 module umwm_forcing
 
   use umwm_io, only: input_nc, readfile, winds, currents, air_density, water_density, seaice
-  use umwm_module
+  use umwm_module, only: dtg, fice, fice_2d, ficeb, ficef, gustiness, &
+                         gustu, gustv, rhoa, rhoab, rhoaf, rhorat, &
+                         rhow, rhowb, rhowf, sumt, uc, uc_2d, ucb, ucf, &
+                         uw, uwb, uwf, vc, vc_2d, vcb, vcf, vw, vwb, &
+                         vwf, wdir, wdir_2d, wspd, wspd_2d
   use umwm_util, only: remap_mn2i
 
   implicit none

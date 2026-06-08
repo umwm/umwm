@@ -1,7 +1,14 @@
 module umwm_source_functions
   ! Module that provides wave source functions.
   use umwm_io, only: currents,seaice
-  use umwm_module
+  use umwm_module, only: bf1_renorm, bf2_renorm, cg0, cothkd, cp0, cth, &
+                         cth2pp, dth, dummy, e, f, fcutoff, fice, &
+                         fice_lth, fieldscale1, fieldscale2, fkovg, fprog, &
+                         g, iend, istart, k, k3dk, k4, kdk, logl2overz, &
+                         mss_fac, oc, om, pm, psim, psiml2, rhorat, sds, &
+                         sds_power, sdt, sdt_fac, shelt, sin_fac, sice, &
+                         snl, snl_fac, ssin, sth, th, twopi, twopisds_fac, &
+                         uc, ustar, vc, wdir, wspd
   use umwm_constants, only: rk
   use umwm_sheltering, only: sheltering_coare35, sheltering_reynolds
 

@@ -4,7 +4,9 @@ module umwm_mpi
 #ifdef MPI
 
   use mpi
-  use umwm_module
+  use umwm_module, only: e, first_col_len, i_exchange_indices, iend, &
+                         ierr, iiend, iistart, im, isglobal, istart, &
+                         last_col_len, mpisize, nproc, om, pm
 
   implicit none
 

@@ -6,7 +6,12 @@ module umwm_advection
 #if defined(MPI)
   use mpi
 #endif
-  use umwm_module
+  use umwm_module, only: cg0, cp0, cth, cth_curv, dta, dtr, dts, dth, &
+                         dxn, dxs, dye, dyw, e, ef, fice, fice_uth, &
+                         first, ie, iend, ierr, iie, iin, iis, iistart, &
+                         iiend, iiw, in, is, isglobal, istart, iw, oc, &
+                         om, oneovar, oneovdth, oneovdx, oneovdy, pl, &
+                         pm, pr, rotl, rotr, sth, sth_curv, uc, vc
   use umwm_io, only: currents
 
   implicit none

@@ -1,6 +1,22 @@
 module umwm_io
 ! Provides input/output routines for the wave model
-use umwm_module
+use umwm_module, only: ar_2d, cd, cgmxx, cgmxy, cgmyy, curv, d_2d, &
+                       dcg, dcg0, dcp, dcp0, dlat, dlon, dwd, dwl, &
+                       dwp, dx_2d, dy_2d, e, epsx_atm, epsx_ocn, &
+                       epsy_atm, epsy_ocn, f, fice, fice0, fice_2d, &
+                       ficef, ht, iend, ierr, ii, imm, im, istart, &
+                       k, lat, lon, mask, mm, momx, momy, mpisize, &
+                       mss, mwd, mwl, mwp, nm, nproc, nproc_out, om, &
+                       physics_time_step, pm, psim, rhoa, rhoa0, &
+                       rhoa_2d, rhoaf, rhow, rhow0, rhow_2d, rhowf, &
+                       sbf, sds, sdt, sdv, shelt, snl, ssin, stokes, &
+                       tailatmx, tailatmy, tailocnx, tailocny, taux1, &
+                       taux2, taux3, taux_diag, taux_form, taux_ocnbot, &
+                       taux_ocntop, taux_skin, taux_snl, tauy1, tauy2, &
+                       tauy3, tauy_diag, tauy_form, tauy_ocnbot, &
+                       tauy_ocntop, tauy_skin, tauy_snl, th, uc, uc0, &
+                       ucf, ustar, vc, vc0, vcf, vwf, wdir, wdir0, &
+                       wspd, wspd0, x, y, uwf, mpiisblocking
 use netcdf
 
 logical :: readfile

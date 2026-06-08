@@ -3,7 +3,43 @@ module umwm_init
 #ifdef MPI
 use mpi
 #endif
-use umwm_module
+use umwm_module, only: allowedoutputtimes, ar, ar_2d, bf1, bf1_renorm, &
+                       bf1a, bf2, bf2_renorm, cd, cfllim, cg0, cgmax, &
+                       cgmxx, cgmxy, cgmyy, cothkd, cp0, cth, cth2, &
+                       cth2pp, cth_curv, curv, d, d_2d, dcg, dcg0, &
+                       dcp, dcp0, delx, dely, dlat, dlnf, dlon, dmin, &
+                       dom, dr, dummy, dth, dthg, dpt, dtamin, dtg, &
+                       dwd, dwl, dwn, dwp, dx, dx_2d, dxn, dxs, dy, &
+                       dy_2d, dye, dyw, e, ef, epsx_atm, epsx_ocn, &
+                       epsy_atm, epsy_ocn, explim, f, fieldscale1, &
+                       fieldscale2, fice, fice0, fice_2d, fice_lth, &
+                       fice_uth, ficeb, ficef, fillestuaries, filllakes, &
+                       first, first_col_len, firstdtg, fkovg, fcutoff, &
+                       fmax, fmin, fprog, g, gridfromfile, gustiness, &
+                       gustu, gustv, ht, ie, iend, ierr, iie, iin, iis, &
+                       iistart, ii, iiend, iiw, im, imm, in, inv_sds_power, &
+                       invcp0, is, isglobal, istart, iw, i_exchange_indices, &
+                       iip, k, k3dk, k4, kappa, kdk, l2, last_col_len, &
+                       lat, log10overz, logl2overz, lon, mask, mi, mindelx, &
+                       mm, momx, momy, mpisize, mss, mss_fac, mwd, mwl, &
+                       mwp, ni, nm, nproc, nproc_out, nu_air, nu_water, &
+                       oc, om, oneovar, oneovdth, oneovdx, oneovdy, &
+                       oneoverk4, outgrid, outspec, outrst, physics_time_step, &
+                       pi, pl, pm, pr, psim, psiml2, rhoa, rhoa0, rhoa_2d, &
+                       rhoab, rhoaf, rhorat, rhow, rhow0, rhow_2d, rhowb, &
+                       rhowf, restart, rotl, rotr, sbf, sbf_fac, sbp_fac, &
+                       sds, sds_fac, sds_power, sdt, sdt_fac, sdv, sfct, &
+                       shelt, sice, sin_diss1, sin_diss2, sin_fac, snl, &
+                       snl_arg, snl_fac, ssin, sth, sth_curv, stokes, &
+                       tailatmx, tailatmy, tailocnx, tailocny, taux, taux1, &
+                       taux2, taux3, taux_diag, taux_form, taux_ocnbot, &
+                       taux_ocntop, taux_skin, taux_snl, tauy, tauy1, &
+                       tauy2, tauy3, tauy_diag, tauy_form, tauy_ocnbot, &
+                       tauy_ocntop, tauy_skin, tauy_snl, th, topofromfile, &
+                       twonu, twopi, twopisds_fac, uc, uc0, uc_2d, ucb, &
+                       ucf, ustar, uw, uwb, uwf, vc, vc0, vc_2d, vcb, &
+                       vcf, vw, vwb, vwf, wdir, wdir0, wdir_2d, wspd, &
+                       wspd0, wspd_2d, x, xpl, y, ypl, z
 
 implicit none
 

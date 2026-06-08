@@ -1,6 +1,7 @@
 module umwm_restart
   ! Provides read and write subroutines for UMWM restart files
-  use umwm_module
+  use umwm_module, only: e, f, iend, ierr, im, istart, k, lat, lon, mi, &
+                         mpisize, ni, nproc, om, pm, th, ustar
   use netcdf
   use umwm_util, only: raiseexception
 
