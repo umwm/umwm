@@ -5,16 +5,17 @@ module umwm_physics
                          dthg, dts, dummy, dwd, dwl, dwp, e, ef, explim, &
                          f, first, ht, iend, ierr, inv_sds_power, invcp0, &
                          istart, k, k3dk, kdk, momx, momy, mss, mwd, mwl, &
-                         mwp, oc, om, oneoverk4, physics_time_step, pm, &
+                         mwp, oc, oneoverk4, physics_time_step, &
                          restart, rhow, sbf, sds, sdt, sdv, sice, snl, &
                          snl_arg, ssin, sth, sumt, th, twopi, &
                          twopisds_fac, uc, vc
+  use umwm_spectrum, only: spectrum_type
 
   implicit none
 
 contains
 
-subroutine source
+subroutine source(spectrum)
 
   ! TODO move to umwm_integration.f90
 
@@ -22,6 +23,7 @@ subroutine source
 use mpi
 #endif
 
+type(spectrum_type), intent(in) :: spectrum
 integer :: i,o,p
 
 #ifdef MPI
@@ -33,7 +35,7 @@ real :: send_buff
 ! calculate the exponential argument:
 ef = 0
 do i = istart,iend
-  do p = 1,pm
+  do p = 1, spectrum % num_directions
     do o = 1,oc(i)
       ef(o,p,i) = ssin(o,p,i)-sds(o,p,i)*snl_arg(o,i)&
                  -sbf(o,i)-sdt(o,i)-sdv(o,i)+sice(o,i)
@@ -70,7 +72,7 @@ sumt = sumt + dts
 
 ! integrate source terms for the prognostic range (o <= ol)
 do i = istart,iend
-  do p = 1,pm
+  do p = 1, spectrum % num_directions
     do o = 1,oc(i)
       ef(o,p,i) = e(o,p,i)*exp(dts*(ssin(o,p,i)-sds(o,p,i)      &
                                    -sbf(o,i)-sdt(o,i)-sdv(o,i)  &
@@ -82,8 +84,8 @@ end do
 
 ! integrate source terms for the diagnostic range (o > ol)
 do i = istart, iend
-  do p = 1, pm
-    do o = oc(i) + 1, om
+  do p = 1, spectrum % num_directions
+    do o = oc(i) + 1, spectrum % num_frequencies
       if (ssin(o,p,i) - sdt(o,i) - sdv(o,i) + sice(o,i) >= 0) then
         ef(o,p,i) = oneoverk4(o,i) * ((ssin(o,p,i) - sdt(o,i) - sdv(o,i) + sice(o,i)) &
                   / (twopisds_fac * f(o) * dummy(o,p,i) * cothkd(o,i)))**inv_sds_power
@@ -97,17 +99,18 @@ e(:,:,istart:iend) = 0.5*(e(:,:,istart:iend)+ef(:,:,istart:iend))
 endsubroutine source
 
 
-subroutine diag
+subroutine diag(spectrum)
 
 ! TODO move to umwm_diagnostics.F90
 
+type(spectrum_type), intent(in) :: spectrum
 integer              :: o,p,i
 integer              :: opeak,ppeak
 integer,dimension(2) :: spectrum_peak_loc
 
 real                        :: mag,xcomp,ycomp
 real,dimension(istart:iend) :: m0,m2
-real,dimension(om,pm)       :: spectrumbin
+real,dimension(spectrum % num_frequencies, spectrum % num_directions) :: spectrumbin
 
 real :: ekdkovcp
 
@@ -115,8 +118,8 @@ m0 = 0
 m2 = 0
 
 do i=istart,iend
-  do p=1,pm
-    do o=1,om
+  do p=1,spectrum % num_directions
+    do o=1,spectrum % num_frequencies
       m0(i) = m0(i)+e(o,p,i)*kdk(o,i)
       m2(i) = m2(i)+f(o)**2*e(o,p,i)*kdk(o,i)
     end do
@@ -134,7 +137,7 @@ cgmyy = 0
 do i=istart,iend
 
   ! total wave momentum:
-  do p=1,pm
+  do p=1,spectrum % num_directions
     do o=1,oc(i)
 
       ekdkovcp = e(o,p,i)*kdk(o,i)*invcp0(o,i)
@@ -157,8 +160,8 @@ do i=istart,iend
 
   ! significant wave height:
   ht(i) = 0.
-  do p=1,pm
-    do o=1,om
+  do p=1,spectrum % num_directions
+    do o=1,spectrum % num_frequencies
       ht(i) = ht(i)+e(o,p,i)*kdk(o,i)
     end do
   end do
@@ -167,7 +170,7 @@ do i=istart,iend
   ! mean wave direction:
   xcomp = 0.
   ycomp = 0.
-  do p=1,pm
+  do p=1,spectrum % num_directions
     mag   = sum(e(:,p,i)*kdk(:,i),dim=1)
     xcomp = xcomp+mag*cth(p)
     ycomp = ycomp+mag*sth(p)
@@ -177,8 +180,8 @@ do i=istart,iend
   ! wavenumber spectrum moments:
   m0(i) = 0.
   m2(i) = 0.
-  do p=1,pm
-    do o=1,om
+  do p=1,spectrum % num_directions
+    do o=1,spectrum % num_frequencies
       m0(i) = m0(i)+e(o,p,i)*kdk(o,i)
       m2(i) = m2(i)+e(o,p,i)*k3dk(o,i)
     end do
@@ -189,8 +192,8 @@ do i=istart,iend
 
   mwl(i) = twopi * sqrt(m0(i) / (m2(i) + tiny(m2(i)))) ! mean wavelenght
 
-  do p=1,pm
-    do o=1,om
+  do p=1,spectrum % num_directions
+    do o=1,spectrum % num_frequencies
       spectrumbin(o,p) = e(o,p,i)*kdk(o,i)
     end do
   end do

@@ -25,6 +25,7 @@ OBJS = datetime_module.o \
        umwm_physics.o \
        umwm_util.o \
        umwm_restart.o \
+       umwm_spectrum.o \
        umwm_sheltering.o \
        umwm_source_functions.o \
        umwm_stokes.o \
@@ -43,32 +44,38 @@ umwm: umwm.o $(OBJS)
 	$(AR) rcs libumwm.a $(OBJS)
 
 # Object            Source              Dependencies
-umwm.o:            umwm.F90         umwm_module.o umwm_top.o
+umwm.o:            umwm.F90         umwm_module.o umwm_spectrum.o umwm_top.o
 datetime_module.o:  datetime_module.f90
-umwm_top.o:         umwm_top.F90 datetime_module.o umwm_constants.o umwm_env.o umwm_module.o umwm_mpi.o umwm_forcing.o umwm_physics.o umwm_advection.o umwm_io.o umwm_init.o umwm_restart.o umwm_source_functions.o umwm_stress.o
+umwm_top.o:         umwm_top.F90 datetime_module.o umwm_constants.o umwm_env.o umwm_module.o umwm_spectrum.o umwm_mpi.o umwm_forcing.o umwm_physics.o umwm_advection.o umwm_io.o umwm_init.o umwm_restart.o umwm_source_functions.o umwm_stress.o
 umwm_module.o:      umwm_module.F90     datetime_module.o umwm_constants.o
 umwm_constants.o:   umwm_constants.F90
 umwm_diagnostics.o: umwm_diagnostics.F90 umwm_constants.o
 umwm_dispersion.o:  umwm_dispersion.f90  umwm_constants.o
+umwm_spectrum.o:    umwm_spectrum.f90    umwm_constants.o
 umwm_mpi.o:         umwm_mpi.F90
-umwm_init.o:        umwm_init.F90       umwm_module.o umwm_mpi.o umwm_util.o umwm_io.o umwm_constants.o umwm_dispersion.o
-umwm_physics.o:     umwm_physics.F90    umwm_module.o umwm_io.o  umwm_advection.o
-umwm_advection.o:   umwm_advection.F90  umwm_module.o umwm_io.o  umwm_constants.o
-umwm_io.o:          umwm_io.F90         umwm_module.o umwm_mpi.o umwm_util.o umwm_stokes.o
+umwm_init.o:        umwm_init.F90       umwm_module.o umwm_spectrum.o umwm_mpi.o umwm_util.o umwm_io.o umwm_constants.o umwm_dispersion.o
+umwm_physics.o:     umwm_physics.F90    umwm_module.o umwm_spectrum.o umwm_io.o  umwm_advection.o
+umwm_advection.o:   umwm_advection.F90  umwm_module.o umwm_spectrum.o umwm_io.o  umwm_constants.o
+umwm_io.o:          umwm_io.F90         umwm_module.o umwm_spectrum.o umwm_mpi.o umwm_util.o umwm_stokes.o
 umwm_forcing.o:     umwm_forcing.F90    umwm_module.o umwm_io.o  umwm_util.o
-umwm_util.o:        umwm_util.F90       umwm_module.o
-umwm_restart.o:     umwm_restart.F90    umwm_module.o umwm_io.o
+umwm_util.o:        umwm_util.F90       umwm_module.o umwm_spectrum.o
+umwm_restart.o:     umwm_restart.F90    umwm_module.o umwm_spectrum.o umwm_io.o
 umwm_sheltering.o:  umwm_sheltering.F90 umwm_constants.o
-umwm_stokes.o:      umwm_stokes.F90     umwm_module.o umwm_constants.o
-umwm_stress.o:      umwm_stress.F90     umwm_advection.o umwm_module.o umwm_constants.o umwm_stokes.o
-umwm_source_functions.o: umwm_source_functions.F90 umwm_constants.o umwm_io.o umwm_sheltering.o
+umwm_stokes.o:      umwm_stokes.F90     umwm_module.o umwm_spectrum.o umwm_constants.o
+umwm_stress.o:      umwm_stress.F90     umwm_advection.o umwm_module.o umwm_spectrum.o umwm_constants.o umwm_stokes.o
+umwm_source_functions.o: umwm_source_functions.F90 umwm_constants.o umwm_spectrum.o umwm_io.o umwm_sheltering.o
 
-test: test_dispersion
+test: test_dispersion test_spectrum
 	../tests/test_dispersion
+	../tests/test_spectrum
 
 test_dispersion: umwm_constants.o umwm_dispersion.o tuff.o ../tests/test_dispersion.f90
 	$(FC) $(CPPFLAGS) $(FCFLAGS) -o ../tests/test_dispersion \
 		../tests/test_dispersion.f90 tuff.o umwm_constants.o umwm_dispersion.o $(LDLIBS)
+
+test_spectrum: umwm_constants.o umwm_spectrum.o tuff.o ../tests/test_spectrum.f90
+	$(FC) $(CPPFLAGS) $(FCFLAGS) -o ../tests/test_spectrum \
+		../tests/test_spectrum.f90 tuff.o umwm_constants.o umwm_spectrum.o $(LDLIBS)
 
 tuff.o: ../tests/tuff.f90
 	$(FC) $(CPPFLAGS) $(FCFLAGS) -c ../tests/tuff.f90
@@ -77,7 +84,7 @@ datetime_module.f90:
 	curl -O https://raw.githubusercontent.com/wavebitscientific/datetime-fortran/master/src/datetime_module.f90
 
 clean:
-	$(RM) umwm *.o *.mod libumwm.a ../tests/test_dispersion
+	$(RM) umwm *.o *.mod libumwm.a ../tests/test_dispersion ../tests/test_spectrum
 
 clean_all:
 	$(MAKE) clean

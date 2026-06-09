@@ -4,8 +4,8 @@ module umwm_stress
 
   use umwm_module, only: bf1, bf2, cd, cp0, cth, dthg, dummy, e, &
                          epsx_atm, epsx_ocn, epsy_atm, epsy_ocn, iend, &
-                         invcp0, istart, k, kappa, kdk, nu_air, oc, om, &
-                         pm, rhoa, rhow, sbf, sds, sdt, sdv, snl, ssin, &
+                         invcp0, istart, k, kappa, kdk, nu_air, oc, &
+                         rhoa, rhow, sbf, sds, sdt, sdv, snl, ssin, &
                          sth, tailatmx, tailatmy, tailocnx, tailocny, &
                          taux, taux1, taux2, taux3, taux_diag, taux_form, &
                          taux_ocnbot, taux_ocntop, taux_skin, taux_snl, &
@@ -14,6 +14,7 @@ module umwm_stress
                          th, uc, ustar, vc, wdir, wspd, z
   use umwm_advection, only: zerocurrents
   use umwm_constants, only: rk
+  use umwm_spectrum, only: spectrum_type
   use umwm_stokes, only: u_stokes => us, v_stokes => vs
 
   implicit none
@@ -23,13 +24,15 @@ module umwm_stress
 
 contains
 
-  subroutine stress(option)
+  subroutine stress(option, spectrum)
 
     character(3), intent(in) :: option
+    type(spectrum_type), intent(in) :: spectrum
 
     integer :: i, o, p
 
-    real(rk) :: taux_util(om, istart:iend), tauy_util(om, istart:iend)
+    real(rk) :: taux_util(spectrum % num_frequencies, istart:iend)
+    real(rk) :: tauy_util(spectrum % num_frequencies, istart:iend)
     real(rk) :: tail(istart:iend)
 
     ! wind speed and direction relative to surface velocity
@@ -38,7 +41,7 @@ contains
     real(rk) :: cd_form(istart:iend), cd_skin(istart:iend)
 
     ! evaluate wind speed dependent tail
-    tail = stress_tail(wspd(istart:iend), k(om,istart:iend))
+    tail = stress_tail(wspd(istart:iend), k(spectrum % num_frequencies,istart:iend))
 
     if (option == 'ocn') then
 
@@ -46,10 +49,10 @@ contains
       taux_util = 0
       tauy_util = 0
       do i = istart, iend
-        do p = 1, pm
+        do p = 1, spectrum % num_directions
 
           ! dissipation into currents
-          do o = 1, om
+          do o = 1, spectrum % num_frequencies
             taux_util(o,i) = taux_util(o,i) + e(o,p,i)         &
                            * (sds(o,p,i) + sdt(o,i) + sdv(o,i))&
                            * cth(p) * invcp0(o,i)
@@ -59,7 +62,7 @@ contains
           end do
 
           ! correction for the Snl in diagnostic part
-          do o = 3, om
+          do o = 3, spectrum % num_frequencies
 
             taux_util(o,i) = taux_util(o,i) - snl(o,p,i)     &
                            * (bf1 * cp0(o,i) * invcp0(o-1,i) &
@@ -78,8 +81,10 @@ contains
       do concurrent(i = istart:iend)
 
         ! compute the tail
-        tailocnx(i) = taux_util(om,i) * k(om,i) * tail(i) * rhow(i) * dthg
-        tailocny(i) = tauy_util(om,i) * k(om,i) * tail(i) * rhow(i) * dthg
+        tailocnx(i) = taux_util(spectrum % num_frequencies,i) &
+                    * k(spectrum % num_frequencies,i) * tail(i) * rhow(i) * dthg
+        tailocny(i) = tauy_util(spectrum % num_frequencies,i) &
+                    * k(spectrum % num_frequencies,i) * tail(i) * rhow(i) * dthg
 
         ! integrate over frequencies
         taux_ocntop(i) = sum(taux_util(:,i) * kdk(:,i), dim=1) * rhow(i) * dthg&
@@ -93,8 +98,8 @@ contains
       taux_util = 0
       tauy_util = 0
       do i = istart, iend
-        do p = 1, pm
-          do o = 1, om
+        do p = 1, spectrum % num_directions
+          do o = 1, spectrum % num_frequencies
             taux_util(o,i) = taux_util(o,i) + e(o,p,i) * sbf(o,i) * cth(p) * invcp0(o,i)
             tauy_util(o,i) = tauy_util(o,i) + e(o,p,i) * sbf(o,i) * sth(p) * invcp0(o,i)
           end do
@@ -111,7 +116,7 @@ contains
       taux_util = 0
       tauy_util = 0
       do i = istart, iend
-        do p = 1, pm
+        do p = 1, spectrum % num_directions
           do o = 3, oc(i)
             taux_util(o,i) = taux_util(o,i) + snl(o,p,i)           &
                            * (bf1 * (1 - cp0(o,i) * invcp0(o-1,i)) &
@@ -134,14 +139,14 @@ contains
       taux_util = 0
       tauy_util = 0
       do i = istart, iend
-        do p = 1, pm
+        do p = 1, spectrum % num_directions
 
-          do o = 1, om
+          do o = 1, spectrum % num_frequencies
             taux_util(o,i) = taux_util(o,i) + e(o,p,i) * sds(o,p,i) * cth(p)
             tauy_util(o,i) = tauy_util(o,i) + e(o,p,i) * sds(o,p,i) * sth(p)
           end do
 
-          do o = 3, om
+          do o = 3, spectrum % num_frequencies
             taux_util(o,i) = taux_util(o,i) - snl(o,p,i)     &
                            * (bf1 * cp0(o,i) * invcp0(o-1,i) &
                            +  bf2 * cp0(o,i) * invcp0(o-2,i))&
@@ -164,8 +169,8 @@ contains
       taux_util = 0
       tauy_util = 0
       do i = istart, iend
-        do p = 1, pm
-          do o = 1, om
+        do p = 1, spectrum % num_directions
+          do o = 1, spectrum % num_frequencies
             taux_util(o,i) = taux_util(o,i) + e(o,p,i) * ssin(o,p,i) * cth(p)
             tauy_util(o,i) = tauy_util(o,i) + e(o,p,i) * ssin(o,p,i) * sth(p)
           end do
@@ -188,8 +193,8 @@ contains
       tauy3 = 0
 
       do i = istart, iend
-        do p = 1, pm
-          do o = 1, om
+        do p = 1, spectrum % num_directions
+          do o = 1, spectrum % num_frequencies
 
             dummy(o,p,i) = e(o,p,i) * ssin(o,p,i) * invcp0(o,i) * kdk(o,i)
 
@@ -230,17 +235,21 @@ contains
       do concurrent(i = istart:iend)
 
         ! compute the tail
-        tailatmx(i) = taux_util(om,i) * k(om,i) * tail(i) * rhow(i) * dthg
-        tailatmy(i) = tauy_util(om,i) * k(om,i) * tail(i) * rhow(i) * dthg
+        tailatmx(i) = taux_util(spectrum % num_frequencies,i) &
+                    * k(spectrum % num_frequencies,i) * tail(i) * rhow(i) * dthg
+        tailatmy(i) = tauy_util(spectrum % num_frequencies,i) &
+                    * k(spectrum % num_frequencies,i) * tail(i) * rhow(i) * dthg
 
         taux_form(i) = sum(taux_util(:,i) * kdk(:,i), dim=1)&
                      * rhow(i) * dthg + tailatmx(i)
         tauy_form(i) = sum(tauy_util(:,i) * kdk(:,i), dim=1)&
                      * rhow(i) * dthg + tailatmy(i)
 
-        taux_diag(i) = sum(taux_util(oc(i):om,i) * kdk(oc(i):om,i), dim=1)&
+        taux_diag(i) = sum(taux_util(oc(i):spectrum % num_frequencies,i) &
+                     * kdk(oc(i):spectrum % num_frequencies,i), dim=1)&
                      * rhow(i) * dthg
-        tauy_diag(i) = sum(tauy_util(oc(i):om,i) * kdk(oc(i):om,i), dim=1)&
+        tauy_diag(i) = sum(tauy_util(oc(i):spectrum % num_frequencies,i) &
+                     * kdk(oc(i):spectrum % num_frequencies,i), dim=1)&
                      * rhow(i) * dthg
 
       end do

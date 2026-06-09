@@ -10,13 +10,15 @@ module umwm_stokes
 
 contains
 
-  subroutine stokes_drift(option)
+  subroutine stokes_drift(spectrum, option)
     ! Computes wave-induced Stokes drift
 
     use umwm_constants, only: eulerinv
-    use umwm_module, only: twopi, d, e, f, k, dwn, dth, istart, iend, om, pm,&
+    use umwm_module, only: twopi, d, e, f, k, dwn, dth, istart, iend, &
                            cth, sth,nproc
+    use umwm_spectrum, only: spectrum_type
 
+    type(spectrum_type), intent(in) :: spectrum
     character(4), intent(in), optional :: option
     integer :: i, l, o, p
     real :: ust_efolding
@@ -43,18 +45,18 @@ contains
         allocate(vs(istart:iend,lm))
         allocate(usmag(istart:iend,lm))
         allocate(ds(istart:iend))
-        allocate(util(om,istart:iend,lm))
-        allocate(arg(om,istart:iend,lm))
-        allocate(kd(om,istart:iend))
+        allocate(util(spectrum % num_frequencies,istart:iend,lm))
+        allocate(arg(spectrum % num_frequencies,istart:iend,lm))
+        allocate(kd(spectrum % num_frequencies,istart:iend))
 
-        do concurrent (o=1:om, i=istart:iend) 
+        do concurrent (o=1:spectrum % num_frequencies, i=istart:iend)
           kd(o,i) = k(o,i) * d(i)
         end do
 
         ! compute exponent
         do l = 1, lm
           do i = istart, iend
-            do o = 1, om
+            do o = 1, spectrum % num_frequencies
 
               arg(o,i,l) = 2 * k(o,i) * (depth(l) + d(i))
 
@@ -91,8 +93,8 @@ contains
     ! stokes velocities
     do l = 1, lm
       do i = istart, iend
-        do p = 1, pm
-          do o = 1, om
+        do p = 1, spectrum % num_directions
+          do o = 1, spectrum % num_frequencies
             us(i,l) = us(i,l) + util(o,i,l) * e(o,p,i) * cth(p)
             vs(i,l) = vs(i,l) + util(o,i,l) * e(o,p,i) * sth(p)
           end do

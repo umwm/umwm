@@ -4,31 +4,35 @@ module umwm_top
 
 contains
 
-  subroutine umwm_initialize
+  subroutine umwm_initialize(spectrum)
 
     use umwm_env, only: env_init
     use umwm_module,only: starttimestr => starttimestr_nml
-    use umwm_init,  only: nmlread, alloc, grid, masks, partition, alloc, remap, init
+    use umwm_init,  only: nmlread, initialize_spectrum, alloc, grid, masks, partition, remap, init
     use umwm_io,    only: input_nc, output_grid
+    use umwm_spectrum, only: spectrum_type
     use umwm_stokes,only: stokes_drift
+
+    type(spectrum_type), intent(out) :: spectrum
 
     call env_init()             ! initialize the environment
     call nmlread()              ! read the namelist
+    call initialize_spectrum(spectrum)
     call alloc(1)               ! allocate 2-d arrays
     call grid()                 ! define model grid
     call masks()                ! define seamasks
     call partition()            ! domain partitioning
-    call alloc(2)               ! allocate unrolled arrays
+    call alloc(2, spectrum)     ! allocate unrolled arrays
     call remap()                ! remap 2-d arrays to 1-d
     call output_grid()          ! output a grid file
     call input_nc(starttimestr) ! read initial fields
-    call init()                 ! initialize model variables
-    call stokes_drift('init')   ! initialize stokes drift arrays
+    call init(spectrum)         ! initialize model variables
+    call stokes_drift(spectrum, 'init') ! initialize stokes drift arrays
 
   end subroutine umwm_initialize
 
 
-  subroutine umwm_run(starttimestr, stoptimestr)
+  subroutine umwm_run(starttimestr, stoptimestr, spectrum)
 
 #ifdef MPI
     use umwm_mpi, only: exchange_halo
@@ -46,6 +50,7 @@ contains
     use umwm_forcing, only: forcinginput, forcinginterpolate
     use umwm_io, only: output_grid_nc, output_spectrum_nc
     use umwm_restart, only: restart_read, restart_write
+    use umwm_spectrum, only: spectrum_type
     use umwm_stokes, only: stokes_drift
     use umwm_util, only: sigwaveheight, meanwaveperiod
     use umwm_stress, only: stress
@@ -55,6 +60,7 @@ contains
     use datetime_module
 
     character(19), intent(in) :: starttimestr, stoptimestr
+    type(spectrum_type), intent(in) :: spectrum
 
     character(19) :: currenttimestr
     logical :: fullhour
@@ -67,7 +73,7 @@ contains
     currenttimestr = trim(currenttime % strftime('%Y-%m-%d_%H:%M:%S'))
 
     ! read wave spectrum field from a restart file if necessary:
-    if (first .and. restart) call restart_read(starttimestr)
+    if (first .and. restart) call restart_read(starttimestr, spectrum)
 
     do while (currenttime < stoptime) ! outer time loop
 
@@ -96,39 +102,39 @@ contains
         call forcinginterpolate() ! interpolate force fields in time
 #endif
 
-        call sin_d12() ! compute source input term Sin
-        call sds_d12() ! compute source dissipation term Sds
-        call snl_d12() ! compute non-linear source term Snl
-        call s_ice()   ! compute sea ice attenuation term Sice
-        call source()  ! integrate source functions
+        call sin_d12(spectrum) ! compute source input term Sin
+        call sds_d12(spectrum) ! compute source dissipation term Sds
+        call snl_d12(spectrum) ! compute non-linear source term Snl
+        call s_ice(spectrum)   ! compute sea ice attenuation term Sice
+        call source(spectrum)  ! integrate source functions
 
 #ifdef MPI
         call exchange_halo() ! exchange halo points
 #endif
 
-        call propagation() ! compute advection and integrate
+        call propagation(spectrum) ! compute advection and integrate
 
 #ifdef ESMF
         e(:,:,istart:iend) = ef(:,:,istart:iend) ! update
 #endif
 
-        call refraction()    ! compute refraction and integrate
+        call refraction(spectrum)    ! compute refraction and integrate
 
         e(:,:,istart:iend) = ef(:,:,istart:iend) ! update
 
-        call stress('atm') ! compute wind stress and drag coefficient
+        call stress('atm', spectrum) ! compute wind stress and drag coefficient
 
 #ifdef ESMF
-        call stress('ocn') ! compute stress into ocean top and bottom
+        call stress('ocn', spectrum) ! compute stress into ocean top and bottom
 #endif
 
         if (first) then
 
           ! diagnostic calculations before output
-          call diag()
+          call diag(spectrum)
 
-          if (outgrid > 0) call output_grid_nc(starttimestr)
-          if (outspec > 0) call output_spectrum_nc(starttimestr)
+          if (outgrid > 0) call output_grid_nc(starttimestr, spectrum)
+          if (outspec > 0) call output_spectrum_nc(starttimestr, spectrum)
 
 #ifdef MPI
           call mpi_barrier(MPI_COMM_WORLD, ierr)
@@ -147,16 +153,16 @@ contains
         ! diagnostic output on screen
         if(nproc == nproc_plot)then
           write(*,fmt=100)sumt/dtg,dts,wspd(iip),wdir(iip),      &
-                          sigwaveheight(iip),meanwaveperiod(iip),&
+                          sigwaveheight(iip, spectrum),meanwaveperiod(iip, spectrum),&
                           cd(iip)*1e3,f(oc(iip))
         end if
 
       end do ! end while(sumt<dtg) loop
 
       if (firstdtg) firstdtg = .false.
-      if (stokes) call stokes_drift
+      if (stokes) call stokes_drift(spectrum)
 
-      call diag() ! model diagnostics for output
+      call diag(spectrum) ! model diagnostics for output
 
       fullhour = currenttime % getminute() == 0 &
            .and. currenttime % getsecond() == 0
@@ -165,32 +171,32 @@ contains
       if(outgrid > 0)then
         if(mod(currenttime % gethour(),outgrid) == 0 .and. fullhour)then
 #ifndef ESMF
-          call stress('ocn')
+          call stress('ocn', spectrum)
 #endif
-          call output_grid_nc(currenttimestr)
+          call output_grid_nc(currenttimestr, spectrum)
         end if
       elseif(outgrid == -1)then
 #ifndef ESMF
-        call stress('ocn')
+        call stress('ocn', spectrum)
 #endif
-        call output_grid_nc(currenttimestr)
+        call output_grid_nc(currenttimestr, spectrum)
       end if
 
       ! spectrum output
       if (outspec > 0) then
         if (mod(currenttime % gethour(),outspec) == 0 .and. fullhour) then
-          call output_spectrum_nc(currenttimestr)
+          call output_spectrum_nc(currenttimestr, spectrum)
         end if
       else if (outspec == -1) then
-        call output_spectrum_nc(currenttimestr)
+        call output_spectrum_nc(currenttimestr, spectrum)
       end if
 
       ! restart output
       if (outrst > 0) then
         if (mod(currenttime % gethour(), outrst) == 0 .and. fullhour)&
-        call restart_write(currenttimestr)
+        call restart_write(currenttimestr, spectrum)
       else if (outspec == -1) then
-        call restart_write(currenttimestr)
+        call restart_write(currenttimestr, spectrum)
       end if
 
     end do ! end outer loop

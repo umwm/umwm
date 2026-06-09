@@ -1,8 +1,9 @@
 module umwm_restart
   ! Provides read and write subroutines for UMWM restart files
   use umwm_module, only: e, f, iend, ierr, im, istart, k, lat, lon, mi, &
-                         mpisize, ni, nproc, om, pm, th, ustar
+                         mpisize, ni, nproc, ustar
   use netcdf
+  use umwm_spectrum, only: spectrum_type
   use umwm_util, only: raiseexception
 
 #ifdef MPI
@@ -17,8 +18,9 @@ module umwm_restart
 
 contains
 
-  subroutine restart_read(timestr)
+  subroutine restart_read(timestr, spectrum)
     character(19), intent(in) :: timestr
+    type(spectrum_type), intent(in) :: spectrum
     character(19) :: timestrnew
     character(9999) :: filename
     integer :: stat, ncid, ustid, specid
@@ -45,7 +47,8 @@ contains
     stat = nf90_inq_varid(ncid, 'F', specid)
     stat = nf90_inq_varid(ncid, 'ust', ustid)
     stat = nf90_get_var(ncid, specid, e(:,:,istart:iend), &
-                        start=[1, 1, istart], count=[om, pm, iend - istart + 1])
+                        start=[1, 1, istart], &
+                        count=[spectrum % num_frequencies, spectrum % num_directions, iend - istart + 1])
     stat = nf90_get_var(ncid, ustid, ustar(istart:iend), &
                         start=[istart], count=[iend - istart + 1])
     stat = nf90_close(ncid)
@@ -57,8 +60,9 @@ contains
   end subroutine restart_read
 
 
-  subroutine restart_write(timestr)
+  subroutine restart_write(timestr, spectrum)
     character(19), intent(in) :: timestr
+    type(spectrum_type), intent(in) :: spectrum
   
     integer :: i, nn
     integer :: stat, ncid, xdimid, fdimid, thdimid
@@ -71,8 +75,8 @@ contains
       stat = nf90_create('restart/umwmrst_' // timestr // '.nc', NF90_CLOBBER, ncid)
 
       stat = nf90_def_dim(ncid, 'x', im, xdimid)
-      stat = nf90_def_dim(ncid, 'f', om, fdimid)
-      stat = nf90_def_dim(ncid, 'th', pm, thdimid)
+      stat = nf90_def_dim(ncid, 'f', spectrum % num_frequencies, fdimid)
+      stat = nf90_def_dim(ncid, 'th', spectrum % num_directions, thdimid)
 
       stat = nf90_def_var(ncid, 'lon', nf90_float, [xdimid], lonid)
       stat = nf90_put_att(ncid, lonid, name='description', values='longitude')
@@ -112,8 +116,8 @@ contains
 
       stat = nf90_put_var(ncid, lonid, lon_tmp)
       stat = nf90_put_var(ncid, latid, lat_tmp)
-      stat = nf90_put_var(ncid, freqid, f)
-      stat = nf90_put_var(ncid, thetaid, th)
+      stat = nf90_put_var(ncid, freqid, spectrum % frequency)
+      stat = nf90_put_var(ncid, thetaid, spectrum % direction)
 
       stat = nf90_close(ncid)
 
@@ -133,9 +137,10 @@ contains
         stat = nf90_inq_varid(ncid, 'wavenumber', kid)
         stat = nf90_inq_varid(ncid, 'ust', ustid)
         stat = nf90_put_var(ncid, specid, e(:,:,istart:iend), &
-                            start=[1, 1, istart], count=[om, pm, iend - istart + 1])
+                            start=[1, 1, istart], &
+                            count=[spectrum % num_frequencies, spectrum % num_directions, iend - istart + 1])
         stat = nf90_put_var(ncid, kid, k(:,istart:iend), &
-                            start=[1, istart], count=[om, iend-istart+1])
+                            start=[1, istart], count=[spectrum % num_frequencies, iend-istart+1])
         stat = nf90_put_var(ncid, ustid, ustar(istart:iend), &
                             start=[istart], count=[iend-istart+1])
         stat = nf90_close(ncid)

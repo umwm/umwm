@@ -10,9 +10,10 @@ module umwm_advection
                          dxn, dxs, dye, dyw, e, ef, fice, fice_uth, &
                          first, ie, iend, ierr, iie, iin, iis, iistart, &
                          iiend, iiw, in, is, isglobal, istart, iw, oc, &
-                         om, oneovar, oneovdth, oneovdx, oneovdy, pl, &
-                         pm, pr, rotl, rotr, sth, sth_curv, uc, vc
+                         oneovar, oneovdth, oneovdx, oneovdy, pl, &
+                         pr, rotl, rotr, sth, sth_curv, uc, vc
   use umwm_io, only: currents
+  use umwm_spectrum, only: spectrum_type
 
   implicit none
 
@@ -20,20 +21,23 @@ module umwm_advection
 
 contains
 
-  subroutine propagation
+  subroutine propagation(spectrum)
 
     ! 1st order upstream finite difference advection in geographical space.
 
+    type(spectrum_type), intent(in) :: spectrum
+    integer :: num_directions
     integer :: o, p, i
     real :: cge, cgw, cgn, cgs
     real :: feup, fedn, fwup, fwdn, fnup, fndn, fsup, fsdn
 
-    real :: flux(om,pm,istart:iend)
+    real :: flux(spectrum % num_frequencies, spectrum % num_directions, istart:iend)
 
+    num_directions = spectrum % num_directions
     flux = 0
 
     do concurrent(i = istart:iend)
-      do concurrent(o = 1:oc(i), p = 1:pm)
+      do concurrent(o = 1:oc(i), p = 1:num_directions)
 
         !  double group velocity at east, west, north, south cell edges
         cge = cg0(o,i) * cth_curv(p,i) + cg0(o,ie(i)) * cth_curv(p,i)
@@ -78,7 +82,7 @@ contains
         fsup = (vc(i) + vc(iis(i)) + abs(vc(i) + vc(iis(i)))) * dxs(i)
         fsdn = (vc(i) + vc(iis(i)) - abs(vc(i) + vc(iis(i)))) * dxs(i)
 
-        do concurrent(o = 1:oc(i), p = 1:pm)
+        do concurrent(o = 1:oc(i), p = 1:num_directions)
           flux(o,p,i) = flux(o,p,i)                                &
                       + (feup * e(o,p,i)     + fedn * e(o,p,ie(i)) &
                       -  fwup * e(o,p,iw(i)) - fwdn * e(o,p,i)     &
@@ -92,7 +96,7 @@ contains
 
     ! integrate in time
     do concurrent(i = istart:iend)
-      do concurrent(o = 1:oc(i), p = 1:pm)
+      do concurrent(o = 1:oc(i), p = 1:num_directions)
           ef(o,p,i) = ef(o,p,i) - 0.25 * dta * flux(o,p,i) * oneovar(i)
 
           if (fice(i) > fice_uth) then
@@ -104,17 +108,21 @@ contains
   end subroutine propagation
 
 
-  subroutine refraction
+  subroutine refraction(spectrum)
 
     ! 1st order upstream finite difference advection in
     ! directional space -- bottom- and current-induced refraction.
 
+    type(spectrum_type), intent(in) :: spectrum
+    integer :: num_directions
     integer :: i, o, p
     logical :: compute_rotation_tendency
     real :: sendbuffer
     real, save :: dtr_temp
 
-    real :: flux(om,pm,istart:iend)
+    real :: flux(spectrum % num_frequencies, spectrum % num_directions, istart:iend)
+
+    num_directions = spectrum % num_directions
 
 #ifdef ESMF
     ! always compute in coupled mode:
@@ -129,7 +137,7 @@ contains
       ! compute rotation
       flux = 0
       do concurrent(i = istart:iend)
-        do concurrent(o = 1:oc(i), p = 1:pm)
+        do concurrent(o = 1:oc(i), p = 1:num_directions)
           flux(o,p,i) = 0.5 * (((cp0(o,ie(i)) - cp0(o,iw(i))) * sth(p) &
                                + vc(iie(i)) - vc(iiw(i))) * oneovdx(i) &
                              - ((cp0(o,in(i)) - cp0(o,is(i))) * cth(p) &
@@ -141,7 +149,7 @@ contains
       rotl = 0
       rotr = 0
       do concurrent(i = istart:iend)
-        do concurrent(o = 1:oc(i), p = 1:pm)
+        do concurrent(o = 1:oc(i), p = 1:num_directions)
           rotl(o,p,i) = 0.5 * (flux(o,p,i) + flux(o,pl(p),i))
           rotr(o,p,i) = 0.5 * (flux(o,p,i) + flux(o,pr(p),i))
         end do
@@ -164,7 +172,7 @@ contains
 
     flux = 0
     do concurrent(i = istart:iend)
-      do concurrent(o = 1:oc(i), p = 1:pm)
+      do concurrent(o = 1:oc(i), p = 1:num_directions)
 
         ! compute tendencies
         flux(o,p,i) = 0.5 * ((rotl(o,p,i) + abs(rotl(o,p,i))) * e(o,p,i)    &

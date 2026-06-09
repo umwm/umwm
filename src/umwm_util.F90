@@ -66,17 +66,19 @@ end function remap_mn2i
 
 
 
-pure function sigwaveheight(i) result(swh)
+pure function sigwaveheight(i, spectrum) result(swh)
 !======================================================================+
 !                                                                      !
 ! given a spatial grid index i, returns significant wave height        !
 ! at that location.                                                    !
 !                                                                      !
 !======================================================================+
-use umwm_module,only:e,kdk,dth,om,pm
+use umwm_module,only:e,kdk,dth
+use umwm_spectrum, only: spectrum_type
 
 ! arguments:
 integer,intent(in) :: i
+type(spectrum_type), intent(in) :: spectrum
 
 integer :: o,p
 real    :: swh
@@ -84,8 +86,8 @@ real    :: swh
 !=======================================================================
 
 swh = 0
-do p=1,pm
-  do o=1,om
+do p=1,spectrum % num_directions
+  do o=1,spectrum % num_frequencies
     swh = swh+e(o,p,i)*kdk(o,i)
   end do
 end do
@@ -96,25 +98,27 @@ end function sigwaveheight
 
 
 
-pure function meanwaveperiod(i) result(mwp)
+pure function meanwaveperiod(i, spectrum) result(mwp)
 !======================================================================+
 !                                                                      !
 ! given a spatial grid index i, returns mean wave period at that       !
 ! location.                                                            !
 !                                                                      !
 !======================================================================+
-use umwm_module,only:e,f,kdk,om,pm
+use umwm_module,only:e,f,kdk
+use umwm_spectrum, only: spectrum_type
 
 ! arguments:
 integer,intent(in) :: i
+type(spectrum_type), intent(in) :: spectrum
 
 integer :: o,p
 real    :: m0,m2,mwp
 
 m0 = 0
 m2 = 0
-do p=1,pm
-  do o=1,om
+do p=1,spectrum % num_directions
+  do o=1,spectrum % num_frequencies
     m0 = m0+e(o,p,i)*kdk(o,i)
     m2 = m2+f(o)**2*e(o,p,i)*kdk(o,i)
   end do

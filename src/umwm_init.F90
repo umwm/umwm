@@ -5,6 +5,7 @@ use mpi
 #endif
 use umwm_constants, only: rk
 use umwm_dispersion, only: group_speed, wavenumber
+use umwm_spectrum, only: spectrum_type
 use umwm_module, only: allowedoutputtimes, ar, ar_2d, bf1, bf1_renorm, &
                        bf1a, bf2, bf2_renorm, cd, cfllim, cg0, cgmax, &
                        cgmxx, cgmxy, cgmyy, cothkd, cp0, cth, cth2, &
@@ -190,10 +191,19 @@ stoptimestr_nml = stoptimestr
 end subroutine nmlread
 
 
-subroutine alloc(option)
+subroutine initialize_spectrum(spectrum)
+  type(spectrum_type), intent(out) :: spectrum
+
+  spectrum = spectrum_type(om, pm, real(fmin, rk), real(fmax, rk))
+
+end subroutine initialize_spectrum
+
+
+subroutine alloc(option, spectrum)
   ! Allocates UMWM arrays
 
 integer,intent(in) :: option
+type(spectrum_type), intent(in), optional :: spectrum
 
 ! allocate 2-d native arrays:
 if(option==1)then
@@ -219,6 +229,13 @@ if(option==1)then
 
 ! allocate remapped arrays:
 elseif(option==2)then
+
+  if (present(spectrum)) then
+    om = spectrum % num_frequencies
+    pm = spectrum % num_directions
+    fmin = real(spectrum % frequency_min, kind(fmin))
+    fmax = real(spectrum % frequency_max, kind(fmax))
+  end if
 
   ! 1-d arrays:
   allocate(dom(om),f(om))
@@ -1235,7 +1252,7 @@ end if
 end subroutine remap
 
 
-subroutine init
+subroutine init(spectrum)
 ! Initialize model variables such as frequencies, direction angles,
 ! phase speed and group velocity, wave numbers, etc.
 #ifdef MPI
@@ -1246,22 +1263,26 @@ use umwm_util,only:raiseexception
 use umwm_io, only: winds,seaice
 use umwm_util, only: remap_mn2i
 
+type(spectrum_type), intent(in) :: spectrum
 integer :: i, o, p, pp, ind
 
 #ifdef MPI
 integer :: n
 #endif
 
-! set frequency increment:
-dlnf = (log(fmax)-log(fmin))/float(om-1)
+! initialize legacy spectrum aliases:
+om = spectrum % num_frequencies
+pm = spectrum % num_directions
+fmin = real(spectrum % frequency_min, kind(fmin))
+fmax = real(spectrum % frequency_max, kind(fmax))
+dlnf = real(spectrum % dlnf, kind(dlnf))
+dth = real(spectrum % dth, kind(dth))
 
 ! set frequency bins:
-do o=1,om
-  f(o) = exp(log(fmin)+(o-1)*dlnf)
-end do
+f = real(spectrum % frequency, kind(f))
+th = real(spectrum % direction, kind(th))
 
 ! define various constants:
-dth           = twopi/float(pm)
 dthg          = dth*g
 oneovdth      = 1./dth
 log10overz    = log(10./z)
@@ -1294,10 +1315,6 @@ bf2  = exp(-64*dlnf*dlnf)
 bf1a = bf1/(bf1+bf2)
 bf2  = bf2/(bf1+bf2)
 bf1  = bf1a
-
-do p=1,pm
-  th(p) = (p-0.5*(pm+1))*dth ! angles
-end do
 
 cth = cos(th) ! cosines
 sth = sin(th) ! sines

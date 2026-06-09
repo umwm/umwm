@@ -17,6 +17,7 @@ use umwm_module, only: ar_2d, cd, cgmxx, cgmxy, cgmyy, curv, d_2d, &
                        tauy_ocntop, tauy_skin, tauy_snl, th, uc, uc0, &
                        ucf, ustar, vc, vc0, vcf, vwf, wdir, wdir0, &
                        wspd, wspd0, x, y, uwf, mpiisblocking
+use umwm_spectrum, only: spectrum_type
 use netcdf
 
 logical :: readfile
@@ -158,11 +159,12 @@ end if
 end subroutine output_grid
 
 
-subroutine output_spectrum_nc(timestr)
+subroutine output_spectrum_nc(timestr, spectrum)
 ! Writes out model spectrum output in a netcdf format
 
 ! arguments:
 character(19),intent(in) :: timestr
+type(spectrum_type), intent(in) :: spectrum
 
 character(19),save :: savetimestr
 
@@ -254,8 +256,8 @@ do nn=1,npts
 
       ! define dimensions:
       stat = nf90_def_dim(ncid, 'scalar',1, scalarid)
-      stat = nf90_def_dim(ncid, 'frequency', om, fdimid)
-      stat = nf90_def_dim(ncid, 'direction', pm, thdimid)
+      stat = nf90_def_dim(ncid, 'frequency', spectrum % num_frequencies, fdimid)
+      stat = nf90_def_dim(ncid, 'direction', spectrum % num_directions, thdimid)
       stat = nf90_def_dim(ncid, 'time', NF90_UNLIMITED, tdimid)
 
       ! define variables:
@@ -278,9 +280,9 @@ do nn=1,npts
       stat = nf90_enddef(ncid)
 
       ! fill in static fields:
-      stat = nf90_put_var(ncid,freqid,f,start=[1],count=[om])
+      stat = nf90_put_var(ncid,freqid,spectrum % frequency,start=[1],count=[om])
       stat = nf90_put_var(ncid,wlid,k(:,ispec(nn)),start=[1],count=[om])
-      stat = nf90_put_var(ncid,thetaid,th,start=[1],count=[pm])
+      stat = nf90_put_var(ncid,thetaid,spectrum % direction,start=[1],count=[pm])
       stat = nf90_put_var(ncid,lon_scalarid,lon(mspec(nn),nspec(nn)))
       stat = nf90_put_var(ncid,lat_scalarid,lat(mspec(nn),nspec(nn)))
       stat = nf90_put_var(ncid,sdvid,sdv(:,ispec(nn)),start=[1],count=[om])
@@ -330,11 +332,12 @@ firstrun = .false.
 end subroutine output_spectrum_nc
 
 
-subroutine output_grid_nc(timestr)
+subroutine output_grid_nc(timestr, spectrum)
 ! Writes out model gridded output in a netcdf format
 use umwm_stokes,only:depth,lm,us,vs,ds
 
 character(19),intent(in) :: timestr
+type(spectrum_type), intent(in) :: spectrum
 
 character(19) :: timestrnew
 
@@ -383,8 +386,8 @@ if(nproc == 0)then
 
   stat = nf90_def_dim(ncid,'x',mm,xdimid)
   stat = nf90_def_dim(ncid,'y',nm,ydimid)
-  stat = nf90_def_dim(ncid,'f',om,fdimid)
-  stat = nf90_def_dim(ncid,'th',pm,thdimid)
+  stat = nf90_def_dim(ncid,'f',spectrum % num_frequencies,fdimid)
+  stat = nf90_def_dim(ncid,'th',spectrum % num_directions,thdimid)
   stat = nf90_def_dim(ncid,'time',NF90_UNLIMITED,tdimid)
 
   if(stokes)then
@@ -669,8 +672,8 @@ end if
 
 if(nproc == 0)then
 
-  stat = nf90_put_var(ncid,freqid,f,start=[1],count=[om])
-  stat = nf90_put_var(ncid,thetaid,th,start=[1],count=[pm])
+  stat = nf90_put_var(ncid,freqid,spectrum % frequency,start=[1],count=[om])
+  stat = nf90_put_var(ncid,thetaid,spectrum % direction,start=[1],count=[pm])
   stat = nf90_put_var(ncid,lonid,lon,start=[1,1,1],count=[mm,nm,1])
   stat = nf90_put_var(ncid,latid,lat,start=[1,1,1],count=[mm,nm,1])
   stat = nf90_put_var(ncid,maskid,mask,start=[1,1,1],count=[mm,nm,1])
