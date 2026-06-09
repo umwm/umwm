@@ -23,7 +23,7 @@ spectral wave models.
 
 ## Getting started
 
-### Getting the code
+### Get the code
 
 ```
 git clone https://github.com/umwm/umwm
@@ -87,6 +87,14 @@ Use `make print-config` to see the resolved compiler and NetCDF settings.
 Executable `umwm` will be built in the top-level directory and auxiliary tool
 executables will be built in `tools/`.
 PDF documentation can be built separately with `make docs`.
+
+### Running tests
+
+Run the test suite from the top-level directory:
+
+```
+make test
+```
 
 ### Running UMWM
 

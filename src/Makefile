@@ -66,9 +66,12 @@ umwm_source_functions.o: umwm_source_functions.F90 umwm_constants.o umwm_io.o um
 test: test_dispersion
 	../tests/test_dispersion
 
-test_dispersion: umwm_constants.o umwm_dispersion.o ../tests/test_dispersion.f90
+test_dispersion: umwm_constants.o umwm_dispersion.o tuff.o ../tests/test_dispersion.f90
 	$(FC) $(CPPFLAGS) $(FCFLAGS) -o ../tests/test_dispersion \
-		../tests/test_dispersion.f90 umwm_constants.o umwm_dispersion.o $(LDLIBS)
+		../tests/test_dispersion.f90 tuff.o umwm_constants.o umwm_dispersion.o $(LDLIBS)
+
+tuff.o: ../tests/tuff.f90
+	$(FC) $(CPPFLAGS) $(FCFLAGS) -c ../tests/tuff.f90
 
 datetime_module.f90:
 	curl -O https://raw.githubusercontent.com/wavebitscientific/datetime-fortran/master/src/datetime_module.f90
