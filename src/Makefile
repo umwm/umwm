@@ -65,26 +65,14 @@ umwm_stokes.o:      umwm_stokes.F90     umwm_module.o umwm_spectrum.o umwm_const
 umwm_stress.o:      umwm_stress.F90     umwm_advection.o umwm_module.o umwm_spectrum.o umwm_constants.o umwm_stokes.o
 umwm_source_functions.o: umwm_source_functions.F90 umwm_constants.o umwm_spectrum.o umwm_io.o umwm_sheltering.o
 
-test: test_dispersion test_spectrum
-	../tests/test_dispersion
-	../tests/test_spectrum
-
-test_dispersion: umwm_constants.o umwm_dispersion.o tuff.o ../tests/test_dispersion.f90
-	$(FC) $(CPPFLAGS) $(FCFLAGS) -o ../tests/test_dispersion \
-		../tests/test_dispersion.f90 tuff.o umwm_constants.o umwm_dispersion.o $(LDLIBS)
-
-test_spectrum: umwm_constants.o umwm_spectrum.o tuff.o ../tests/test_spectrum.f90
-	$(FC) $(CPPFLAGS) $(FCFLAGS) -o ../tests/test_spectrum \
-		../tests/test_spectrum.f90 tuff.o umwm_constants.o umwm_spectrum.o $(LDLIBS)
-
-tuff.o: ../tests/tuff.f90
-	$(FC) $(CPPFLAGS) $(FCFLAGS) -c ../tests/tuff.f90
+test:
+	$(MAKE) --directory=../tests test
 
 datetime_module.f90:
 	curl -O https://raw.githubusercontent.com/wavebitscientific/datetime-fortran/master/src/datetime_module.f90
 
 clean:
-	$(RM) umwm *.o *.mod libumwm.a ../tests/test_dispersion ../tests/test_spectrum
+	$(RM) umwm *.o *.mod libumwm.a
 
 clean_all:
 	$(MAKE) clean
