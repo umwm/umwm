@@ -101,7 +101,7 @@ endsubroutine source
 
 subroutine diag(spectrum)
 
-! TODO move to umwm_diagnostics.F90
+! TODO move to umwm_diagnostics.f90
 
 type(spectrum_type), intent(in) :: spectrum
 integer              :: o,p,i

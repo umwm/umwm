@@ -6,15 +6,15 @@ This file is a technical reference for the physics implemented in the University
 
 | Physics area | Main implementation | Purpose |
 | --- | --- | --- |
-| Model loop | `src/umwm_top.F90` | Calls source functions, source integration, advection, refraction, stress, Stokes drift, diagnostics, and output. |
-| Source functions | `src/umwm_source_functions.F90` | Wind input, wave breaking, nonlinear downshifting, turbulence, and sea-ice attenuation. |
-| Source integration and diagnostics | `src/umwm_physics.F90` | Exponential source update, diagnostic spectral tail, integrated wave diagnostics. |
-| Propagation and refraction | `src/umwm_advection.F90` | First-order upstream advection in geographic and directional space. |
-| Stress | `src/umwm_stress.F90` | Wind form/skin stress, ocean-top and ocean-bottom momentum fluxes, drag coefficient. |
-| Stokes drift | `src/umwm_stokes.F90` | Wave-induced Stokes drift and e-folding depth. |
+| Model loop | `src/umwm_top.f90` | Calls source functions, source integration, advection, refraction, stress, Stokes drift, diagnostics, and output. |
+| Source functions | `src/umwm_source_functions.f90` | Wind input, wave breaking, nonlinear downshifting, turbulence, and sea-ice attenuation. |
+| Source integration and diagnostics | `src/umwm_physics.f90` | Exponential source update, diagnostic spectral tail, integrated wave diagnostics. |
+| Propagation and refraction | `src/umwm_advection.f90` | First-order upstream advection in geographic and directional space. |
+| Stress | `src/umwm_stress.f90` | Wind form/skin stress, ocean-top and ocean-bottom momentum fluxes, drag coefficient. |
+| Stokes drift | `src/umwm_stokes.f90` | Wave-induced Stokes drift and e-folding depth. |
 | Spectral grid | `src/umwm_spectrum.f90` | `spectrum_type`, frequency and direction coordinates, and spectral spacings. |
 | Dispersion | `src/umwm_dispersion.f90` | Capillary-gravity dispersion relation, wavenumber solve, angular frequency, and group speed. |
-| Initialization and precomputed factors | `src/umwm_init.F90` | Runtime allocation, legacy spectrum aliases, wave kinematics, integration weights, dissipation constants, CFL limits. |
+| Initialization and precomputed factors | `src/umwm_init.f90` | Runtime allocation, legacy spectrum aliases, wave kinematics, integration weights, dissipation constants, CFL limits. |
 
 Within each global forcing/output time step `dtg`, UMWM repeatedly runs:
 

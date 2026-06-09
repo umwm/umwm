@@ -13,9 +13,6 @@ TESTS := test_dispersion test_spectrum
 %.o: %.f90
 	$(FC) $(CPPFLAGS) $(FCFLAGS) -I. -I$(SRC_DIR) -c $<
 
-%.o: $(SRC_DIR)/%.F90
-	$(FC) $(CPPFLAGS) $(FCFLAGS) -I. -I$(SRC_DIR) -c $<
-
 %.o: $(SRC_DIR)/%.f90
 	$(FC) $(CPPFLAGS) $(FCFLAGS) -I. -I$(SRC_DIR) -c $<
 

@@ -12,6 +12,8 @@ else
   override CPPFLAGS += -DMPI
 endif
 
+override CPPFLAGS += -cpp
+
 ifeq ($(origin FC),default)
   FC := $(UMWM_DEFAULT_FC)
 else ifeq ($(origin FC),undefined)
