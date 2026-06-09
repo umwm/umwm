@@ -19,7 +19,7 @@ module umwm_constants
   real(rk), parameter :: quart = 0.25_rk
   real(rk), parameter :: onethird = one / three
   real(rk), parameter :: pi = 4 * atan(1._rk) ! pi
-  real(rk), parameter :: euler = exp(1d0)     ! e
+  real(rk), parameter :: euler = exp(1._rk) ! e
   real(rk), parameter :: eulerinv = 1 / euler ! 1/e
   real(rk), parameter :: invpi  = one / pi ! 1/pi
   real(rk), parameter :: twopi  = two * pi ! 2*pi

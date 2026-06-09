@@ -3,6 +3,8 @@ module umwm_init
 #ifdef MPI
 use mpi
 #endif
+use umwm_constants, only: rk
+use umwm_dispersion, only: group_speed, wavenumber
 use umwm_module, only: allowedoutputtimes, ar, ar_2d, bf1, bf1_renorm, &
                        bf1a, bf2, bf2_renorm, cd, cfllim, cg0, cgmax, &
                        cgmxx, cgmxy, cgmyy, cothkd, cp0, cth, cth2, &
@@ -22,8 +24,8 @@ use umwm_module, only: allowedoutputtimes, ar, ar_2d, bf1, bf1_renorm, &
                        iip, k, k3dk, k4, kappa, kdk, l2, last_col_len, &
                        lat, log10overz, logl2overz, lon, mask, mi, mindelx, &
                        mm, momx, momy, mpisize, mss, mss_fac, mwd, mwl, &
-                       mwp, ni, nm, nproc, nproc_out, nu_air, nu_water, &
-                       oc, om, oneovar, oneovdth, oneovdx, oneovdy, &
+                       mwp, ni, nm, nproc, nproc_out, nproc_plot, nu_air, &
+                       nu_water, oc, om, oneovar, oneovdth, oneovdx, oneovdy, &
                        oneoverk4, outgrid, outspec, outrst, physics_time_step, &
                        pi, pl, pm, pr, psim, psiml2, rhoa, rhoa0, rhoa_2d, &
                        rhoab, rhoaf, rhorat, rhow, rhow0, rhow_2d, rhowb, &
@@ -1333,7 +1335,7 @@ do p=1,pm
 end do
 
 ! compute wave numbers, phase speeds, and group velocities:
-call dispersion(1e-2)
+call dispersion
 
 mindelx = min(minval(dx_2d,mask==1),minval(dy_2d,mask==1))
 cgmax   = maxval(cg0(:,istart:iend))
@@ -1419,7 +1421,7 @@ write(*,fmt=102)
 end subroutine init
 
 
-subroutine dispersion(tol)
+subroutine dispersion
 ! Iteratively solve the dispersion relation by iteration,
 ! and compute phase and group velocities in absolute reference frame (w/ currents)
 #ifdef MPI
@@ -1432,49 +1434,15 @@ integer :: sendtag, recvtag
 integer :: src, dest
 #endif
 
-integer :: counter,i,o
-real,intent(in) :: tol
-real :: dk
+integer :: i,o
 
-real,dimension(istart:iend) :: b
-real,dimension(om,istart:iend) :: f_nd,kd,t
+real,dimension(om,istart:iend) :: kd
 
 if(nproc==0)write(*,'(a)')'umwm: dispersion: solving for dispersion relationship;'
 
-! non-dimesionalize frequencies, and use deep water limit
-! as initial guess:
 do concurrent (o=1:om, i=istart:iend)
-  cp0(o,i)  = twopi*sqrt(d(i)/g)
-  f_nd(o,i) = cp0(o,i)*f(o)
-  k(o,i)    = f_nd(o,i)*f_nd(o,i)
-end do
-
-! non-dimesionalize surface tension:
-b = sfct/(rhow0*g*d(istart:iend)**2)
-
-do i=istart,iend
-  do o=1,om
-
-    counter = 1
-    dk = 2.*tol
-
-    do while(abs(dk) > tol) ! newton-raphson iteration loop
-
-      t(o,i) = tanh(k(o,i))
-      dk = -(f_nd(o,i)*f_nd(o,i)-k(o,i)*t(o,i)  &
-           *(1.+b(i)*k(o,i)*k(o,i)))            &
-           /(3.*b(i)*k(o,i)*k(o,i)*t(o,i)+t(o,i)&
-           +k(o,i)*(1.+b(i)*k(o,i)*k(o,i))*(1.-t(o,i)*t(o,i)))
-      k(o,i) = k(o,i)-dk
-
-      if(counter == 1000)exit ! escape if stuck
-      counter = counter+1
-
-    end do
-
-    k(o,i) = abs(k(o,i))/d(i) ! f(k)=f(-k), so k>0 == k<0 roots
-
-  end do
+  k(o,i) = real(wavenumber(real(f(o), rk), real(d(i), rk), real(rhow0, rk), &
+                            real(g, rk), real(sfct, rk)), kind(k))
 end do
 
 if(nproc==0)write(*,'(a)')'umwm: dispersion: dispersion relationship done;'
@@ -1493,8 +1461,9 @@ cg0 = tiny(cg0)
 do concurrent (o=1:om, i=istart:iend)
 
   cp0(o,i) = twopi*f(o)/k(o,i)
-  cg0(o,i) = cp0(o,i)*(0.5+k(o,i)*d(i)/sinh(2.*kd(o,i))&
-                      +sfct*k(o,i)*k(o,i)/(rhow0*g+sfct*k(o,i)*k(o,i)))
+  cg0(o,i) = real(group_speed(real(k(o,i), rk), real(d(i), rk), &
+                              real(rhow0, rk), real(g, rk), &
+                              real(sfct, rk)), kind(cg0))
 end do
 
 ! compute some frequently used arrays:

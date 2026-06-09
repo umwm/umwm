@@ -15,6 +15,7 @@ OBJS = datetime_module.o \
        umwm_advection.o \
        umwm_constants.o \
        umwm_diagnostics.o \
+       umwm_dispersion.o \
        umwm_env.o \
        umwm_forcing.o \
        umwm_init.o \
@@ -30,7 +31,7 @@ OBJS = datetime_module.o \
        umwm_stress.o \
        umwm_top.o
 
-.PHONY: all clean clean_all print-config
+.PHONY: all test clean clean_all print-config
 .DEFAULT_GOAL := all
 
 all: umwm
@@ -48,8 +49,9 @@ umwm_top.o:         umwm_top.F90 datetime_module.o umwm_constants.o umwm_env.o u
 umwm_module.o:      umwm_module.F90     datetime_module.o umwm_constants.o
 umwm_constants.o:   umwm_constants.F90
 umwm_diagnostics.o: umwm_diagnostics.F90 umwm_constants.o
+umwm_dispersion.o:  umwm_dispersion.f90  umwm_constants.o
 umwm_mpi.o:         umwm_mpi.F90
-umwm_init.o:        umwm_init.F90       umwm_module.o umwm_mpi.o umwm_util.o umwm_io.o umwm_constants.o
+umwm_init.o:        umwm_init.F90       umwm_module.o umwm_mpi.o umwm_util.o umwm_io.o umwm_constants.o umwm_dispersion.o
 umwm_physics.o:     umwm_physics.F90    umwm_module.o umwm_io.o  umwm_advection.o
 umwm_advection.o:   umwm_advection.F90  umwm_module.o umwm_io.o  umwm_constants.o
 umwm_io.o:          umwm_io.F90         umwm_module.o umwm_mpi.o umwm_util.o umwm_stokes.o
@@ -61,11 +63,18 @@ umwm_stokes.o:      umwm_stokes.F90     umwm_module.o umwm_constants.o
 umwm_stress.o:      umwm_stress.F90     umwm_advection.o umwm_module.o umwm_constants.o umwm_stokes.o
 umwm_source_functions.o: umwm_source_functions.F90 umwm_constants.o umwm_io.o umwm_sheltering.o
 
+test: test_dispersion
+	../tests/test_dispersion
+
+test_dispersion: umwm_constants.o umwm_dispersion.o ../tests/test_dispersion.f90
+	$(FC) $(CPPFLAGS) $(FCFLAGS) -o ../tests/test_dispersion \
+		../tests/test_dispersion.f90 umwm_constants.o umwm_dispersion.o $(LDLIBS)
+
 datetime_module.f90:
 	curl -O https://raw.githubusercontent.com/wavebitscientific/datetime-fortran/master/src/datetime_module.f90
 
 clean:
-	$(RM) umwm *.o *.mod libumwm.a 
+	$(RM) umwm *.o *.mod libumwm.a ../tests/test_dispersion
 
 clean_all:
 	$(MAKE) clean
