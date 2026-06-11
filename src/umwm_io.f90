@@ -18,19 +18,20 @@ use umwm_module, only: ar_2d, cd, cgmxx, cgmxy, cgmyy, curv, d_2d, &
                        ucf, ustar, vc, vc0, vcf, vwf, wdir, wdir0, &
                        wspd, wspd0, x, y, uwf, mpiisblocking
 use umwm_spectrum, only: spectrum_type
+use umwm_config, only: config_type
 use netcdf
 
 logical :: readfile
-logical :: winds,currents,air_density,water_density,seaice
 
 contains
 
 
 
-subroutine input_nc(timestr)
+subroutine input_nc(config, timestr)
 ! Reads input data files for atmospheric and oceanic fields.
 use umwm_util, only: remap_mn2i
 
+type(config_type), intent(in) :: config
 character(19), intent(in) :: timestr
 character(999) :: nc_infile
 character(19) :: readstr
@@ -44,38 +45,39 @@ nc_infile = 'input/umwmin_' // readstr // '.nc'
 
 ! set the logical switch to .true. only if from file is requested
 ! for any of the fields:
-readfile = any([winds, currents, air_density, water_density, seaice])
+readfile = any([config % winds, config % currents, config % air_density, &
+                config % water_density, config % seaice])
 
 if (readfile) call nc_check(nf90_open(trim(nc_infile), nf90_nowrite, ncid))
 
-if(winds)then
+if(config % winds)then
   call nc_check(nf90_inq_varid(ncid,'uw',varid))
   call nc_check(nf90_get_var(ncid,varid,uwf))
   call nc_check(nf90_inq_varid(ncid,'vw',varid))
   call nc_check(nf90_get_var(ncid,varid,vwf))
 else
-  wspd = wspd0
-  wdir = wdir0
+  wspd = config % wspd0
+  wdir = config % wdir0
 end if
 
-if(currents)then
+if(config % currents)then
   call nc_check(nf90_inq_varid(ncid,'uc',varid))
   call nc_check(nf90_get_var(ncid,varid,ucf))
   call nc_check(nf90_inq_varid(ncid,'vc',varid))
   call nc_check(nf90_get_var(ncid,varid,vcf))
 else
-  ucf = uc0
-  vcf = vc0
-  uc  = uc0
-  vc  = vc0
+  ucf = config % uc0
+  vcf = config % vc0
+  uc  = config % uc0
+  vc  = config % vc0
 end if
 
-if(seaice)then
+if(config % seaice)then
   call nc_check(nf90_inq_varid(ncid,'fice',varid))
   call nc_check(nf90_get_var(ncid,varid,ficef))
 else
-  fice_2d = fice0
-  fice    = fice0
+  fice_2d = config % fice0
+  fice    = config % fice0
 end if
 
 where(mask == 0)
@@ -83,20 +85,20 @@ where(mask == 0)
   vcf = 0
 endwhere
 
-if(air_density)then
+if(config % air_density)then
   call nc_check(nf90_inq_varid(ncid,'rhoa',varid))
   call nc_check(nf90_get_var(ncid,varid,rhoa_2d))
 else
-  rhoa_2d = rhoa0
-  rhoa    = rhoa0
+  rhoa_2d = config % rhoa0
+  rhoa    = config % rhoa0
 end if
 
-if(water_density)then
+if(config % water_density)then
   call nc_check(nf90_inq_varid(ncid,'rhow',varid))
   call nc_check(nf90_get_var(ncid,varid,rhow_2d))
 else
-  rhow_2d = rhow0
-  rhow    = rhow0
+  rhow_2d = config % rhow0
+  rhow    = config % rhow0
 end if
 
 if(readfile)then
@@ -110,9 +112,10 @@ rhowf = remap_mn2i(rhow_2d)
 end subroutine input_nc
 
 
-subroutine output_grid
+subroutine output_grid(config)
 ! Outputs grid related fields into a netcdf file.
 
+type(config_type), intent(in) :: config
 integer :: ncid
 integer :: xdimid,ydimid
 integer :: lonid,latid,dlonid,dlatid,dxid,dyid,arid,maskid,did,nprocid
@@ -121,8 +124,8 @@ integer :: xid,yid,curvid
 if(nproc == 0)then
 
   call nc_check(nf90_create('output/umwmout.grid',nf90_clobber,ncid))
-  call nc_check(nf90_def_dim(ncid,'x',mm,xdimid))
-  call nc_check(nf90_def_dim(ncid,'y',nm,ydimid))
+  call nc_check(nf90_def_dim(ncid,'x',config % mm,xdimid))
+  call nc_check(nf90_def_dim(ncid,'y',config % nm,ydimid))
   call nc_check(nf90_def_var(ncid,'lon',NF90_FLOAT,[xdimid,ydimid],lonid))
   call nc_check(nf90_def_var(ncid,'lat',NF90_FLOAT,[xdimid,ydimid],latid))
   call nc_check(nf90_def_var(ncid,'xx',NF90_FLOAT,[xdimid,ydimid],xid))
@@ -159,10 +162,11 @@ end if
 end subroutine output_grid
 
 
-subroutine output_spectrum_nc(timestr, spectrum)
+subroutine output_spectrum_nc(config, timestr, spectrum)
 ! Writes out model spectrum output in a netcdf format
 
 ! arguments:
+type(config_type), intent(in) :: config
 character(19),intent(in) :: timestr
 type(spectrum_type), intent(in) :: spectrum
 
@@ -213,8 +217,8 @@ if(firstrun)then
 
       read(21, *, end=100) mspec(npts), nspec(npts), spectrumid(npts)
 
-      if (mspec(npts) < 2 .or. mspec(npts) > mm - 1 .or. &
-          nspec(npts) < 2 .or. nspec(npts) > nm - 1) &
+      if (mspec(npts) < 2 .or. mspec(npts) > config % mm - 1 .or. &
+          nspec(npts) < 2 .or. nspec(npts) > config % nm - 1) &
           stop 'umwm: output_nc: error: a requested point ' &
             // 'in spectrum.nml is out of bounds'
 
@@ -332,10 +336,11 @@ firstrun = .false.
 end subroutine output_spectrum_nc
 
 
-subroutine output_grid_nc(timestr, spectrum)
+subroutine output_grid_nc(config, timestr, spectrum)
 ! Writes out model gridded output in a netcdf format
 use umwm_stokes,only:depth,lm,us,vs,ds
 
+type(config_type), intent(in) :: config
 character(19),intent(in) :: timestr
 type(spectrum_type), intent(in) :: spectrum
 
@@ -390,7 +395,7 @@ if(nproc == 0)then
   stat = nf90_def_dim(ncid,'th',spectrum % num_directions,thdimid)
   stat = nf90_def_dim(ncid,'time',NF90_UNLIMITED,tdimid)
 
-  if(stokes)then
+  if(config % stokes)then
 
     stat = nf90_def_dim(ncid,'z',lm,zdimid)
 
@@ -846,7 +851,7 @@ if(nproc == 0)stat = nf90_put_var(ncid,dcpid,output_field,start=[1,1,1],count=[m
 call gatherfield(dcg,output_field)
 if(nproc == 0)stat = nf90_put_var(ncid,dcgid,output_field,start=[1,1,1],count=[mm,nm,1])
 
-if(stokes)then
+if(config % stokes)then
 
   if(nproc == 0)stat = nf90_put_var(ncid,zid,depth,start=[1],count=[lm])
 

@@ -91,105 +91,15 @@ module umwm_config
 
 contains
 
-  function config_type_cons(path, rank) result(res)
+  function config_type_cons(path) result(res)
     character(len=*), intent(in) :: path
-    integer, intent(in), optional :: rank
     type(config_type) :: res
 
     integer :: unit, stat
     real :: depths(max_stokes_depths)
     character(len=256) :: iomsg
-    character(len=19) :: starttimestr, stoptimestr
-    logical :: isglobal, restart
-    integer :: mm, nm, om, pm
-    real :: fmin, fmax, fprog, dtg
-    real :: g, nu_air, nu_water, sfct, kappa, z, gustiness, dmin
-    real :: explim, sin_fac, sin_diss1, sin_diss2, sds_fac
-    real :: sds_power, mss_fac, snl_fac, sdt_fac, sbf_fac, sbp_fac
-    logical :: gridfromfile, topofromfile, fillestuaries, filllakes
-    real :: delx, dely, dpt
-    logical :: winds, currents, air_density, water_density, seaice
-    real :: wspd0, wdir0, uc0, vc0, rhoa0, rhow0, fice0, fice_lth, fice_uth
-    integer :: outgrid, outspec, outrst, xpl, ypl
-    logical :: stokes
-
-    namelist /domain/ isglobal, mm, nm, om, pm, fmin, fmax, fprog, &
-      starttimestr, stoptimestr, dtg, restart
-    namelist /physics/ g, nu_air, nu_water, sfct, kappa, z, &
-      gustiness, dmin, explim, sin_fac, sin_diss1, sin_diss2, &
-      sds_fac, sds_power, mss_fac, snl_fac, sdt_fac, sbf_fac, sbp_fac
-    namelist /grid/ gridfromfile, delx, dely, topofromfile, dpt, &
-      fillestuaries, filllakes
-    namelist /forcing/ winds, currents, air_density, water_density, seaice
-    namelist /forcing_constant/ wspd0, wdir0, uc0, vc0, rhoa0, rhow0, &
-      fice0, fice_lth, fice_uth
-    namelist /output/ outgrid, outspec, outrst, xpl, ypl, stokes
 
     res%path = path
-    if (present(rank)) continue
-    isglobal = res%isglobal
-    mm = res%mm
-    nm = res%nm
-    om = res%om
-    pm = res%pm
-    fmin = res%fmin
-    fmax = res%fmax
-    fprog = res%fprog
-    starttimestr = ''
-    stoptimestr = ''
-    dtg = res%dtg
-    restart = res%restart
-
-    g = res%g
-    nu_air = res%nu_air
-    nu_water = res%nu_water
-    sfct = res%sfct
-    kappa = res%kappa
-    z = res%z
-    gustiness = res%gustiness
-    dmin = res%dmin
-    explim = res%explim
-    sin_fac = res%sin_fac
-    sin_diss1 = res%sin_diss1
-    sin_diss2 = res%sin_diss2
-    sds_fac = res%sds_fac
-    sds_power = res%sds_power
-    mss_fac = res%mss_fac
-    snl_fac = res%snl_fac
-    sdt_fac = res%sdt_fac
-    sbf_fac = res%sbf_fac
-    sbp_fac = res%sbp_fac
-
-    gridfromfile = res%gridfromfile
-    delx = res%delx
-    dely = res%dely
-    topofromfile = res%topofromfile
-    dpt = res%dpt
-    fillestuaries = res%fillestuaries
-    filllakes = res%filllakes
-
-    winds = res%winds
-    currents = res%currents
-    air_density = res%air_density
-    water_density = res%water_density
-    seaice = res%seaice
-
-    wspd0 = res%wspd0
-    wdir0 = res%wdir0
-    uc0 = res%uc0
-    vc0 = res%vc0
-    rhoa0 = res%rhoa0
-    rhow0 = res%rhow0
-    fice0 = res%fice0
-    fice_lth = res%fice_lth
-    fice_uth = res%fice_uth
-
-    outgrid = res%outgrid
-    outspec = res%outspec
-    outrst = res%outrst
-    xpl = res%xpl
-    ypl = res%ypl
-    stokes = res%stokes
     depths = -1.
 
     open(newunit=unit, file=path, status='old', form='formatted', &
@@ -199,12 +109,23 @@ contains
       return
     end if
 
-    read(unit, nml=domain, iostat=stat, iomsg=iomsg)
-    if (stat == 0) read(unit, nml=physics, iostat=stat, iomsg=iomsg)
-    if (stat == 0) read(unit, nml=grid, iostat=stat, iomsg=iomsg)
-    if (stat == 0) read(unit, nml=forcing, iostat=stat, iomsg=iomsg)
-    if (stat == 0) read(unit, nml=forcing_constant, iostat=stat, iomsg=iomsg)
-    if (stat == 0) read(unit, nml=output, iostat=stat, iomsg=iomsg)
+    call read_domain(unit, res%isglobal, res%mm, res%nm, res%om, res%pm, &
+      res%fmin, res%fmax, res%fprog, res%starttimestr, res%stoptimestr, &
+      res%dtg, res%restart, stat, iomsg)
+    if (stat == 0) call read_physics(unit, res%g, res%nu_air, res%nu_water, &
+      res%sfct, res%kappa, res%z, res%gustiness, res%dmin, res%explim, &
+      res%sin_fac, res%sin_diss1, res%sin_diss2, res%sds_fac, &
+      res%sds_power, res%mss_fac, res%snl_fac, res%sdt_fac, res%sbf_fac, &
+      res%sbp_fac, stat, iomsg)
+    if (stat == 0) call read_grid(unit, res%gridfromfile, res%delx, res%dely, &
+      res%topofromfile, res%dpt, res%fillestuaries, res%filllakes, stat, iomsg)
+    if (stat == 0) call read_forcing(unit, res%winds, res%currents, &
+      res%air_density, res%water_density, res%seaice, stat, iomsg)
+    if (stat == 0) call read_forcing_constant(unit, res%wspd0, res%wdir0, &
+      res%uc0, res%vc0, res%rhoa0, res%rhow0, res%fice0, res%fice_lth, &
+      res%fice_uth, stat, iomsg)
+    if (stat == 0) call read_output(unit, res%outgrid, res%outspec, res%outrst, &
+      res%xpl, res%ypl, res%stokes, stat, iomsg)
     close(unit)
 
     if (stat /= 0) then
@@ -220,73 +141,105 @@ contains
       return
     end if
 
-    res%starttimestr = starttimestr
-    res%stoptimestr = stoptimestr
-    res%isglobal = isglobal
-    res%mm = mm
-    res%nm = nm
-    res%om = om
-    res%pm = pm
-    res%fmin = fmin
-    res%fmax = fmax
-    res%fprog = fprog
-    res%dtg = dtg
-    res%restart = restart
-
-    res%g = g
-    res%nu_air = nu_air
-    res%nu_water = nu_water
-    res%sfct = sfct
-    res%kappa = kappa
-    res%z = z
-    res%gustiness = gustiness
-    res%dmin = dmin
-    res%explim = explim
-    res%sin_fac = sin_fac
-    res%sin_diss1 = sin_diss1
-    res%sin_diss2 = sin_diss2
-    res%sds_fac = sds_fac
-    res%sds_power = sds_power
-    res%mss_fac = mss_fac
-    res%snl_fac = snl_fac
-    res%sdt_fac = sdt_fac
-    res%sbf_fac = sbf_fac
-    res%sbp_fac = sbp_fac
-
-    res%gridfromfile = gridfromfile
-    res%delx = delx
-    res%dely = dely
-    res%topofromfile = topofromfile
-    res%dpt = dpt
-    res%fillestuaries = fillestuaries
-    res%filllakes = filllakes
-
-    res%winds = winds
-    res%currents = currents
-    res%air_density = air_density
-    res%water_density = water_density
-    res%seaice = seaice
-
-    res%wspd0 = wspd0
-    res%wdir0 = wdir0
-    res%uc0 = uc0
-    res%vc0 = vc0
-    res%rhoa0 = rhoa0
-    res%rhow0 = rhow0
-    res%fice0 = fice0
-    res%fice_lth = fice_lth
-    res%fice_uth = fice_uth
-
-    res%outgrid = outgrid
-    res%outspec = outspec
-    res%outrst = outrst
-    res%xpl = xpl
-    res%ypl = ypl
-    res%stokes = stokes
     call set_stokes_depths(res, depths)
     res%read_ok = .true.
 
   end function config_type_cons
+
+
+  subroutine read_domain(unit, isglobal, mm, nm, om, pm, fmin, fmax, fprog, &
+                         starttimestr, stoptimestr, dtg, restart, stat, iomsg)
+    integer, intent(in) :: unit
+    logical, intent(inout) :: isglobal, restart
+    integer, intent(inout) :: mm, nm, om, pm
+    real, intent(inout) :: fmin, fmax, fprog, dtg
+    character(len=*), intent(inout) :: starttimestr, stoptimestr
+    integer, intent(out) :: stat
+    character(len=*), intent(out) :: iomsg
+
+    namelist /domain/ isglobal, mm, nm, om, pm, fmin, fmax, fprog, &
+      starttimestr, stoptimestr, dtg, restart
+
+    read(unit, nml=domain, iostat=stat, iomsg=iomsg)
+  end subroutine read_domain
+
+
+  subroutine read_physics(unit, g, nu_air, nu_water, sfct, kappa, z, &
+                          gustiness, dmin, explim, sin_fac, sin_diss1, &
+                          sin_diss2, sds_fac, sds_power, mss_fac, snl_fac, &
+                          sdt_fac, sbf_fac, sbp_fac, stat, iomsg)
+    integer, intent(in) :: unit
+    real, intent(inout) :: g, nu_air, nu_water, sfct, kappa, z
+    real, intent(inout) :: gustiness, dmin, explim, sin_fac, sin_diss1
+    real, intent(inout) :: sin_diss2, sds_fac, sds_power, mss_fac, snl_fac
+    real, intent(inout) :: sdt_fac, sbf_fac, sbp_fac
+    integer, intent(out) :: stat
+    character(len=*), intent(out) :: iomsg
+
+    namelist /physics/ g, nu_air, nu_water, sfct, kappa, z, &
+      gustiness, dmin, explim, sin_fac, sin_diss1, sin_diss2, &
+      sds_fac, sds_power, mss_fac, snl_fac, sdt_fac, sbf_fac, sbp_fac
+
+    read(unit, nml=physics, iostat=stat, iomsg=iomsg)
+  end subroutine read_physics
+
+
+  subroutine read_grid(unit, gridfromfile, delx, dely, topofromfile, dpt, &
+                       fillestuaries, filllakes, stat, iomsg)
+    integer, intent(in) :: unit
+    logical, intent(inout) :: gridfromfile, topofromfile
+    logical, intent(inout) :: fillestuaries, filllakes
+    real, intent(inout) :: delx, dely, dpt
+    integer, intent(out) :: stat
+    character(len=*), intent(out) :: iomsg
+
+    namelist /grid/ gridfromfile, delx, dely, topofromfile, dpt, &
+      fillestuaries, filllakes
+
+    read(unit, nml=grid, iostat=stat, iomsg=iomsg)
+  end subroutine read_grid
+
+
+  subroutine read_forcing(unit, winds, currents, air_density, water_density, &
+                          seaice, stat, iomsg)
+    integer, intent(in) :: unit
+    logical, intent(inout) :: winds, currents, air_density, water_density, seaice
+    integer, intent(out) :: stat
+    character(len=*), intent(out) :: iomsg
+
+    namelist /forcing/ winds, currents, air_density, water_density, seaice
+
+    read(unit, nml=forcing, iostat=stat, iomsg=iomsg)
+  end subroutine read_forcing
+
+
+  subroutine read_forcing_constant(unit, wspd0, wdir0, uc0, vc0, rhoa0, rhow0, &
+                                   fice0, fice_lth, fice_uth, stat, iomsg)
+    integer, intent(in) :: unit
+    real, intent(inout) :: wspd0, wdir0, uc0, vc0, rhoa0, rhow0
+    real, intent(inout) :: fice0, fice_lth, fice_uth
+    integer, intent(out) :: stat
+    character(len=*), intent(out) :: iomsg
+
+    namelist /forcing_constant/ wspd0, wdir0, uc0, vc0, rhoa0, rhow0, &
+      fice0, fice_lth, fice_uth
+
+    read(unit, nml=forcing_constant, iostat=stat, iomsg=iomsg)
+  end subroutine read_forcing_constant
+
+
+  subroutine read_output(unit, outgrid, outspec, outrst, xpl, ypl, stokes, &
+                         stat, iomsg)
+    integer, intent(in) :: unit
+    integer, intent(inout) :: outgrid, outspec, outrst, xpl, ypl
+    logical, intent(inout) :: stokes
+    integer, intent(out) :: stat
+    character(len=*), intent(out) :: iomsg
+
+    namelist /output/ outgrid, outspec, outrst, xpl, ypl, stokes
+
+    read(unit, nml=output, iostat=stat, iomsg=iomsg)
+  end subroutine read_output
 
 
   subroutine read_stokes_depths(path, depths, stat, iomsg)

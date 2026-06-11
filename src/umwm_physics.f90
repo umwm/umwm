@@ -1,21 +1,22 @@
 module umwm_physics
 
   use umwm_module, only: cg0, cgmxx, cgmxy, cgmyy, cothkd, cp0, cth, &
-                         dcg, dcg0, dcp, dcp0, dta, dtamin, dtg, dth, &
-                         dthg, dts, dummy, dwd, dwl, dwp, e, ef, explim, &
+                         dcg, dcg0, dcp, dcp0, dta, dtamin, dth, &
+                         dthg, dts, dummy, dwd, dwl, dwp, e, ef, &
                          f, first, ht, iend, ierr, inv_sds_power, invcp0, &
                          istart, k, k3dk, kdk, momx, momy, mss, mwd, mwl, &
                          mwp, oc, oneoverk4, physics_time_step, &
-                         restart, rhow, sbf, sds, sdt, sdv, sice, snl, &
+                         rhow, sbf, sds, sdt, sdv, sice, snl, &
                          snl_arg, ssin, sth, sumt, th, twopi, &
                          twopisds_fac, uc, vc
+  use umwm_config, only: config_type
   use umwm_spectrum, only: spectrum_type
 
   implicit none
 
 contains
 
-subroutine source(spectrum)
+subroutine source(config, spectrum)
 
   ! TODO move to umwm_integration.f90
 
@@ -23,6 +24,7 @@ subroutine source(spectrum)
 use mpi
 #endif
 
+type(config_type), intent(in) :: config
 type(spectrum_type), intent(in) :: spectrum
 integer :: i,o,p
 
@@ -51,10 +53,10 @@ end do
 !end if
 
 ! Compute maximum physics time step for diagnostics
-physics_time_step = explim / maxval(maxval(abs(ef), dim=1), dim=1)
+physics_time_step = config % explim / maxval(maxval(abs(ef), dim=1), dim=1)
 
 ! compute the dynamic time step and update in-step model time:
-dts = min(minval(physics_time_step), dtamin, dtg - sumt)
+dts = min(minval(physics_time_step), dtamin, config % dtg - sumt)
 
 #ifdef MPI
 send_buff = dts
@@ -63,7 +65,7 @@ call mpi_allreduce(send_buff,dts,1,MPI_REAL,mpi_min,MPI_COMM_WORLD,ierr)
 
 ! if first time step, set time step to zero and
 ! integrate only the diagnostic part
-if (.not. restart .and. first) dts = 0
+if (.not. config % restart .and. first) dts = 0
 
 dta = dts
 

@@ -4,9 +4,11 @@ module umwm_mpi
 #ifdef MPI
 
   use mpi
+  use umwm_config, only: config_type
   use umwm_module, only: e, first_col_len, i_exchange_indices, iend, &
-                         ierr, iiend, iistart, im, isglobal, istart, &
+                         ierr, iiend, iistart, im, istart, &
                          last_col_len, mpisize, nproc, om, pm
+  use umwm_spectrum, only: spectrum_type
 
   implicit none
 
@@ -23,20 +25,24 @@ module umwm_mpi
 
 contains
 
-  subroutine exchange_halo()
+  subroutine exchange_halo(config, spectrum)
     ! Exchange halo points between processes.
     ! This version valid only for 1-cell halo width.
 
+    type(config_type), intent(in) :: config
+    type(spectrum_type), intent(in) :: spectrum
     integer :: sendcount, recvcount
     integer :: sendtag, recvtag
     integer :: src, dest
 
     if (nproc < mpisize - 1) then ! communicate with process above
 
-      sendcount = om * pm * (iend - iistart_(nproc + 1) + 1)
+      sendcount = spectrum % num_frequencies * spectrum % num_directions &
+                * (iend - iistart_(nproc + 1) + 1)
       dest = nproc + 1
       sendtag = nproc
-      recvcount = om * pm * (iiend - iend)
+      recvcount = spectrum % num_frequencies * spectrum % num_directions &
+                * (iiend - iend)
       src = nproc + 1
       recvtag = src
 
@@ -50,10 +56,12 @@ contains
 
     if (nproc > 0) then ! communicate with process below
 
-      sendcount = om * pm * (iiend_(nproc - 1) - istart + 1)
+      sendcount = spectrum % num_frequencies * spectrum % num_directions &
+                * (iiend_(nproc - 1) - istart + 1)
       dest = nproc-1
       sendtag = nproc
-      recvcount = om * pm * (istart - iistart)
+      recvcount = spectrum % num_frequencies * spectrum % num_directions &
+                * (istart - iistart)
       src  = nproc - 1
       recvtag = src
 
@@ -64,14 +72,16 @@ contains
                         MPI_COMM_WORLD, status, ierr)
     end if
 
-    if (isglobal) then ! if periodic domain
+    if (config % isglobal) then ! if periodic domain
 
       if (nproc == 0) then
 
-        sendcount = om * pm * first_col_len
+        sendcount = spectrum % num_frequencies * spectrum % num_directions &
+                  * first_col_len
         dest = mpisize - 1
         sendtag = nproc
-        recvcount = om * pm * last_col_len
+        recvcount = spectrum % num_frequencies * spectrum % num_directions &
+                  * last_col_len
         src  = mpisize - 1
         recvtag = src
 
@@ -85,10 +95,12 @@ contains
 
       if (nproc == mpisize - 1) then
 
-        sendcount = om * pm * last_col_len
+        sendcount = spectrum % num_frequencies * spectrum % num_directions &
+                  * last_col_len
         dest = 0
         sendtag = nproc
-        recvcount = om * pm * first_col_len
+        recvcount = spectrum % num_frequencies * spectrum % num_directions &
+                  * first_col_len
         src = 0
         recvtag = src
 

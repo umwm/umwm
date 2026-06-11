@@ -1,13 +1,13 @@
 module umwm_source_functions
   ! Module that provides wave source functions.
-  use umwm_io, only: currents,seaice
+  use umwm_config, only: config_type
   use umwm_module, only: bf1_renorm, bf2_renorm, cg0, cothkd, cp0, cth, &
                          cth2pp, dth, dummy, e, f, fcutoff, fice, &
-                         fice_lth, fieldscale1, fieldscale2, fkovg, fprog, &
-                         g, iend, istart, k, k3dk, k4, kdk, logl2overz, &
+                         fieldscale1, fieldscale2, fkovg, &
+                         iend, istart, k, k3dk, k4, kdk, logl2overz, &
                          mss_fac, oc, psim, psiml2, rhorat, sds, &
-                         sds_power, sdt, sdt_fac, shelt, sin_fac, sice, &
-                         snl, snl_fac, ssin, sth, th, twopi, twopisds_fac, &
+                         sdt, shelt, sice, &
+                         snl, ssin, sth, th, twopi, twopisds_fac, &
                          uc, ustar, vc, wdir, wspd
   use umwm_constants, only: rk
   use umwm_sheltering, only: sheltering_coare35, sheltering_reynolds
@@ -21,9 +21,10 @@ module umwm_source_functions
 
 contains
 
-  subroutine sin_d12(spectrum)
+  subroutine sin_d12(config, spectrum)
     ! Wind input function based on Jeffreys's sheltering hypothesis
     ! and described by Donelan et al. (2012).
+    type(config_type), intent(in) :: config
     type(spectrum_type), intent(in) :: spectrum
     integer :: i, o, p
 
@@ -31,9 +32,9 @@ contains
     wspd = max(wspd, 1e-2)
 
     ! cut-off frequency (4*pierson-moskowitz peak frequency)
-    fcutoff(istart:iend) = 0.53 * g / wspd(istart:iend)
+    fcutoff(istart:iend) = 0.53 * config % g / wspd(istart:iend)
 
-    where (fcutoff > fprog) fcutoff = fprog
+    where (fcutoff > config % fprog) fcutoff = config % fprog
 
     ! search for the cut-off frequency bin:
     do i = istart, iend
@@ -54,14 +55,14 @@ contains
                   - uc(i) * cth(p) - vc(i) * sth(p)
     end do
 
-    ssin = sin_fac * abs(ssin) * ssin
+    ssin = config % sin_fac * abs(ssin) * ssin
 
     ! compute variable sheltering coefficient
     shelt = sheltering_coare35(wspd(istart:iend))
 
     ! apply variable sheltering coefficient
     do concurrent(o = 1:spectrum % num_frequencies, p = 1:spectrum % num_directions, i = istart:iend, ssin(o,p,i) > 0)
-      ssin(o,p,i) = ssin(o,p,i) * shelt(i) / sin_fac
+      ssin(o,p,i) = ssin(o,p,i) * shelt(i) / config % sin_fac
     end do
 
     ! adjust input for opposing winds
@@ -91,14 +92,15 @@ contains
   end subroutine sin_d12
 
 
-  subroutine sds_d12(spectrum)
+  subroutine sds_d12(config, spectrum)
     ! Wave dissipation function described by Donelan et al. (2012).
+    type(config_type), intent(in) :: config
     type(spectrum_type), intent(in) :: spectrum
     integer :: i, o, p
 
     dummy = 0
 
-    if (mss_fac > 0) then
+    if (config % mss_fac > 0) then
       do concurrent(p = 1:spectrum % num_directions, i = istart:iend)
         do o = 2, spectrum % num_frequencies
           dummy(o,p,i) = dummy(o-1,p,i) + sum(e(o-1,:,i) * cth2pp(:,p)) * k3dk(o-1,i)
@@ -106,18 +108,19 @@ contains
       end do
     end if
 
-    dummy = (1 + mss_fac * dummy)**2
+    dummy = (1 + config % mss_fac * dummy)**2
 
     do concurrent(o = 1:spectrum % num_frequencies, p = 1:spectrum % num_directions, i = istart:iend)
-      sds(o,p,i) = twopisds_fac * f(o) * dummy(o,p,i) * (e(o,p,i) * k4(o,i))**sds_power
+      sds(o,p,i) = twopisds_fac * f(o) * dummy(o,p,i) * (e(o,p,i) * k4(o,i))**config % sds_power
     end do
 
   end subroutine sds_d12
 
 
-  subroutine s_ice(spectrum)
+  subroutine s_ice(config, spectrum)
     ! Wave attenuation by sea ice, following Kohoun et al. (2014).
 
+    type(config_type), intent(in) :: config
     type(spectrum_type), intent(in) :: spectrum
     integer :: i, o, p
 
@@ -134,7 +137,7 @@ contains
 
     do i = istart, iend
 
-      if (fice(i) > fice_lth) then
+      if (fice(i) > config % fice_lth) then
  
         ht_ = 0.0
  
@@ -164,8 +167,9 @@ contains
   end subroutine s_ice
 
   
-  subroutine snl_d12(spectrum)
+  subroutine snl_d12(config, spectrum)
 
+    type(config_type), intent(in) :: config
     type(spectrum_type), intent(in) :: spectrum
     integer :: o, p, i
 
@@ -178,7 +182,7 @@ contains
       do concurrent(o = 1:oc(i), p = 1:spectrum % num_directions)
         snl(o,p,i) = bf1_renorm(o,i) * sds(o+1,p,i) * e(o+1,p,i)&
                    + bf2_renorm(o,i) * sds(o+2,p,i) * e(o+2,p,i)&
-                   - snl_fac * sds(o,p,i) * e(o,p,i)
+                   - config % snl_fac * sds(o,p,i) * e(o,p,i)
         !snl(o,p,i) = snl_fac * (kdk(o+1,i) * e(o+1,p,i) - kdk(o,i) * e(o,p,i)) / dwn(o,i) ! WIP dk-invariant Snl
       end do
     end do
@@ -190,7 +194,7 @@ contains
 
     ! compute dissipation due to turbulence
     do concurrent(o = 1:spectrum % num_frequencies, i = istart:iend)
-      sdt(o,i) = sdt_fac * sqrt(rhorat(i)) * ustar(i) * k(o,i)
+      sdt(o,i) = config % sdt_fac * sqrt(rhorat(i)) * ustar(i) * k(o,i)
     end do
 
   end subroutine snl_d12

@@ -7,12 +7,12 @@ module umwm_advection
   use mpi
 #endif
   use umwm_module, only: cg0, cp0, cth, cth_curv, dta, dtr, dts, dth, &
-                         dxn, dxs, dye, dyw, e, ef, fice, fice_uth, &
+                         dxn, dxs, dye, dyw, e, ef, fice, &
                          first, ie, iend, ierr, iie, iin, iis, iistart, &
-                         iiend, iiw, in, is, isglobal, istart, iw, oc, &
+                         iiend, iiw, in, is, istart, iw, oc, &
                          oneovar, oneovdth, oneovdx, oneovdy, pl, &
                          pr, rotl, rotr, sth, sth_curv, uc, vc
-  use umwm_io, only: currents
+  use umwm_config, only: config_type
   use umwm_spectrum, only: spectrum_type
 
   implicit none
@@ -21,10 +21,11 @@ module umwm_advection
 
 contains
 
-  subroutine propagation(spectrum)
+  subroutine propagation(config, spectrum)
 
     ! 1st order upstream finite difference advection in geographical space.
 
+    type(config_type), intent(in) :: config
     type(spectrum_type), intent(in) :: spectrum
     integer :: num_directions
     integer :: o, p, i
@@ -59,7 +60,7 @@ contains
     end do
 
     ! check if currents are non-zero:
-    if (.not. isglobal) then
+    if (.not. config % isglobal) then
       zerocurrents = .not. (any(uc(iistart:iiend) /= 0)&
                        .or. any(vc(iistart:iiend) /= 0))
     else
@@ -99,7 +100,7 @@ contains
       do concurrent(o = 1:oc(i), p = 1:num_directions)
           ef(o,p,i) = ef(o,p,i) - 0.25 * dta * flux(o,p,i) * oneovar(i)
 
-          if (fice(i) > fice_uth) then
+          if (fice(i) > config % fice_uth) then
             ef(o,p,i) = 0.0
           end if  
       end do
@@ -108,11 +109,12 @@ contains
   end subroutine propagation
 
 
-  subroutine refraction(spectrum)
+  subroutine refraction(config, spectrum)
 
     ! 1st order upstream finite difference advection in
     ! directional space -- bottom- and current-induced refraction.
 
+    type(config_type), intent(in) :: config
     type(spectrum_type), intent(in) :: spectrum
     integer :: num_directions
     integer :: i, o, p
@@ -129,7 +131,7 @@ contains
     compute_rotation_tendency = .true.
 #else
     ! compute if varrying currents or first step:
-    compute_rotation_tendency = currents .or. first
+    compute_rotation_tendency = config % currents .or. first
 #endif
 
     if (compute_rotation_tendency) then
@@ -183,7 +185,7 @@ contains
         ! integrate
         ef(o,p,i) = ef(o,p,i) - dtr * flux(o,p,i)
         
-        if (fice(i) > fice_uth) then
+        if (fice(i) > config % fice_uth) then
           ef(o,p,i) = 0.0
         end if
 

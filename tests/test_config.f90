@@ -120,7 +120,7 @@ contains
     type(test_result) :: res
     type(config_type) :: config
 
-    config = config_type('/tmp/umwm-test-config-does-not-exist.nml', rank=1)
+    config = config_type('/tmp/umwm-test-config-does-not-exist.nml')
     res = test('unreadable_namelist', &
       .not. config % validate(stop_on_error=.false., rank=1))
   end function unreadable_namelist
@@ -129,7 +129,7 @@ contains
   function valid_config() result(config)
     type(config_type) :: config
 
-    config = config_type('../namelists/main.nml', rank=1)
+    config = config_type('../namelists/main.nml')
   end function valid_config
 
 

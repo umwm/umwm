@@ -4,15 +4,16 @@ module umwm_stress
 
   use umwm_module, only: bf1, bf2, cd, cp0, cth, dthg, dummy, e, &
                          epsx_atm, epsx_ocn, epsy_atm, epsy_ocn, iend, &
-                         invcp0, istart, k, kappa, kdk, nu_air, oc, &
+                         invcp0, istart, k, kdk, oc, &
                          rhoa, rhow, sbf, sds, sdt, sdv, snl, ssin, &
                          sth, tailatmx, tailatmy, tailocnx, tailocny, &
                          taux, taux1, taux2, taux3, taux_diag, taux_form, &
                          taux_ocnbot, taux_ocntop, taux_skin, taux_snl, &
                          tauy, tauy1, tauy2, tauy3, tauy_diag, tauy_form, &
                          tauy_ocnbot, tauy_ocntop, tauy_skin, tauy_snl, &
-                         th, uc, ustar, vc, wdir, wspd, z
+                         th, uc, ustar, vc, wdir, wspd
   use umwm_advection, only: zerocurrents
+  use umwm_config, only: config_type
   use umwm_constants, only: rk
   use umwm_spectrum, only: spectrum_type
   use umwm_stokes, only: u_stokes => us, v_stokes => vs
@@ -24,8 +25,9 @@ module umwm_stress
 
 contains
 
-  subroutine stress(option, spectrum)
+  subroutine stress(config, option, spectrum)
 
+    type(config_type), intent(in) :: config
     character(3), intent(in) :: option
     type(spectrum_type), intent(in) :: spectrum
 
@@ -265,7 +267,8 @@ contains
                                  rhoa(istart:iend), wspd(istart:iend))
 
       ! skin-induced drag coefficient
-      cd_skin = drag_coefficient_skin(cd_form, wspd(istart:iend), wspdrel, z, nu_air, kappa)
+      cd_skin = drag_coefficient_skin(cd_form, wspd(istart:iend), wspdrel, &
+                                      config % z, config % nu_air, config % kappa)
 
       taux_skin = rhoa(istart:iend) * cd_skin * wspdrel**2 * cos(wdirrel)
       tauy_skin = rhoa(istart:iend) * cd_skin * wspdrel**2 * sin(wdirrel)

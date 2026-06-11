@@ -1,7 +1,8 @@
 module umwm_forcing
 
-  use umwm_io, only: input_nc, readfile, winds, currents, air_density, water_density, seaice
-  use umwm_module, only: dtg, fice, fice_2d, ficeb, ficef, gustiness, &
+  use umwm_config, only: config_type
+  use umwm_io, only: input_nc, readfile
+  use umwm_module, only: fice, fice_2d, ficeb, ficef, &
                          gustu, gustv, rhoa, rhoab, rhoaf, rhorat, &
                          rhow, rhowb, rhowf, sumt, uc, uc_2d, ucb, ucf, &
                          uw, uwb, uwf, vc, vc_2d, vcb, vcf, vw, vwb, &
@@ -12,52 +13,55 @@ module umwm_forcing
 
 contains
 
-  subroutine forcinginput(timestr)
+  subroutine forcinginput(config, timestr)
     ! Reads atmospheric and oceanic input forcing fields
+    type(config_type), intent(in) :: config
     character(len=19), intent(in) :: timestr
 
     ! save wind at time level n
-    if (winds) then
+    if (config % winds) then
       uwb = uwf
       vwb = vwf
     end if
 
     ! save currents at time level n
-    if (currents) then
+    if (config % currents) then
       ucb = ucf
       vcb = vcf
     end if
 
     ! save air and water density at time level n
-    if (air_density) rhoab = rhoaf
-    if (water_density) rhowb = rhowf
+    if (config % air_density) rhoab = rhoaf
+    if (config % water_density) rhowb = rhowf
 
     ! save sea ice fraction at time level n
-    if (seaice) ficeb = ficef
+    if (config % seaice) ficeb = ficef
 
     ! load input fields at time level n+1
-    if (readfile) call input_nc(timestr)
+    if (readfile) call input_nc(config, timestr)
 
   end subroutine forcinginput
 
 
-  subroutine forcinginterpolate()
+  subroutine forcinginterpolate(config)
     ! interpolates in time atmospheric and oceanic input forcing fields
-    if (winds) then
+    type(config_type), intent(in) :: config
 
-      uw = uwb * (1 - sumt / dtg) + uwf * sumt / dtg
-      vw = vwb * (1 - sumt / dtg) + vwf * sumt / dtg
+    if (config % winds) then
+
+      uw = uwb * (1 - sumt / config % dtg) + uwf * sumt / config % dtg
+      vw = vwb * (1 - sumt / config % dtg) + vwf * sumt / config % dtg
 
       ! add wind gustiness if requested in the namelist;
       ! uw, vw will get a uniformly distributed gust component
-      if (gustiness > 0) then
+      if (config % gustiness > 0) then
 
         ! get random numbers [0, 1]
         call random_number(gustu)
         call random_number(gustv)
 
-        gustu = gustiness * (2 * gustu - 1)
-        gustv = gustiness * (2 * gustv - 1)
+        gustu = config % gustiness * (2 * gustu - 1)
+        gustv = config % gustiness * (2 * gustv - 1)
 
         ! add gustiness to the wind fields
         uw = uw * (1 + gustu)
@@ -74,9 +78,9 @@ contains
 
     end if ! winds
 
-    if (seaice) then
+    if (config % seaice) then
 
-      fice_2d = ficeb * (1 - sumt / dtg) + ficef * sumt/dtg
+      fice_2d = ficeb * (1 - sumt / config % dtg) + ficef * sumt/config % dtg
 
       ! remap to 1-D arrays:
       fice = remap_mn2i(fice_2d)
@@ -84,10 +88,10 @@ contains
      end if
     
 
-    if (currents) then
+    if (config % currents) then
 
-      uc_2d = ucb * (1 - sumt / dtg) + ucf * sumt / dtg
-      vc_2d = vcb * (1 - sumt / dtg) + vcf * sumt / dtg
+      uc_2d = ucb * (1 - sumt / config % dtg) + ucf * sumt / config % dtg
+      vc_2d = vcb * (1 - sumt / config % dtg) + vcf * sumt / config % dtg
 
       ! remap to 1-d arrays:
       uc = remap_mn2i(uc_2d)
@@ -95,8 +99,8 @@ contains
 
     end if
 
-    if (air_density) rhoa = rhoab * (1 - sumt / dtg) + rhoaf * sumt / dtg
-    if (water_density) rhow = rhowb * (1 - sumt / dtg) + rhowf * sumt / dtg
+    if (config % air_density) rhoa = rhoab * (1 - sumt / config % dtg) + rhoaf * sumt / config % dtg
+    if (config % water_density) rhow = rhowb * (1 - sumt / config % dtg) + rhowf * sumt / config % dtg
 
     rhorat = rhoa / rhow
 

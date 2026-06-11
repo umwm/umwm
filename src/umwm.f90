@@ -12,7 +12,7 @@ program umwm
   logical :: ok
 
   call env_init()
-  config = config_type('namelists/main.nml', rank=nproc)
+  config = config_type('namelists/main.nml')
   ok = config % validate(rank=nproc)
   if (.not. ok) error stop 1
   spectrum = spectrum_type(config % om, config % pm, &

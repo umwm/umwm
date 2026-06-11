@@ -51,88 +51,24 @@ character :: remap_dir
 contains
 
 
-subroutine apply_config(config)
-  use umwm_config, only: config_type
-  use umwm_io, only: winds, currents, air_density, water_density, seaice
+subroutine alloc(option, config, spectrum)
+  ! Allocates UMWM arrays
+use umwm_config, only: config_type
 
-  type(config_type), intent(in) :: config
+integer,intent(in) :: option
+type(config_type), intent(in) :: config
+type(spectrum_type), intent(in), optional :: spectrum
 
-  starttimestr_nml = config % starttimestr
-  stoptimestr_nml = config % stoptimestr
+! allocate 2-d native arrays:
+if(option==1)then
 
-  isglobal = config % isglobal
+  ! Legacy explicit-shape helpers and MPI interfaces still use these dimensions.
   mm = config % mm
   nm = config % nm
   om = config % om
   pm = config % pm
   fmin = config % fmin
   fmax = config % fmax
-  fprog = config % fprog
-  dtg = config % dtg
-  restart = config % restart
-
-  g = config % g
-  nu_air = config % nu_air
-  nu_water = config % nu_water
-  sfct = config % sfct
-  kappa = config % kappa
-  z = config % z
-  gustiness = config % gustiness
-  dmin = config % dmin
-  explim = config % explim
-  sin_fac = config % sin_fac
-  sin_diss1 = config % sin_diss1
-  sin_diss2 = config % sin_diss2
-  sds_fac = config % sds_fac
-  sds_power = config % sds_power
-  mss_fac = config % mss_fac
-  snl_fac = config % snl_fac
-  sdt_fac = config % sdt_fac
-  sbf_fac = config % sbf_fac
-  sbp_fac = config % sbp_fac
-
-  gridfromfile = config % gridfromfile
-  delx = config % delx
-  dely = config % dely
-  topofromfile = config % topofromfile
-  dpt = config % dpt
-  fillestuaries = config % fillestuaries
-  filllakes = config % filllakes
-
-  winds = config % winds
-  currents = config % currents
-  air_density = config % air_density
-  water_density = config % water_density
-  seaice = config % seaice
-
-  wspd0 = config % wspd0
-  wdir0 = config % wdir0
-  uc0 = config % uc0
-  vc0 = config % vc0
-  rhoa0 = config % rhoa0
-  rhow0 = config % rhow0
-  fice0 = config % fice0
-  fice_lth = config % fice_lth
-  fice_uth = config % fice_uth
-
-  outgrid = config % outgrid
-  outspec = config % outspec
-  outrst = config % outrst
-  xpl = config % xpl
-  ypl = config % ypl
-  stokes = config % stokes
-
-end subroutine apply_config
-
-
-subroutine alloc(option, spectrum)
-  ! Allocates UMWM arrays
-
-integer,intent(in) :: option
-type(spectrum_type), intent(in), optional :: spectrum
-
-! allocate 2-d native arrays:
-if(option==1)then
 
   allocate(ar_2d(mm,nm))
   allocate(curv(mm,nm))
@@ -318,13 +254,15 @@ end if ! if(option)
 end subroutine alloc
 
 
-subroutine grid
+subroutine grid(config)
 ! Defines grid spacing and grid cell areas
+use umwm_config, only: config_type
 use netcdf
 use umwm_constants, only: r_earth
 use umwm_io, only: nc_check
 use umwm_util, only: raiseexception, distance_haversine
 
+type(config_type), intent(in) :: config
 logical :: loniscontinuous = .true.
 
 integer :: m, n
@@ -333,7 +271,7 @@ integer :: ncid, varid, stat
 real, allocatable :: abscoslat(:,:), lon_tmp(:,:), rotx(:,:), roty(:,:)
 real, allocatable :: rlon(:,:), rlat(:,:)
 
-if(gridfromfile)then
+if(config % gridfromfile)then
 
   stat = nf90_open('input/umwm.gridtopo',nf90_nowrite,ncid)
 
@@ -435,7 +373,7 @@ if(gridfromfile)then
     end do
   end do
 
-  if(isglobal)then
+  if(config % isglobal)then
     m = 1
     curv(m,:) = atan2(sin(rlon(m+1,:)-rlon(mm,:))*cos(rlat(m+1,:)),&
                       cos(rlat(mm,:))*sin(rlat(m+1,:))&
@@ -455,8 +393,8 @@ if(gridfromfile)then
 
 else ! use constant value from namelist
 
-  dx_2d = delx
-  dy_2d = dely
+  dx_2d = config % delx
+  dy_2d = config % dely
 
   curv = 0
 
@@ -477,7 +415,7 @@ else ! use constant value from namelist
 
 end if
 
-if(topofromfile)then ! read depth field from file
+if(config % topofromfile)then ! read depth field from file
 
   call nc_check(nf90_open('input/umwm.gridtopo',nf90_nowrite,ncid))
   call nc_check(nf90_inq_varid(ncid,'z',varid))
@@ -486,7 +424,7 @@ if(topofromfile)then ! read depth field from file
 
 else ! use constant value from namelist
 
-  d_2d = dpt
+  d_2d = config % dpt
 
 end if
 
@@ -507,9 +445,11 @@ end if
 end subroutine grid
 
 
-subroutine masks
+subroutine masks(config)
 ! Defines landmasks and optionally removes one-cell wide estuaries and lakes
+use umwm_config, only: config_type
 
+type(config_type), intent(in) :: config
 logical :: iterate
 
 integer :: m, n
@@ -517,7 +457,7 @@ integer :: exm, exn
 integer :: cnt, fillcount
 
 ! set masks:
-if(topofromfile)then
+if(config % topofromfile)then
 
   ! set initial seamask everywhere:
   mask = 1
@@ -527,7 +467,7 @@ if(topofromfile)then
   mask(:,nm) = 0
 
   ! close e and w edges if limited area:
-  if(.not.isglobal)then
+  if(.not.config % isglobal)then
     mask(1,:)  = 0
     mask(mm,:) = 0
   end if
@@ -536,15 +476,15 @@ if(topofromfile)then
   ! set depth to dmin:
   where(d_2d>=0)
     mask = 0
-    d_2d = dmin
+    d_2d = config % dmin
   endwhere
 
   ! make depths positive and limit to dmin:
   d_2d = abs(d_2d)
-  where(d_2d<dmin)d_2d = dmin
+  where(d_2d<config % dmin)d_2d = config % dmin
 
   ! fill estuaries and isolated sea points:
-  if(fillestuaries)then
+  if(config % fillestuaries)then
     fillcount = 0
     iterate = .true.
     do while(iterate) ! iterate as long as there are points to be modified
@@ -576,7 +516,7 @@ if(topofromfile)then
   end if
 
   ! discard lakes or unwanted closed basin from the domain:
-  if(filllakes)then
+  if(config % filllakes)then
     open(unit=24,file='namelists/exclude.nml')
     do
       read(unit=24,fmt=*,end=107)exm,exn
@@ -602,12 +542,12 @@ else
   mask(:,nm) = 0
 
   ! close e and w edges if limited area:
-  if(.not.isglobal)then
+  if(.not.config % isglobal)then
     mask( 1,:)  = 0
     mask(mm,:) = 0
   end if
 
-  where(mask==0)d_2d = dmin
+  where(mask==0)d_2d = config % dmin
 
 end if
 
@@ -657,8 +597,9 @@ if (mask(m,n+1) == 1) call fill(m, n+1, fillcount)
 end subroutine fill
 
 
-subroutine partition
+subroutine partition(config)
 ! Partitions the domain for parallel computation.
+use umwm_config, only: config_type
 
 #ifdef MPI
 use umwm_mpi
@@ -668,6 +609,9 @@ integer :: nn
 integer :: i, m, n
 #endif
 #endif
+type(config_type), intent(in) :: config
+
+if (config % isglobal) continue
 
 #ifndef MPI
 istart  = 1
@@ -713,7 +657,7 @@ else
   remap_dir = 'h'
 end if
 
-if (isglobal) remap_dir = 'v'
+if (config % isglobal) remap_dir = 'v'
 
 ! The code below adjusts the start and end indices of each tile
 ! because currently ESMF DEBlockList accepts only regular rectangular
@@ -810,16 +754,18 @@ end if
 end subroutine partition
 
 
-subroutine remap
+subroutine remap(config)
 ! Remaps two-dimensional arrays into one-dimensional
 ! arrays while leaving out land points. it also assigns
 ! and links neighboring points that are needed for
 ! spatial differencing, and builds the communication
 ! interface between processes.
+use umwm_config, only: config_type
 #ifdef MPI
 use umwm_mpi
 #endif
 
+type(config_type), intent(in) :: config
 integer :: i,m,n
 
 #ifdef MPI
@@ -931,7 +877,7 @@ do n=2,nm-1
 end do
 
 ! adjust periodic boundary:
-if(isglobal)then
+if(config % isglobal)then
   do n=2,nm-1
 
     is(ii(1,n)) = ii(1,n-1)
@@ -1034,7 +980,7 @@ else ! everybody else
 
 end if ! if(nproc==0)
 
-if(isglobal)then
+if(config % isglobal)then
 
   allocate(n_exchange_indices(0))
 
@@ -1178,17 +1124,18 @@ end if
 end subroutine remap
 
 
-subroutine init(spectrum)
+subroutine init(config, spectrum)
 ! Initialize model variables such as frequencies, direction angles,
 ! phase speed and group velocity, wave numbers, etc.
+use umwm_config, only: config_type
 #ifdef MPI
 use umwm_mpi, only:istart_,iend_
 #endif
 use umwm_util,only:raiseexception
 
-use umwm_io, only: winds,seaice
 use umwm_util, only: remap_mn2i
 
+type(config_type), intent(in) :: config
 type(spectrum_type), intent(in) :: spectrum
 integer :: i, o, p, pp, ind
 
@@ -1209,14 +1156,14 @@ f = real(spectrum % frequency, kind(f))
 th = real(spectrum % direction, kind(th))
 
 ! define various constants:
-dthg          = dth*g
+dthg          = dth * config % g
 oneovdth      = 1./dth
-log10overz    = log(10./z)
-twopisds_fac  = twopi*sds_fac
-twonu         = 2.*nu_water
-fieldscale1   = sin_diss1/sin_fac
-fieldscale2   = sin_diss2/sin_diss1
-inv_sds_power = 1./sds_power
+log10overz    = log(10. / config % z)
+twopisds_fac  = twopi * config % sds_fac
+twonu         = 2. * config % nu_water
+fieldscale1   = config % sin_diss1 / config % sin_fac
+fieldscale2   = config % sin_diss2 / config % sin_diss1
+inv_sds_power = 1. / config % sds_power
 
 ! this limits the Courant number to its theoretical value slightly
 ! larger than 1/sqrt(2), depending on the number of directional bins;
@@ -1278,7 +1225,7 @@ do p=1,pm
 end do
 
 ! compute wave numbers, phase speeds, and group velocities:
-call dispersion
+call dispersion(config)
 
 mindelx = min(minval(dx_2d,mask==1),minval(dy_2d,mask==1))
 cgmax   = maxval(cg0(:,istart:iend))
@@ -1286,17 +1233,17 @@ dtamin  = 0.98*cfllim*mindelx/cgmax
 
 first    = .true.
 
-if(restart)then
+if(config % restart)then
   firstdtg = .false.
 else
   firstdtg = .true.
 end if
 
 ! if sea ice from file, update the fice field
-if (seaice) fice = remap_mn2i(ficef)
+if (config % seaice) fice = remap_mn2i(ficef)
 
 ! if forcing from file, update the wspd field for ustar first guess
-if (winds) wspd = remap_mn2i(sqrt(uwf**2 + vwf**2))
+if (config % winds) wspd = remap_mn2i(sqrt(uwf**2 + vwf**2))
 
 ! initialize drag coefficient (Large and Pond, 1981):
 cd = 1.2e-3
@@ -1312,10 +1259,10 @@ end do
 #ifdef MPI
 
 ! figure out which process will print to screen:
-iip = ii(xpl,ypl)
-if(mask(xpl,ypl)==0)then
+iip = ii(config % xpl, config % ypl)
+if(mask(config % xpl, config % ypl)==0)then
   if(nproc==0)then
-    write(0,*)xpl,ypl,mask(xpl,ypl)
+    write(0,*)config % xpl, config % ypl, mask(config % xpl, config % ypl)
 
     call raiseexception('warning','init',&
                         'land-point chosen for stdout, may go out of bounds')
@@ -1336,7 +1283,7 @@ call mpi_bcast(iip,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
 
 #else
 
-iip = ii(xpl,ypl)
+iip = ii(config % xpl, config % ypl)
 
 #endif
 
@@ -1364,9 +1311,10 @@ write(*,fmt=102)
 end subroutine init
 
 
-subroutine dispersion
+subroutine dispersion(config)
 ! Iteratively solve the dispersion relation by iteration,
 ! and compute phase and group velocities in absolute reference frame (w/ currents)
+use umwm_config, only: config_type
 #ifdef MPI
 use umwm_mpi
 #endif
@@ -1377,6 +1325,7 @@ integer :: sendtag, recvtag
 integer :: src, dest
 #endif
 
+type(config_type), intent(in) :: config
 integer :: i,o
 
 real,dimension(om,istart:iend) :: kd
@@ -1384,8 +1333,8 @@ real,dimension(om,istart:iend) :: kd
 if(nproc==0)write(*,'(a)')'umwm: dispersion: solving for dispersion relationship;'
 
 do concurrent (o=1:om, i=istart:iend)
-  k(o,i) = real(wavenumber(real(f(o), rk), real(d(i), rk), real(rhow0, rk), &
-                            real(g, rk), real(sfct, rk)), kind(k))
+  k(o,i) = real(wavenumber(real(f(o), rk), real(d(i), rk), real(config % rhow0, rk), &
+                            real(config % g, rk), real(config % sfct, rk)), kind(k))
 end do
 
 if(nproc==0)write(*,'(a)')'umwm: dispersion: dispersion relationship done;'
@@ -1405,8 +1354,8 @@ do concurrent (o=1:om, i=istart:iend)
 
   cp0(o,i) = twopi*f(o)/k(o,i)
   cg0(o,i) = real(group_speed(real(k(o,i), rk), real(d(i), rk), &
-                              real(rhow0, rk), real(g, rk), &
-                              real(sfct, rk)), kind(cg0))
+                              real(config % rhow0, rk), real(config % g, rk), &
+                              real(config % sfct, rk)), kind(cg0))
 end do
 
 ! compute some frequently used arrays:
@@ -1418,12 +1367,12 @@ do concurrent (o=1:om, i=istart:iend)
   oneoverk4(o,i) = 1./k4(o,i)                                   ! k^-4
   kdk(o,i)       = k(o,i)*dwn(o,i)                              ! k*dk
   k3dk(o,i)      = k(o,i)**3.*dwn(o,i)                          ! k*k*k*dk
-  fkovg(o,i)     = f(o)*k(o,i)/g                                ! f*k/g
+  fkovg(o,i)     = f(o)*k(o,i)/config % g                       ! f*k/g
   cothkd(o,i)    = cosh(0.2*kd(o,i))/sinh(0.2*kd(o,i))          ! coth(0.2*kd)
   invcp0(o,i)    = 1./cp0(o,i)                                  ! 1/cp
-  sbf(o,i)       = sbf_fac*k(o,i)/(sinh(2.*kd(o,i)))&           ! bottom friction
-                  +sbp_fac*k(o,i)/(cosh(kd(o,i))*cosh(kd(o,i))) ! bottom percolation
-  sdv(o,i)       = 4.*nu_water*k(o,i)**2.                       ! viscosity
+  sbf(o,i)       = config % sbf_fac*k(o,i)/(sinh(2.*kd(o,i)))&  ! bottom friction
+                  +config % sbp_fac*k(o,i)/(cosh(kd(o,i))*cosh(kd(o,i))) ! bottom percolation
+  sdv(o,i)       = 4.*config % nu_water*k(o,i)**2.              ! viscosity
 
 end do
 
@@ -1434,17 +1383,17 @@ snl_arg    = 0.
 
 do i=istart,iend
   do o=1,om-2
-    bf1_renorm(o,i) = snl_fac*bf1*kdk(o+1,i)/kdk(o,i)
-    bf2_renorm(o,i) = snl_fac*bf2*kdk(o+2,i)/kdk(o,i)
+    bf1_renorm(o,i) = config % snl_fac*bf1*kdk(o+1,i)/kdk(o,i)
+    bf2_renorm(o,i) = config % snl_fac*bf2*kdk(o+2,i)/kdk(o,i)
     snl_arg(o,i)    = 1.-(bf1_renorm(o,i)+bf2_renorm(o,i))
   end do
 end do
 
 ! half-wavelength over z:
-logl2overz = log(l2/z)
+logl2overz = log(l2/config % z)
 
 ! limit wind input to be at 10 m for l/2 > 10 m:
-where(l2>20.)logl2overz = log(20./z)
+where(l2>20.)logl2overz = log(20./config % z)
 
 #ifdef MPI
 if(nproc<mpisize-1)then ! communicate with process above:
@@ -1504,7 +1453,7 @@ end if
 call mpi_barrier(MPI_COMM_WORLD,ierr)
 
 ! if periodic domain, connect the east and west:
-if(isglobal)then
+if(config % isglobal)then
 
   if(nproc==0)then ! communicate with last tile:
 
