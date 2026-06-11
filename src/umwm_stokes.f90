@@ -6,39 +6,31 @@ module umwm_stokes
   real, allocatable :: depth(:), ds(:)
   real, allocatable :: us(:,:), vs(:,:), usmag(:,:)
   real, allocatable :: util(:,:,:), arg(:,:,:)
-  real :: depths(100) = -1.
-
 contains
 
-  subroutine stokes_drift(spectrum, option)
+  subroutine stokes_drift(spectrum, config, option)
     ! Computes wave-induced Stokes drift
 
     use umwm_constants, only: eulerinv
+    use umwm_config, only: config_type
     use umwm_module, only: twopi, d, e, f, k, dwn, dth, istart, iend, &
                            cth, sth,nproc
     use umwm_spectrum, only: spectrum_type
 
     type(spectrum_type), intent(in) :: spectrum
+    type(config_type), intent(in) :: config
     character(4), intent(in), optional :: option
     integer :: i, l, o, p
     real :: ust_efolding
     real, allocatable :: kd(:,:)
 
-    namelist /stokes/ depths
-
     if (present(option)) then
       if (option == 'init') then
 
-        ! read depth levels from namelist
-        open(unit=21, file='namelists/main.nml', status='old',&
-             form='formatted', access='sequential', action='read')
-        read(unit=21, nml=stokes)
-        close(unit=21)
-
-        ! get mpisize of depth array
-        lm = count(depths >= 0)
+        ! get size of depth array
+        lm = size(config % stokes_depths)
         allocate(depth(lm))
-        depth = - depths(1:lm)
+        depth = - config % stokes_depths
 
         ! allocate stokes velocities and utility array
         allocate(us(istart:iend,lm))

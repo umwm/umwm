@@ -5,7 +5,7 @@ include ../mk/config.mk
 .SUFFIXES:
 
 SRC_DIR := ../src
-TESTS := test_dispersion test_spectrum
+TESTS := test_dispersion test_spectrum test_config
 
 .PHONY: test clean clean_all
 .DEFAULT_GOAL := test
@@ -19,6 +19,7 @@ TESTS := test_dispersion test_spectrum
 test: $(TESTS)
 	./test_dispersion
 	./test_spectrum
+	./test_config
 
 test_dispersion: test_dispersion.f90 tuff.o umwm_constants.o umwm_dispersion.o
 	$(FC) $(CPPFLAGS) $(FCFLAGS) -I. -I$(SRC_DIR) -o $@ $^ $(LDLIBS)
@@ -26,6 +27,10 @@ test_dispersion: test_dispersion.f90 tuff.o umwm_constants.o umwm_dispersion.o
 test_spectrum: test_spectrum.f90 tuff.o umwm_constants.o umwm_spectrum.o
 	$(FC) $(CPPFLAGS) $(FCFLAGS) -I. -I$(SRC_DIR) -o $@ $^ $(LDLIBS)
 
+test_config: test_config.f90 tuff.o umwm_constants.o umwm_config.o
+	$(FC) $(CPPFLAGS) $(FCFLAGS) -I. -I$(SRC_DIR) -o $@ $^ $(LDLIBS)
+
+umwm_config.o: umwm_constants.o
 umwm_dispersion.o: umwm_constants.o
 umwm_spectrum.o: umwm_constants.o
 

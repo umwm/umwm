@@ -34,7 +34,7 @@ use umwm_module, only: allowedoutputtimes, ar, ar_2d, bf1, bf1_renorm, &
                        sds, sds_fac, sds_power, sdt, sdt_fac, sdv, sfct, &
                        shelt, sice, sin_diss1, sin_diss2, sin_fac, snl, &
                        snl_arg, snl_fac, ssin, sth, sth_curv, stokes, &
-                       tailatmx, tailatmy, tailocnx, tailocny, taux, taux1, &
+                       starttimestr_nml, stoptimestr_nml, tailatmx, tailatmy, tailocnx, tailocny, taux, taux1, &
                        taux2, taux3, taux_diag, taux_form, taux_ocnbot, &
                        taux_ocntop, taux_skin, taux_snl, tauy, tauy1, &
                        tauy2, tauy3, tauy_diag, tauy_form, tauy_ocnbot, &
@@ -51,152 +51,78 @@ character :: remap_dir
 contains
 
 
-subroutine nmlread
-! Opens namelist file namelists/main.nml and reads runtime input parameters.
-use umwm_module,only:starttimestr_nml,stoptimestr_nml
-use umwm_io,  only:winds,currents,air_density,water_density,seaice
-use umwm_util,only:raiseexception
+subroutine apply_config(config)
+  use umwm_config, only: config_type
+  use umwm_io, only: winds, currents, air_density, water_density, seaice
 
-logical :: namelistok
+  type(config_type), intent(in) :: config
 
-! local variables for reading from namelist
-character(19) :: starttimestr,stoptimestr
+  starttimestr_nml = config % starttimestr
+  stoptimestr_nml = config % stoptimestr
 
-namelist /domain/ isglobal,mm,nm,om,pm,fmin,fmax,fprog,starttimestr,&
-stoptimestr,dtg,restart
+  isglobal = config % isglobal
+  mm = config % mm
+  nm = config % nm
+  om = config % om
+  pm = config % pm
+  fmin = config % fmin
+  fmax = config % fmax
+  fprog = config % fprog
+  dtg = config % dtg
+  restart = config % restart
 
-namelist /physics/ g,nu_air,nu_water,sfct,kappa,z,gustiness,dmin,    &
-explim,sin_fac,sin_diss1,sin_diss2,sds_fac,sds_power,mss_fac,snl_fac,&
-sdt_fac,sbf_fac,sbp_fac
+  g = config % g
+  nu_air = config % nu_air
+  nu_water = config % nu_water
+  sfct = config % sfct
+  kappa = config % kappa
+  z = config % z
+  gustiness = config % gustiness
+  dmin = config % dmin
+  explim = config % explim
+  sin_fac = config % sin_fac
+  sin_diss1 = config % sin_diss1
+  sin_diss2 = config % sin_diss2
+  sds_fac = config % sds_fac
+  sds_power = config % sds_power
+  mss_fac = config % mss_fac
+  snl_fac = config % snl_fac
+  sdt_fac = config % sdt_fac
+  sbf_fac = config % sbf_fac
+  sbp_fac = config % sbp_fac
 
-namelist /grid/ gridfromfile,delx,dely,topofromfile,dpt,fillestuaries,&
-filllakes
+  gridfromfile = config % gridfromfile
+  delx = config % delx
+  dely = config % dely
+  topofromfile = config % topofromfile
+  dpt = config % dpt
+  fillestuaries = config % fillestuaries
+  filllakes = config % filllakes
 
-namelist /forcing/ winds,currents,air_density,water_density,seaice
+  winds = config % winds
+  currents = config % currents
+  air_density = config % air_density
+  water_density = config % water_density
+  seaice = config % seaice
 
-namelist /forcing_constant/ wspd0,wdir0,uc0,vc0,rhoa0,rhow0,fice0,fice_lth,fice_uth
+  wspd0 = config % wspd0
+  wdir0 = config % wdir0
+  uc0 = config % uc0
+  vc0 = config % vc0
+  rhoa0 = config % rhoa0
+  rhow0 = config % rhow0
+  fice0 = config % fice0
+  fice_lth = config % fice_lth
+  fice_uth = config % fice_uth
 
-namelist /output/ outgrid,outspec,outrst,xpl,ypl,stokes
+  outgrid = config % outgrid
+  outspec = config % outspec
+  outrst = config % outrst
+  xpl = config % xpl
+  ypl = config % ypl
+  stokes = config % stokes
 
-! read simulation parameters from the main namelist:
-open(unit=21,file='namelists/main.nml',status='old',&
-     form='formatted',access='sequential',action='read')
-  read(unit=21,nml=domain)
-  read(unit=21,nml=physics)
-  read(unit=21,nml=grid)
-  read(unit=21,nml=forcing)
-  read(unit=21,nml=forcing_constant)
-  read(unit=21,nml=output)
-close(unit=21)
-
-! check namelist values:
-namelistok = .true.
-if(nproc == 0)then
-
-  if(mm < 3 .or. nm < 3)&
-  call raiseexception('error','nmlread',                             &
-                      'bad value in main.nml: mm and nm must be > 2',&
-                      namelistok)
-
-  if(mod(pm,4) /= 0)then
-    call raiseexception('error','nmlread',                                 &
-                        'bad value in main.nml: pm must be divisible by 4',&
-                        namelistok)
-  else
-    if(mod(pm,8) /= 0)&
-    call raiseexception('warning','nmlread',&
-                        'pm should be divisible by 8 for optimal propagation properties')
-
-  end if
-
-  if(fmin <= 0 .or. fmax <= 0 .or. fprog <= 0)&
-  call raiseexception('error','nmlread',                                        &
-                      'bad value in main.nml: fmin, fmax and fprog must be > 0',&
-                      namelistok)
-
-  if(fmin >= fmax)&
-  call raiseexception('error','nmlread',                           &
-                      'bad value in main.nml: fmin must be < fmax',&
-                      namelistok)
-
-  if(fprog > fmax)&
-  call raiseexception('warning','nmlread',&
-                      'bad value in main.nml: fprog must be <= fmax; using highest allowed value')
-
-  if(dtg <= 0)&
-  call raiseexception('error','nmlread',                       &
-                      'bad value in main.nml: dtg must be > 0',&
-                      namelistok)
-
-  if( z <= 0)&
-  call raiseexception('error','nmlread',                     &
-                      'bad value in main.nml: z must be > 0',&
-                      namelistok)
-
-  if(gustiness < 0)then
-    call raiseexception('error','nmlread',                                  &
-                        'bad value in main.nml: gustiness must be positive',&
-                        namelistok)
-  elseif(gustiness > 0.2)then
-    call raiseexception('warning','nmlread',&
-                        '(bad) value in main.nml: gustiness > 0.2; proceed with caution')
-  end if
-
-  if(dmin <= 0)&
-  call raiseexception('error','nmlread',                        &
-                      'bad value in main.nml: dmin must be > 0',&
-                      namelistok)
-
-  if(.not.gridfromfile)then
-    if(delx <= 0 .or. dely <= 0)&
-    call raiseexception('error','nmlread',                                 &
-                        'bad value in main.nml: delx and dely must be > 0',&
-                        namelistok)
-  end if
-
-  if(.not.topofromfile)then
-    if(dpt <= 0)&
-    call raiseexception('error','nmlread',                       &
-                        'bad value in main.nml: dpt must be > 0',&
-                        namelistok)
-  end if
-
-  if(.not.any(outgrid == allowedoutputtimes))&
-  call raiseexception('error','nmlread',                                                     &
-                      'bad value in main.nml: outgrid must be 0, 1, 2, 3, 4, 6, 8, 12 or 24',&
-                      namelistok)
-
-  if(.not.any(outspec == allowedoutputtimes))&
-  call raiseexception('error','nmlread',                                                     &
-                      'bad value in main.nml: outspec must be 0, 1, 2, 3, 4, 6, 8, 12 or 24',&
-                      namelistok)
-
-  if(.not.any(outrst == allowedoutputtimes))&
-  call raiseexception('error','nmlread',                                                    &
-                      'bad value in main.nml: outrst must be 0, 1, 2, 3, 4, 6, 8, 12 or 24',&
-                      namelistok)
-
-  if(.not.namelistok)then
-    call raiseexception('abort','nmlread',&
-                        'errors encountered in namelist read (see above)')
-    stop
-  end if
-
-end if
-
-! copy values from namelist into global variables
-starttimestr_nml = starttimestr
-stoptimestr_nml = stoptimestr
-
-end subroutine nmlread
-
-
-subroutine initialize_spectrum(spectrum)
-  type(spectrum_type), intent(out) :: spectrum
-
-  spectrum = spectrum_type(om, pm, real(fmin, rk), real(fmax, rk))
-
-end subroutine initialize_spectrum
+end subroutine apply_config
 
 
 subroutine alloc(option, spectrum)

@@ -4,20 +4,18 @@ module umwm_top
 
 contains
 
-  subroutine umwm_initialize(spectrum)
+  subroutine umwm_initialize(config, spectrum)
 
-    use umwm_env, only: env_init
-    use umwm_module,only: starttimestr => starttimestr_nml
-    use umwm_init,  only: nmlread, initialize_spectrum, alloc, grid, masks, partition, remap, init
+    use umwm_config, only: config_type
+    use umwm_init,  only: apply_config, alloc, grid, masks, partition, remap, init
     use umwm_io,    only: input_nc, output_grid
     use umwm_spectrum, only: spectrum_type
     use umwm_stokes,only: stokes_drift
 
-    type(spectrum_type), intent(out) :: spectrum
+    type(config_type), intent(in) :: config
+    type(spectrum_type), intent(in) :: spectrum
 
-    call env_init()             ! initialize the environment
-    call nmlread()              ! read the namelist
-    call initialize_spectrum(spectrum)
+    call apply_config(config)   ! copy configuration into runtime state
     call alloc(1)               ! allocate 2-d arrays
     call grid()                 ! define model grid
     call masks()                ! define seamasks
@@ -25,14 +23,14 @@ contains
     call alloc(2, spectrum)     ! allocate unrolled arrays
     call remap()                ! remap 2-d arrays to 1-d
     call output_grid()          ! output a grid file
-    call input_nc(starttimestr) ! read initial fields
+    call input_nc(config % starttimestr) ! read initial fields
     call init(spectrum)         ! initialize model variables
-    call stokes_drift(spectrum, 'init') ! initialize stokes drift arrays
+    call stokes_drift(spectrum, config, 'init') ! initialize stokes drift arrays
 
   end subroutine umwm_initialize
 
 
-  subroutine umwm_run(starttimestr, stoptimestr, spectrum)
+  subroutine umwm_run(config, spectrum)
 
 #ifdef MPI
     use umwm_mpi, only: exchange_halo
@@ -40,10 +38,10 @@ contains
     use mpi
 #endif
 
+    use umwm_config, only: config_type
     use umwm_module, only: cd, currenttime, dtg, dts, e, ef, f, first, &
                            firstdtg, iend, iip, istart, nproc, &
-                           nproc_plot, oc, outgrid, outspec, outrst, &
-                           restart, starttime, stokes, stoptime, sumt, &
+                           nproc_plot, oc, starttime, stoptime, sumt, &
                            wdir, wspd
     use umwm_physics, only: source, diag
     use umwm_advection,only: propagation, refraction
@@ -59,21 +57,21 @@ contains
 
     use datetime_module
 
-    character(19), intent(in) :: starttimestr, stoptimestr
+    type(config_type), intent(in) :: config
     type(spectrum_type), intent(in) :: spectrum
 
     character(19) :: currenttimestr
     logical :: fullhour
 
     ! convert start and stop time strings to datetime objects:
-    starttime = strptime(starttimestr,'%Y-%m-%d %H:%M:%S')
-    stoptime  = strptime(stoptimestr, '%Y-%m-%d %H:%M:%S')
+    starttime = strptime(config % starttimestr,'%Y-%m-%d %H:%M:%S')
+    stoptime  = strptime(config % stoptimestr, '%Y-%m-%d %H:%M:%S')
 
     currenttime = starttime
     currenttimestr = trim(currenttime % strftime('%Y-%m-%d_%H:%M:%S'))
 
     ! read wave spectrum field from a restart file if necessary:
-    if (first .and. restart) call restart_read(starttimestr, spectrum)
+    if (first .and. config % restart) call restart_read(config % starttimestr, spectrum)
 
     do while (currenttime < stoptime) ! outer time loop
 
@@ -133,8 +131,8 @@ contains
           ! diagnostic calculations before output
           call diag(spectrum)
 
-          if (outgrid > 0) call output_grid_nc(starttimestr, spectrum)
-          if (outspec > 0) call output_spectrum_nc(starttimestr, spectrum)
+          if (config % outgrid > 0) call output_grid_nc(config % starttimestr, spectrum)
+          if (config % outspec > 0) call output_spectrum_nc(config % starttimestr, spectrum)
 
 #ifdef MPI
           call mpi_barrier(MPI_COMM_WORLD, ierr)
@@ -160,7 +158,7 @@ contains
       end do ! end while(sumt<dtg) loop
 
       if (firstdtg) firstdtg = .false.
-      if (stokes) call stokes_drift(spectrum)
+      if (config % stokes) call stokes_drift(spectrum, config)
 
       call diag(spectrum) ! model diagnostics for output
 
@@ -168,14 +166,14 @@ contains
            .and. currenttime % getsecond() == 0
 
       ! gridded output
-      if(outgrid > 0)then
-        if(mod(currenttime % gethour(),outgrid) == 0 .and. fullhour)then
+      if(config % outgrid > 0)then
+        if(mod(currenttime % gethour(),config % outgrid) == 0 .and. fullhour)then
 #ifndef ESMF
           call stress('ocn', spectrum)
 #endif
           call output_grid_nc(currenttimestr, spectrum)
         end if
-      elseif(outgrid == -1)then
+      elseif(config % outgrid == -1)then
 #ifndef ESMF
         call stress('ocn', spectrum)
 #endif
@@ -183,19 +181,19 @@ contains
       end if
 
       ! spectrum output
-      if (outspec > 0) then
-        if (mod(currenttime % gethour(),outspec) == 0 .and. fullhour) then
+      if (config % outspec > 0) then
+        if (mod(currenttime % gethour(),config % outspec) == 0 .and. fullhour) then
           call output_spectrum_nc(currenttimestr, spectrum)
         end if
-      else if (outspec == -1) then
+      else if (config % outspec == -1) then
         call output_spectrum_nc(currenttimestr, spectrum)
       end if
 
       ! restart output
-      if (outrst > 0) then
-        if (mod(currenttime % gethour(), outrst) == 0 .and. fullhour)&
+      if (config % outrst > 0) then
+        if (mod(currenttime % gethour(), config % outrst) == 0 .and. fullhour)&
         call restart_write(currenttimestr, spectrum)
-      else if (outspec == -1) then
+      else if (config % outspec == -1) then
         call restart_write(currenttimestr, spectrum)
       end if
 
