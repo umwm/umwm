@@ -117,7 +117,7 @@ contains
   end function spacing_values
 
 
-  pure logical function nearly_equal(a, b) result(res)
+  pure elemental logical function nearly_equal(a, b) result(res)
     real(rk), intent(in) :: a, b
 
     res = abs(a - b) <= 10._rk * epsilon(1._rk) * max(1._rk, abs(a), abs(b))
@@ -126,17 +126,11 @@ contains
 
   pure logical function all_nearly_equal(a, b) result(res)
     real(rk), intent(in) :: a(:), b(:)
-    integer :: n
 
     res = size(a) == size(b)
     if (.not. res) return
-
-    do n = 1, size(a)
-      if (.not. nearly_equal(a(n), b(n))) then
-        res = .false.
-        return
-      end if
-    end do
+    res = all(nearly_equal(a, b))
   end function all_nearly_equal
+
 
 end program test_spectrum

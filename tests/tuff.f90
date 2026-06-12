@@ -4,7 +4,7 @@ module tuff
   implicit none
 
   private
-  public :: test, test_result
+  public :: test, test_result, nearly_equal, all_nearly_equal
 
   type :: test_result
     character(:), allocatable :: name
@@ -41,7 +41,7 @@ contains
 
   type(test_result) function test_func(f) result(res)
     ! Test a user-provided function f that returns a test_result.
-    ! f is responsible for setting the test name and the ok field. 
+    ! f is responsible for setting the test name and the ok field.
     procedure(func) :: f
     real :: t1, t2
     res % name = ''
@@ -70,4 +70,18 @@ contains
     end if
   end function test_array
 
-end module tuff
+
+  pure elemental logical function nearly_equal(a, b) result(res)
+    real, intent(in) :: a, b
+    res = abs(a - b) <= 10.0 * epsilon(1.0) * max(1.0, abs(a), abs(b))
+  end function nearly_equal
+
+
+  pure logical function all_nearly_equal(a, b) result(res)
+    real, intent(in) :: a(:), b(:)
+    res = size(a) == size(b)
+    if (.not. res) return
+    res = all(nearly_equal(a, b))
+  end function all_nearly_equal
+
+  end module tuff

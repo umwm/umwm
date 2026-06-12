@@ -1,5 +1,5 @@
 program test_config
-  use tuff, only: test, test_result
+  use tuff, only: test, test_result, nearly_equal
   use umwm_config, only: config_type
 
   implicit none
@@ -131,12 +131,5 @@ contains
 
     config = config_type('../namelists/main.nml')
   end function valid_config
-
-
-  pure logical function nearly_equal(a, b) result(res)
-    real, intent(in) :: a, b
-
-    res = abs(a - b) <= 10.0 * epsilon(1.0) * max(1.0, abs(a), abs(b))
-  end function nearly_equal
 
 end program test_config
