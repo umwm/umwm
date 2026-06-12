@@ -1,7 +1,7 @@
 module umwm_restart
   ! Provides read and write subroutines for UMWM restart files
-  use umwm_module, only: e, f, iend, ierr, im, istart, k, lat, lon, mi, &
-                         mpisize, ni, nproc, ustar
+  use umwm_grid, only: grid_type
+  use umwm_module, only: e, f, ierr, k, mpisize, nproc, ustar
   use netcdf
   use umwm_spectrum, only: spectrum_type
   use umwm_util, only: raiseexception
@@ -18,9 +18,10 @@ module umwm_restart
 
 contains
 
-  subroutine restart_read(timestr, spectrum)
+  subroutine restart_read(timestr, spectrum, grid)
     character(19), intent(in) :: timestr
     type(spectrum_type), intent(in) :: spectrum
+    type(grid_type), intent(in) :: grid
     character(19) :: timestrnew
     character(9999) :: filename
     integer :: stat, ncid, ustid, specid
@@ -46,11 +47,12 @@ contains
 
     stat = nf90_inq_varid(ncid, 'F', specid)
     stat = nf90_inq_varid(ncid, 'ust', ustid)
-    stat = nf90_get_var(ncid, specid, e(:,:,istart:iend), &
-                        start=[1, 1, istart], &
-                        count=[spectrum % num_frequencies, spectrum % num_directions, iend - istart + 1])
-    stat = nf90_get_var(ncid, ustid, ustar(istart:iend), &
-                        start=[istart], count=[iend - istart + 1])
+    stat = nf90_get_var(ncid, specid, e(:,:,grid % istart:grid % iend), &
+                        start=[1, 1, grid % istart], &
+                        count=[spectrum % num_frequencies, spectrum % num_directions, &
+                               grid % iend - grid % istart + 1])
+    stat = nf90_get_var(ncid, ustid, ustar(grid % istart:grid % iend), &
+                        start=[grid % istart], count=[grid % iend - grid % istart + 1])
     stat = nf90_close(ncid)
 
 #ifdef MPI
@@ -60,21 +62,22 @@ contains
   end subroutine restart_read
 
 
-  subroutine restart_write(timestr, spectrum)
+  subroutine restart_write(timestr, spectrum, grid)
     character(19), intent(in) :: timestr
     type(spectrum_type), intent(in) :: spectrum
+    type(grid_type), intent(in) :: grid
   
     integer :: i, nn
     integer :: stat, ncid, xdimid, fdimid, thdimid
     integer :: kid, lonid, latid, freqid, thetaid, ustid, specid
-    real :: lon_tmp(im), lat_tmp(im)
+    real :: lon_tmp(grid % im), lat_tmp(grid % im)
 
     if (nproc == 0) then
 
       !TODO we should error-handle the values of NetCDF statuses
       stat = nf90_create('restart/umwmrst_' // timestr // '.nc', NF90_CLOBBER, ncid)
 
-      stat = nf90_def_dim(ncid, 'x', im, xdimid)
+      stat = nf90_def_dim(ncid, 'x', grid % im, xdimid)
       stat = nf90_def_dim(ncid, 'f', spectrum % num_frequencies, fdimid)
       stat = nf90_def_dim(ncid, 'th', spectrum % num_directions, thdimid)
 
@@ -109,9 +112,9 @@ contains
       stat = nf90_enddef(ncid)
 
       ! fill in lon and lat arrays
-      do i = 1, im
-        lon_tmp(i) = lon(mi(i), ni(i))
-        lat_tmp(i) = lat(mi(i), ni(i))
+      do i = 1, grid % im
+        lon_tmp(i) = grid % lon(grid % mi(i), grid % ni(i))
+        lat_tmp(i) = grid % lat(grid % mi(i), grid % ni(i))
       end do
 
       stat = nf90_put_var(ncid, lonid, lon_tmp)
@@ -136,13 +139,15 @@ contains
         stat = nf90_inq_varid(ncid, 'F', specid)
         stat = nf90_inq_varid(ncid, 'wavenumber', kid)
         stat = nf90_inq_varid(ncid, 'ust', ustid)
-        stat = nf90_put_var(ncid, specid, e(:,:,istart:iend), &
-                            start=[1, 1, istart], &
-                            count=[spectrum % num_frequencies, spectrum % num_directions, iend - istart + 1])
-        stat = nf90_put_var(ncid, kid, k(:,istart:iend), &
-                            start=[1, istart], count=[spectrum % num_frequencies, iend-istart+1])
-        stat = nf90_put_var(ncid, ustid, ustar(istart:iend), &
-                            start=[istart], count=[iend-istart+1])
+        stat = nf90_put_var(ncid, specid, e(:,:,grid % istart:grid % iend), &
+                            start=[1, 1, grid % istart], &
+                            count=[spectrum % num_frequencies, spectrum % num_directions, &
+                                   grid % iend - grid % istart + 1])
+        stat = nf90_put_var(ncid, kid, k(:,grid % istart:grid % iend), &
+                            start=[1, grid % istart], &
+                            count=[spectrum % num_frequencies, grid % iend-grid % istart+1])
+        stat = nf90_put_var(ncid, ustid, ustar(grid % istart:grid % iend), &
+                            start=[grid % istart], count=[grid % iend-grid % istart+1])
         stat = nf90_close(ncid)
 
       end if

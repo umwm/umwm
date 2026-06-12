@@ -1,22 +1,23 @@
 module umwm_forcing
 
   use umwm_config, only: config_type
+  use umwm_grid, only: grid_type
   use umwm_io, only: input_nc, readfile
   use umwm_module, only: fice, fice_2d, ficeb, ficef, &
                          gustu, gustv, rhoa, rhoab, rhoaf, rhorat, &
                          rhow, rhowb, rhowf, sumt, uc, uc_2d, ucb, ucf, &
                          uw, uwb, uwf, vc, vc_2d, vcb, vcf, vw, vwb, &
                          vwf, wdir, wdir_2d, wspd, wspd_2d
-  use umwm_util, only: remap_mn2i
 
   implicit none
 
 contains
 
-  subroutine forcinginput(config, timestr)
+  subroutine forcinginput(config, timestr, grid)
     ! Reads atmospheric and oceanic input forcing fields
     type(config_type), intent(in) :: config
     character(len=19), intent(in) :: timestr
+    type(grid_type), intent(in) :: grid
 
     ! save wind at time level n
     if (config % winds) then
@@ -38,14 +39,15 @@ contains
     if (config % seaice) ficeb = ficef
 
     ! load input fields at time level n+1
-    if (readfile) call input_nc(config, timestr)
+    if (readfile) call input_nc(config, timestr, grid)
 
   end subroutine forcinginput
 
 
-  subroutine forcinginterpolate(config)
+  subroutine forcinginterpolate(config, grid)
     ! interpolates in time atmospheric and oceanic input forcing fields
     type(config_type), intent(in) :: config
+    type(grid_type), intent(in) :: grid
 
     if (config % winds) then
 
@@ -73,8 +75,8 @@ contains
       wdir_2d = atan2(vw, uw)
 
       ! remap to 1-d arrays:
-      wspd = remap_mn2i(wspd_2d)
-      wdir = remap_mn2i(wdir_2d)
+      wspd = grid % remap_mn2i(wspd_2d)
+      wdir = grid % remap_mn2i(wdir_2d)
 
     end if ! winds
 
@@ -83,7 +85,7 @@ contains
       fice_2d = ficeb * (1 - sumt / config % dtg) + ficef * sumt/config % dtg
 
       ! remap to 1-D arrays:
-      fice = remap_mn2i(fice_2d)
+      fice = grid % remap_mn2i(fice_2d)
 
      end if
     
@@ -94,8 +96,8 @@ contains
       vc_2d = vcb * (1 - sumt / config % dtg) + vcf * sumt / config % dtg
 
       ! remap to 1-d arrays:
-      uc = remap_mn2i(uc_2d)
-      vc = remap_mn2i(vc_2d)
+      uc = grid % remap_mn2i(uc_2d)
+      vc = grid % remap_mn2i(vc_2d)
 
     end if
 

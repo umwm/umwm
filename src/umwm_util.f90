@@ -3,9 +3,7 @@ module umwm_util
 !                                                                      !
 ! description: a module with utility functions.                        !
 !                                                                      !
-! contains: remap_i2mn     - remaps an (i) indexed array to (m,n)      !
-!           remap_mn2i     - remaps an (m,n) indexed array to (i)      !
-!           sigwaveheight  - calculates sig. wave height               !
+! contains: sigwaveheight  - calculates sig. wave height               !
 !           meanwaveperiod - calculates mean wave period               !
 !           raiseexception - raises an exception and prints a message  !
 !           dealloc        - array deallocation routine                !
@@ -14,56 +12,6 @@ module umwm_util
 implicit none
 !======================================================================!
 contains
-
-
-
-pure function remap_i2mn(field_i) result(field_mn)
-!======================================================================+
-!                                                                      !
-! remaps an (i) indexed array to (m,n)                                 !
-!                                                                      !
-!======================================================================+
-use umwm_module,only:imm,mm,nm,ii
-
-! arguments
-real,dimension(imm),intent(in) :: field_i
-real,dimension(mm,nm)          :: field_mn
-
-integer :: m,n
-!=======================================================================
-
-do n=1,nm
-  do m=1,mm
-    field_mn(m,n) = field_i(ii(m,n))
-  end do
-end do
-
-end function remap_i2mn
-!======================================================================>
-
-
-
-pure function remap_mn2i(field_mn) result(field_i)
-!======================================================================+
-!                                                                      !
-! remaps an (m,n) indexed array to (i)                                 !
-!                                                                      !
-!======================================================================+
-use umwm_module,only:imm,mm,nm,ii
-
-real,dimension(mm,nm),intent(in) :: field_mn
-real,dimension(imm)              :: field_i
-integer :: m,n
-
-do n=1,nm
-  do m=1,mm
-    field_i(ii(m,n)) = field_mn(m,n)
-  end do
-end do
-
-end function remap_mn2i
-!======================================================================>
-
 
 
 pure function sigwaveheight(i, spectrum) result(swh)
@@ -165,47 +113,20 @@ subroutine dealloc
 ! deallocates umwm arrays                                              !
 !                                                                      !
 !======================================================================>
-use umwm_module, only: ar, ar_2d, bf1_renorm, bf2_renorm, cd, cg0, &
-                       cgmxx, cgmxy, cgmyy, cothkd, cp0, cth, cth2, &
-                       cth_curv, curv, d, d_2d, dcg, dcg0, dcp, &
-                       dcp0, dlat, dlon, dom, dummy, dwd, dwl, dwn, &
-                       dwp, dx, dx_2d, dxn, dxs, dy, dy_2d, dye, dyw, &
-                       e, ef, epsx_atm, epsx_ocn, epsy_atm, epsy_ocn, &
-                       f, fice, fice_2d, ficeb, ficef, fkovg, fcutoff, &
-                       gustu, gustv, ht, invcp0, k, k3dk, k4, kdk, l2, &
-                       lat, logl2overz, lon, momx, momy, mss, mwd, mwl, &
-                       mwp, oneovar, oneovdx, oneovdy, oneoverk4, &
-                       physics_time_step, psim, psiml2, rhoa, rhoa_2d, &
-                       rhoab, rhoaf, rhorat, rhow, rhow_2d, rhowb, rhowf, &
-                       rotl, rotr, sbf, sds, sdt, sdv, shelt, sice, snl, &
-                       snl_arg, ssin, sth, sth_curv, tailatmx, tailatmy, &
-                       tailocnx, tailocny, taux, taux1, taux2, taux3, &
-                       taux_diag, taux_form, taux_ocnbot, taux_ocntop, &
-                       taux_skin, taux_snl, tauy, tauy1, tauy2, tauy3, &
-                       tauy_diag, tauy_form, tauy_ocnbot, tauy_ocntop, &
-                       tauy_skin, tauy_snl, th, uc, uc_2d, ucb, ucf, &
-                       ustar, uw, uwb, uwf, vc, vc_2d, vcb, vcf, vw, &
-                       vwb, vwf, wdir, wdir_2d, wspd, wspd_2d, x, y
+use umwm_module
 !======================================================================>
 
-deallocate(ar_2d,d_2d,dlon,dlat,dx_2d,dy_2d)
-deallocate(curv)
 deallocate(gustu,gustv)
-deallocate(lat,lon)
-deallocate(x,y)
 deallocate(rhoa_2d,rhow_2d)
 deallocate(wspd_2d,wdir_2d)
 deallocate(fice_2d,ficef,ficeb,fice)
 deallocate(uwb,vwb,uw,vw,uwf,vwf,ucb,uc_2d,ucf,vcb,vc_2d,vcf)
 deallocate(dom,f,cth,cth2,sth,th)
-deallocate(cth_curv,sth_curv)
-deallocate(ar,cd,d,dx,dy,dwd,dwl,dwp,fcutoff)
-deallocate(dxn,dxs,dye,dyw)
+deallocate(cd,dwd,dwl,dwp,fcutoff)
 deallocate(dcp0,dcg0,dcp,dcg)
 deallocate(ht,mss,mwd,mwl,mwp)
 deallocate(momx,momy)
 deallocate(cgmxx,cgmxy,cgmyy)
-deallocate(oneovar,oneovdx,oneovdy)
 deallocate(psim,psiml2)
 deallocate(rhoab,rhoa,rhoaf,rhowb,rhow,rhowf,rhorat)
 deallocate(taux,tauy,taux_form,tauy_form,taux_skin,tauy_skin)

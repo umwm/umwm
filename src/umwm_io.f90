@@ -1,22 +1,7 @@
 module umwm_io
 ! Provides input/output routines for the wave model
-use umwm_module, only: ar_2d, cd, cgmxx, cgmxy, cgmyy, curv, d_2d, &
-                       dcg, dcg0, dcp, dcp0, dlat, dlon, dwd, dwl, &
-                       dwp, dx_2d, dy_2d, e, epsx_atm, epsx_ocn, &
-                       epsy_atm, epsy_ocn, f, fice, fice0, fice_2d, &
-                       ficef, ht, iend, ierr, ii, imm, im, istart, &
-                       k, lat, lon, mask, mm, momx, momy, mpisize, &
-                       mss, mwd, mwl, mwp, nm, nproc, nproc_out, om, &
-                       physics_time_step, pm, psim, rhoa, rhoa0, &
-                       rhoa_2d, rhoaf, rhow, rhow0, rhow_2d, rhowf, &
-                       sbf, sds, sdt, sdv, shelt, snl, ssin, stokes, &
-                       tailatmx, tailatmy, tailocnx, tailocny, taux1, &
-                       taux2, taux3, taux_diag, taux_form, taux_ocnbot, &
-                       taux_ocntop, taux_skin, taux_snl, tauy1, tauy2, &
-                       tauy3, tauy_diag, tauy_form, tauy_ocnbot, &
-                       tauy_ocntop, tauy_skin, tauy_snl, th, uc, uc0, &
-                       ucf, ustar, vc, vc0, vcf, vwf, wdir, wdir0, &
-                       wspd, wspd0, x, y, uwf, mpiisblocking
+use umwm_grid, only: grid_type
+use umwm_module
 use umwm_spectrum, only: spectrum_type
 use umwm_config, only: config_type
 use netcdf
@@ -27,12 +12,12 @@ contains
 
 
 
-subroutine input_nc(config, timestr)
+subroutine input_nc(config, timestr, grid)
 ! Reads input data files for atmospheric and oceanic fields.
-use umwm_util, only: remap_mn2i
 
 type(config_type), intent(in) :: config
 character(19), intent(in) :: timestr
+type(grid_type), intent(in) :: grid
 character(999) :: nc_infile
 character(19) :: readstr
 integer :: ncid,varid
@@ -80,7 +65,7 @@ else
   fice    = config % fice0
 end if
 
-where(mask == 0)
+where(grid % mask == 0)
   ucf = 0
   vcf = 0
 endwhere
@@ -106,16 +91,17 @@ if(readfile)then
 end if
 
 ! remap to 1-d arrays:
-rhoaf = remap_mn2i(rhoa_2d)
-rhowf = remap_mn2i(rhow_2d)
+rhoaf = grid % remap_mn2i(rhoa_2d)
+rhowf = grid % remap_mn2i(rhow_2d)
 
 end subroutine input_nc
 
 
-subroutine output_grid(config)
+subroutine output_grid(config, grid)
 ! Outputs grid related fields into a netcdf file.
 
 type(config_type), intent(in) :: config
+type(grid_type), intent(in) :: grid
 integer :: ncid
 integer :: xdimid,ydimid
 integer :: lonid,latid,dlonid,dlatid,dxid,dyid,arid,maskid,did,nprocid
@@ -124,8 +110,8 @@ integer :: xid,yid,curvid
 if(nproc == 0)then
 
   call nc_check(nf90_create('output/umwmout.grid',nf90_clobber,ncid))
-  call nc_check(nf90_def_dim(ncid,'x',config % mm,xdimid))
-  call nc_check(nf90_def_dim(ncid,'y',config % nm,ydimid))
+  call nc_check(nf90_def_dim(ncid,'x',grid % mm,xdimid))
+  call nc_check(nf90_def_dim(ncid,'y',grid % nm,ydimid))
   call nc_check(nf90_def_var(ncid,'lon',NF90_FLOAT,[xdimid,ydimid],lonid))
   call nc_check(nf90_def_var(ncid,'lat',NF90_FLOAT,[xdimid,ydimid],latid))
   call nc_check(nf90_def_var(ncid,'xx',NF90_FLOAT,[xdimid,ydimid],xid))
@@ -140,19 +126,19 @@ if(nproc == 0)then
   call nc_check(nf90_def_var(ncid,'seamask',nf90_int,[xdimid,ydimid],maskid))
   call nc_check(nf90_def_var(ncid,'nproc',nf90_int,[xdimid,ydimid],nprocid))
   call nc_check(nf90_enddef(ncid))
-  call nc_check(nf90_put_var(ncid,lonid,lon))
-  call nc_check(nf90_put_var(ncid,latid,lat))
-  call nc_check(nf90_put_var(ncid,xid,x))
-  call nc_check(nf90_put_var(ncid,yid,y))
-  call nc_check(nf90_put_var(ncid,dlonid,dlon))
-  call nc_check(nf90_put_var(ncid,dlatid,dlat))
-  call nc_check(nf90_put_var(ncid,dxid,dx_2d))
-  call nc_check(nf90_put_var(ncid,dyid,dy_2d))
-  call nc_check(nf90_put_var(ncid,curvid,curv))
-  call nc_check(nf90_put_var(ncid,arid,ar_2d))
-  call nc_check(nf90_put_var(ncid,maskid,mask))
-  call nc_check(nf90_put_var(ncid,did,d_2d))
-  call nc_check(nf90_put_var(ncid,nprocid,nproc_out))
+  call nc_check(nf90_put_var(ncid,lonid,grid % lon))
+  call nc_check(nf90_put_var(ncid,latid,grid % lat))
+  call nc_check(nf90_put_var(ncid,xid,grid % x))
+  call nc_check(nf90_put_var(ncid,yid,grid % y))
+  call nc_check(nf90_put_var(ncid,dlonid,grid % dlon))
+  call nc_check(nf90_put_var(ncid,dlatid,grid % dlat))
+  call nc_check(nf90_put_var(ncid,dxid,grid % dx_2d))
+  call nc_check(nf90_put_var(ncid,dyid,grid % dy_2d))
+  call nc_check(nf90_put_var(ncid,curvid,grid % curv))
+  call nc_check(nf90_put_var(ncid,arid,grid % ar_2d))
+  call nc_check(nf90_put_var(ncid,maskid,grid % mask))
+  call nc_check(nf90_put_var(ncid,did,grid % d_2d))
+  call nc_check(nf90_put_var(ncid,nprocid,grid % nproc_out))
   call nc_check(nf90_close(ncid))
 
   write(*,'(a)')'umwm: output_grid: grid definition written in output/umwmout.grid'
@@ -162,13 +148,14 @@ end if
 end subroutine output_grid
 
 
-subroutine output_spectrum_nc(config, timestr, spectrum)
+subroutine output_spectrum_nc(config, timestr, spectrum, grid)
 ! Writes out model spectrum output in a netcdf format
 
 ! arguments:
 type(config_type), intent(in) :: config
 character(19),intent(in) :: timestr
 type(spectrum_type), intent(in) :: spectrum
+type(grid_type), intent(in) :: grid
 
 character(19),save :: savetimestr
 
@@ -225,7 +212,7 @@ if(firstrun)then
     else if (any(coord_input == ['ll', 'LL'])) then
 
       read(21, *, end=100) lonspec, latspec, spectrumid(npts)
-      xy_coords = minloc((lonspec - lon)**2 + (latspec - lat)**2)
+      xy_coords = minloc((lonspec - grid % lon)**2 + (latspec - grid % lat)**2)
       mspec(npts) = xy_coords(1)
       nspec(npts) = xy_coords(2)
 
@@ -236,7 +223,7 @@ if(firstrun)then
 
     end if
 
-    ispec(npts) = ii(mspec(npts),nspec(npts))
+    ispec(npts) = grid % ii(mspec(npts),nspec(npts))
     write(unit=cnn(npts),fmt='(i3)')npts
     if(npts<100)cnn(npts) = '0'//adjustl(cnn(npts))
     if(npts< 10)cnn(npts) = '0'//adjustl(cnn(npts))
@@ -249,7 +236,7 @@ if(firstrun)then
 end if
 
 do nn=1,npts
-  if(ispec(nn) >= istart .and. ispec(nn) <= iend)then
+  if(ispec(nn) >= grid % istart .and. ispec(nn) <= grid % iend)then
 
     if(firstrun)then
 
@@ -287,8 +274,8 @@ do nn=1,npts
       stat = nf90_put_var(ncid,freqid,spectrum % frequency,start=[1],count=[om])
       stat = nf90_put_var(ncid,wlid,k(:,ispec(nn)),start=[1],count=[om])
       stat = nf90_put_var(ncid,thetaid,spectrum % direction,start=[1],count=[pm])
-      stat = nf90_put_var(ncid,lon_scalarid,lon(mspec(nn),nspec(nn)))
-      stat = nf90_put_var(ncid,lat_scalarid,lat(mspec(nn),nspec(nn)))
+      stat = nf90_put_var(ncid,lon_scalarid,grid % lon(mspec(nn),nspec(nn)))
+      stat = nf90_put_var(ncid,lat_scalarid,grid % lat(mspec(nn),nspec(nn)))
       stat = nf90_put_var(ncid,sdvid,sdv(:,ispec(nn)),start=[1],count=[om])
       stat = nf90_put_var(ncid,sbfid,sbf(:,ispec(nn)),start=[1],count=[om])
 
@@ -336,13 +323,14 @@ firstrun = .false.
 end subroutine output_spectrum_nc
 
 
-subroutine output_grid_nc(config, timestr, spectrum)
+subroutine output_grid_nc(config, timestr, spectrum, grid)
 ! Writes out model gridded output in a netcdf format
 use umwm_stokes,only:depth,lm,us,vs,ds
 
 type(config_type), intent(in) :: config
 character(19),intent(in) :: timestr
 type(spectrum_type), intent(in) :: spectrum
+type(grid_type), intent(in) :: grid
 
 character(19) :: timestrnew
 
@@ -378,10 +366,12 @@ integer :: physics_time_stepid
 
 integer :: l
 
-real :: output_field(mm,nm)
+real :: output_field(grid % mm,grid % nm)
 
 timestrnew = timestr
 timestrnew(11:11) = '_'
+
+associate(istart => grid % istart, iend => grid % iend)
 
 ! super boring, boiler-plate code follows.
 
@@ -389,8 +379,8 @@ if(nproc == 0)then
 
   stat = nf90_create('output/umwmout_'//timestrnew//'.nc',nf90_clobber,ncid)
 
-  stat = nf90_def_dim(ncid,'x',mm,xdimid)
-  stat = nf90_def_dim(ncid,'y',nm,ydimid)
+  stat = nf90_def_dim(ncid,'x',grid % mm,xdimid)
+  stat = nf90_def_dim(ncid,'y',grid % nm,ydimid)
   stat = nf90_def_dim(ncid,'f',spectrum % num_frequencies,fdimid)
   stat = nf90_def_dim(ncid,'th',spectrum % num_directions,thdimid)
   stat = nf90_def_dim(ncid,'time',NF90_UNLIMITED,tdimid)
@@ -679,177 +669,177 @@ if(nproc == 0)then
 
   stat = nf90_put_var(ncid,freqid,spectrum % frequency,start=[1],count=[om])
   stat = nf90_put_var(ncid,thetaid,spectrum % direction,start=[1],count=[pm])
-  stat = nf90_put_var(ncid,lonid,lon,start=[1,1,1],count=[mm,nm,1])
-  stat = nf90_put_var(ncid,latid,lat,start=[1,1,1],count=[mm,nm,1])
-  stat = nf90_put_var(ncid,maskid,mask,start=[1,1,1],count=[mm,nm,1])
-  stat = nf90_put_var(ncid,depthid,d_2d,start=[1,1,1],count=[mm,nm,1])
+  stat = nf90_put_var(ncid,lonid,grid % lon,start=[1,1,1],count=[grid % mm,grid % nm,1])
+  stat = nf90_put_var(ncid,latid,grid % lat,start=[1,1,1],count=[grid % mm,grid % nm,1])
+  stat = nf90_put_var(ncid,maskid,grid % mask,start=[1,1,1],count=[grid % mm,grid % nm,1])
+  stat = nf90_put_var(ncid,depthid,grid % d_2d,start=[1,1,1],count=[grid % mm,grid % nm,1])
 
 end if
 
-call gatherfield(wspd(istart:iend),output_field)
-if(nproc == 0)stat = nf90_put_var(ncid,wspdid,output_field,start=[1,1,1],count=[mm,nm,1])
+call gatherfield(wspd(istart:iend),output_field,grid)
+if(nproc == 0)stat = nf90_put_var(ncid,wspdid,output_field,start=[1,1,1],count=[grid % mm,grid % nm,1])
 
-call gatherfield(wdir(istart:iend),output_field)
-if(nproc == 0)stat = nf90_put_var(ncid,wdirid,output_field,start=[1,1,1],count=[mm,nm,1])
+call gatherfield(wdir(istart:iend),output_field,grid)
+if(nproc == 0)stat = nf90_put_var(ncid,wdirid,output_field,start=[1,1,1],count=[grid % mm,grid % nm,1])
 
-call gatherfield(uc(istart:iend),output_field)
-if(nproc == 0)stat = nf90_put_var(ncid,ucid,output_field,start=[1,1,1],count=[mm,nm,1])
+call gatherfield(uc(istart:iend),output_field,grid)
+if(nproc == 0)stat = nf90_put_var(ncid,ucid,output_field,start=[1,1,1],count=[grid % mm,grid % nm,1])
 
-call gatherfield(vc(istart:iend),output_field)
-if(nproc == 0)stat = nf90_put_var(ncid,vcid,output_field,start=[1,1,1],count=[mm,nm,1])
+call gatherfield(vc(istart:iend),output_field,grid)
+if(nproc == 0)stat = nf90_put_var(ncid,vcid,output_field,start=[1,1,1],count=[grid % mm,grid % nm,1])
 
-call gatherfield(rhoa(istart:iend),output_field)
-if(nproc == 0)stat = nf90_put_var(ncid,rhoaid,output_field,start=[1,1,1],count=[mm,nm,1])
+call gatherfield(rhoa(istart:iend),output_field,grid)
+if(nproc == 0)stat = nf90_put_var(ncid,rhoaid,output_field,start=[1,1,1],count=[grid % mm,grid % nm,1])
 
-call gatherfield(rhow(istart:iend),output_field)
-if(nproc == 0)stat = nf90_put_var(ncid,rhowid,output_field,start=[1,1,1],count=[mm,nm,1])
+call gatherfield(rhow(istart:iend),output_field,grid)
+if(nproc == 0)stat = nf90_put_var(ncid,rhowid,output_field,start=[1,1,1],count=[grid % mm,grid % nm,1])
 
-call gatherfield(fice(istart:iend),output_field)
-if(nproc == 0)stat = nf90_put_var(ncid,ficeid,output_field,start=[1,1,1],count=[mm,nm,1])
+call gatherfield(fice(istart:iend),output_field,grid)
+if(nproc == 0)stat = nf90_put_var(ncid,ficeid,output_field,start=[1,1,1],count=[grid % mm,grid % nm,1])
 
-call gatherfield(psim(istart:iend),output_field)
-if(nproc == 0)stat = nf90_put_var(ncid,psimid,output_field,start=[1,1,1],count=[mm,nm,1])
+call gatherfield(psim(istart:iend),output_field,grid)
+if(nproc == 0)stat = nf90_put_var(ncid,psimid,output_field,start=[1,1,1],count=[grid % mm,grid % nm,1])
 
-call gatherfield(momx,output_field)
-if(nproc == 0)stat = nf90_put_var(ncid,momxid,output_field,start=[1,1,1],count=[mm,nm,1])
+call gatherfield(momx,output_field,grid)
+if(nproc == 0)stat = nf90_put_var(ncid,momxid,output_field,start=[1,1,1],count=[grid % mm,grid % nm,1])
 
-call gatherfield(momy,output_field)
-if(nproc == 0)stat = nf90_put_var(ncid,momyid,output_field,start=[1,1,1],count=[mm,nm,1])
+call gatherfield(momy,output_field,grid)
+if(nproc == 0)stat = nf90_put_var(ncid,momyid,output_field,start=[1,1,1],count=[grid % mm,grid % nm,1])
 
-call gatherfield(cgmxx,output_field)
-if(nproc == 0)stat = nf90_put_var(ncid,cgmxxid,output_field,start=[1,1,1],count=[mm,nm,1])
+call gatherfield(cgmxx,output_field,grid)
+if(nproc == 0)stat = nf90_put_var(ncid,cgmxxid,output_field,start=[1,1,1],count=[grid % mm,grid % nm,1])
 
-call gatherfield(cgmxy,output_field)
-if(nproc == 0)stat = nf90_put_var(ncid,cgmxyid,output_field,start=[1,1,1],count=[mm,nm,1])
+call gatherfield(cgmxy,output_field,grid)
+if(nproc == 0)stat = nf90_put_var(ncid,cgmxyid,output_field,start=[1,1,1],count=[grid % mm,grid % nm,1])
 
-call gatherfield(cgmyy,output_field)
-if(nproc == 0)stat = nf90_put_var(ncid,cgmyyid,output_field,start=[1,1,1],count=[mm,nm,1])
+call gatherfield(cgmyy,output_field,grid)
+if(nproc == 0)stat = nf90_put_var(ncid,cgmyyid,output_field,start=[1,1,1],count=[grid % mm,grid % nm,1])
 
-call gatherfield(shelt,output_field)
-if(nproc == 0)stat = nf90_put_var(ncid,sheltid,output_field,start=[1,1,1],count=[mm,nm,1])
+call gatherfield(shelt,output_field,grid)
+if(nproc == 0)stat = nf90_put_var(ncid,sheltid,output_field,start=[1,1,1],count=[grid % mm,grid % nm,1])
 
-call gatherfield(epsx_atm,output_field)
-if(nproc == 0)stat = nf90_put_var(ncid,epsx_atmid,output_field,start=[1,1,1],count=[mm,nm,1])
+call gatherfield(epsx_atm,output_field,grid)
+if(nproc == 0)stat = nf90_put_var(ncid,epsx_atmid,output_field,start=[1,1,1],count=[grid % mm,grid % nm,1])
 
-call gatherfield(epsy_atm,output_field)
-if(nproc == 0)stat = nf90_put_var(ncid,epsy_atmid,output_field,start=[1,1,1],count=[mm,nm,1])
+call gatherfield(epsy_atm,output_field,grid)
+if(nproc == 0)stat = nf90_put_var(ncid,epsy_atmid,output_field,start=[1,1,1],count=[grid % mm,grid % nm,1])
 
-call gatherfield(epsx_ocn,output_field)
-if(nproc == 0)stat = nf90_put_var(ncid,epsx_ocnid,output_field,start=[1,1,1],count=[mm,nm,1])
+call gatherfield(epsx_ocn,output_field,grid)
+if(nproc == 0)stat = nf90_put_var(ncid,epsx_ocnid,output_field,start=[1,1,1],count=[grid % mm,grid % nm,1])
 
-call gatherfield(epsy_ocn,output_field)
-if(nproc == 0)stat = nf90_put_var(ncid,epsy_ocnid,output_field,start=[1,1,1],count=[mm,nm,1])
+call gatherfield(epsy_ocn,output_field,grid)
+if(nproc == 0)stat = nf90_put_var(ncid,epsy_ocnid,output_field,start=[1,1,1],count=[grid % mm,grid % nm,1])
 
-call gatherfield(physics_time_step, output_field)
-if(nproc == 0)stat = nf90_put_var(ncid,physics_time_stepid,output_field,start=[1,1,1],count=[mm,nm,1])
+call gatherfield(physics_time_step, output_field, grid)
+if(nproc == 0)stat = nf90_put_var(ncid,physics_time_stepid,output_field,start=[1,1,1],count=[grid % mm,grid % nm,1])
 
-call gatherfield(taux_form,output_field)
-if(nproc == 0)stat = nf90_put_var(ncid,taux_formid,output_field,start=[1,1,1],count=[mm,nm,1])
+call gatherfield(taux_form,output_field,grid)
+if(nproc == 0)stat = nf90_put_var(ncid,taux_formid,output_field,start=[1,1,1],count=[grid % mm,grid % nm,1])
 
-call gatherfield(tauy_form,output_field)
-if(nproc == 0)stat = nf90_put_var(ncid,tauy_formid,output_field,start=[1,1,1],count=[mm,nm,1])
+call gatherfield(tauy_form,output_field,grid)
+if(nproc == 0)stat = nf90_put_var(ncid,tauy_formid,output_field,start=[1,1,1],count=[grid % mm,grid % nm,1])
 
-call gatherfield(taux1,output_field)
-if(nproc == 0)stat = nf90_put_var(ncid,tfdx1id,output_field,start=[1,1,1],count=[mm,nm,1])
+call gatherfield(taux1,output_field,grid)
+if(nproc == 0)stat = nf90_put_var(ncid,tfdx1id,output_field,start=[1,1,1],count=[grid % mm,grid % nm,1])
 
-call gatherfield(tauy1,output_field)
-if(nproc == 0)stat = nf90_put_var(ncid,tfdy1id,output_field,start=[1,1,1],count=[mm,nm,1])
+call gatherfield(tauy1,output_field,grid)
+if(nproc == 0)stat = nf90_put_var(ncid,tfdy1id,output_field,start=[1,1,1],count=[grid % mm,grid % nm,1])
 
-call gatherfield(taux2,output_field)
-if(nproc == 0)stat = nf90_put_var(ncid,tfdx2id,output_field,start=[1,1,1],count=[mm,nm,1])
+call gatherfield(taux2,output_field,grid)
+if(nproc == 0)stat = nf90_put_var(ncid,tfdx2id,output_field,start=[1,1,1],count=[grid % mm,grid % nm,1])
 
-call gatherfield(tauy2,output_field)
-if(nproc == 0)stat = nf90_put_var(ncid,tfdy2id,output_field,start=[1,1,1],count=[mm,nm,1])
+call gatherfield(tauy2,output_field,grid)
+if(nproc == 0)stat = nf90_put_var(ncid,tfdy2id,output_field,start=[1,1,1],count=[grid % mm,grid % nm,1])
 
-call gatherfield(taux3,output_field)
-if(nproc == 0)stat = nf90_put_var(ncid,tfdx3id,output_field,start=[1,1,1],count=[mm,nm,1])
+call gatherfield(taux3,output_field,grid)
+if(nproc == 0)stat = nf90_put_var(ncid,tfdx3id,output_field,start=[1,1,1],count=[grid % mm,grid % nm,1])
 
-call gatherfield(tauy3,output_field)
-if(nproc == 0)stat = nf90_put_var(ncid,tfdy3id,output_field,start=[1,1,1],count=[mm,nm,1])
+call gatherfield(tauy3,output_field,grid)
+if(nproc == 0)stat = nf90_put_var(ncid,tfdy3id,output_field,start=[1,1,1],count=[grid % mm,grid % nm,1])
 
-call gatherfield(taux_skin,output_field)
-if(nproc == 0)stat = nf90_put_var(ncid,taux_skinid,output_field,start=[1,1,1],count=[mm,nm,1])
+call gatherfield(taux_skin,output_field,grid)
+if(nproc == 0)stat = nf90_put_var(ncid,taux_skinid,output_field,start=[1,1,1],count=[grid % mm,grid % nm,1])
 
-call gatherfield(tauy_skin,output_field)
-if(nproc == 0)stat = nf90_put_var(ncid,tauy_skinid,output_field,start=[1,1,1],count=[mm,nm,1])
+call gatherfield(tauy_skin,output_field,grid)
+if(nproc == 0)stat = nf90_put_var(ncid,tauy_skinid,output_field,start=[1,1,1],count=[grid % mm,grid % nm,1])
 
-call gatherfield(taux_diag,output_field)
-if(nproc == 0)stat = nf90_put_var(ncid,taux_diagid,output_field,start=[1,1,1],count=[mm,nm,1])
+call gatherfield(taux_diag,output_field,grid)
+if(nproc == 0)stat = nf90_put_var(ncid,taux_diagid,output_field,start=[1,1,1],count=[grid % mm,grid % nm,1])
 
-call gatherfield(tauy_diag,output_field)
-if(nproc == 0)stat = nf90_put_var(ncid,tauy_diagid,output_field,start=[1,1,1],count=[mm,nm,1])
+call gatherfield(tauy_diag,output_field,grid)
+if(nproc == 0)stat = nf90_put_var(ncid,tauy_diagid,output_field,start=[1,1,1],count=[grid % mm,grid % nm,1])
 
-call gatherfield(taux_ocntop,output_field)
-if(nproc == 0)stat = nf90_put_var(ncid,taux_ocnid,output_field,start=[1,1,1],count=[mm,nm,1])
+call gatherfield(taux_ocntop,output_field,grid)
+if(nproc == 0)stat = nf90_put_var(ncid,taux_ocnid,output_field,start=[1,1,1],count=[grid % mm,grid % nm,1])
 
-call gatherfield(tauy_ocntop,output_field)
-if(nproc == 0)stat = nf90_put_var(ncid,tauy_ocnid,output_field,start=[1,1,1],count=[mm,nm,1])
+call gatherfield(tauy_ocntop,output_field,grid)
+if(nproc == 0)stat = nf90_put_var(ncid,tauy_ocnid,output_field,start=[1,1,1],count=[grid % mm,grid % nm,1])
 
-call gatherfield(taux_ocnbot,output_field)
-if(nproc == 0)stat = nf90_put_var(ncid,taux_botid,output_field,start=[1,1,1],count=[mm,nm,1])
+call gatherfield(taux_ocnbot,output_field,grid)
+if(nproc == 0)stat = nf90_put_var(ncid,taux_botid,output_field,start=[1,1,1],count=[grid % mm,grid % nm,1])
 
-call gatherfield(tauy_ocnbot,output_field)
-if(nproc == 0)stat = nf90_put_var(ncid,tauy_botid,output_field,start=[1,1,1],count=[mm,nm,1])
+call gatherfield(tauy_ocnbot,output_field,grid)
+if(nproc == 0)stat = nf90_put_var(ncid,tauy_botid,output_field,start=[1,1,1],count=[grid % mm,grid % nm,1])
 
-call gatherfield(taux_snl,output_field)
-if(nproc == 0)stat = nf90_put_var(ncid,taux_snlid,output_field,start=[1,1,1],count=[mm,nm,1])
+call gatherfield(taux_snl,output_field,grid)
+if(nproc == 0)stat = nf90_put_var(ncid,taux_snlid,output_field,start=[1,1,1],count=[grid % mm,grid % nm,1])
 
-call gatherfield(tauy_snl,output_field)
-if(nproc == 0)stat = nf90_put_var(ncid,tauy_snlid,output_field,start=[1,1,1],count=[mm,nm,1])
+call gatherfield(tauy_snl,output_field,grid)
+if(nproc == 0)stat = nf90_put_var(ncid,tauy_snlid,output_field,start=[1,1,1],count=[grid % mm,grid % nm,1])
 
-call gatherfield(tailatmx,output_field)
-if(nproc == 0)stat = nf90_put_var(ncid,tailatmxid,output_field,start=[1,1,1],count=[mm,nm,1])
+call gatherfield(tailatmx,output_field,grid)
+if(nproc == 0)stat = nf90_put_var(ncid,tailatmxid,output_field,start=[1,1,1],count=[grid % mm,grid % nm,1])
 
-call gatherfield(tailatmy,output_field)
-if(nproc == 0)stat = nf90_put_var(ncid,tailatmyid,output_field,start=[1,1,1],count=[mm,nm,1])
+call gatherfield(tailatmy,output_field,grid)
+if(nproc == 0)stat = nf90_put_var(ncid,tailatmyid,output_field,start=[1,1,1],count=[grid % mm,grid % nm,1])
 
-call gatherfield(tailocnx,output_field)
-if(nproc == 0)stat = nf90_put_var(ncid,tailocnxid,output_field,start=[1,1,1],count=[mm,nm,1])
+call gatherfield(tailocnx,output_field,grid)
+if(nproc == 0)stat = nf90_put_var(ncid,tailocnxid,output_field,start=[1,1,1],count=[grid % mm,grid % nm,1])
 
-call gatherfield(tailocny,output_field)
-if(nproc == 0)stat = nf90_put_var(ncid,tailocnyid,output_field,start=[1,1,1],count=[mm,nm,1])
+call gatherfield(tailocny,output_field,grid)
+if(nproc == 0)stat = nf90_put_var(ncid,tailocnyid,output_field,start=[1,1,1],count=[grid % mm,grid % nm,1])
 
-call gatherfield(cd,output_field)
-if(nproc == 0)stat = nf90_put_var(ncid,cdid,output_field,start=[1,1,1],count=[mm,nm,1])
+call gatherfield(cd,output_field,grid)
+if(nproc == 0)stat = nf90_put_var(ncid,cdid,output_field,start=[1,1,1],count=[grid % mm,grid % nm,1])
 
-call gatherfield(ustar,output_field)
-if(nproc == 0)stat = nf90_put_var(ncid,ustid,output_field,start=[1,1,1],count=[mm,nm,1])
+call gatherfield(ustar,output_field,grid)
+if(nproc == 0)stat = nf90_put_var(ncid,ustid,output_field,start=[1,1,1],count=[grid % mm,grid % nm,1])
 
-call gatherfield(ht,output_field)
-if(nproc == 0)stat = nf90_put_var(ncid,swhid,output_field,start=[1,1,1],count=[mm,nm,1])
+call gatherfield(ht,output_field,grid)
+if(nproc == 0)stat = nf90_put_var(ncid,swhid,output_field,start=[1,1,1],count=[grid % mm,grid % nm,1])
 
-call gatherfield(mss,output_field)
-if(nproc == 0)stat = nf90_put_var(ncid,mssid,output_field,start=[1,1,1],count=[mm,nm,1])
+call gatherfield(mss,output_field,grid)
+if(nproc == 0)stat = nf90_put_var(ncid,mssid,output_field,start=[1,1,1],count=[grid % mm,grid % nm,1])
 
-call gatherfield(mwp,output_field)
-if(nproc == 0)stat = nf90_put_var(ncid,mwpid,output_field,start=[1,1,1],count=[mm,nm,1])
+call gatherfield(mwp,output_field,grid)
+if(nproc == 0)stat = nf90_put_var(ncid,mwpid,output_field,start=[1,1,1],count=[grid % mm,grid % nm,1])
 
-call gatherfield(mwl,output_field)
-if(nproc == 0)stat = nf90_put_var(ncid,mwlid,output_field,start=[1,1,1],count=[mm,nm,1])
+call gatherfield(mwl,output_field,grid)
+if(nproc == 0)stat = nf90_put_var(ncid,mwlid,output_field,start=[1,1,1],count=[grid % mm,grid % nm,1])
 
-call gatherfield(mwd,output_field)
-if(nproc == 0)stat = nf90_put_var(ncid,mwdid,output_field,start=[1,1,1],count=[mm,nm,1])
+call gatherfield(mwd,output_field,grid)
+if(nproc == 0)stat = nf90_put_var(ncid,mwdid,output_field,start=[1,1,1],count=[grid % mm,grid % nm,1])
 
-call gatherfield(dwp,output_field)
-if(nproc == 0)stat = nf90_put_var(ncid,dwpid,output_field,start=[1,1,1],count=[mm,nm,1])
+call gatherfield(dwp,output_field,grid)
+if(nproc == 0)stat = nf90_put_var(ncid,dwpid,output_field,start=[1,1,1],count=[grid % mm,grid % nm,1])
 
-call gatherfield(dwl,output_field)
-if(nproc == 0)stat = nf90_put_var(ncid,dwlid,output_field,start=[1,1,1],count=[mm,nm,1])
+call gatherfield(dwl,output_field,grid)
+if(nproc == 0)stat = nf90_put_var(ncid,dwlid,output_field,start=[1,1,1],count=[grid % mm,grid % nm,1])
 
-call gatherfield(dwd,output_field)
-if(nproc == 0)stat = nf90_put_var(ncid,dwdid,output_field,start=[1,1,1],count=[mm,nm,1])
+call gatherfield(dwd,output_field,grid)
+if(nproc == 0)stat = nf90_put_var(ncid,dwdid,output_field,start=[1,1,1],count=[grid % mm,grid % nm,1])
 
-call gatherfield(dcp0,output_field)
-if(nproc == 0)stat = nf90_put_var(ncid,dcp0id,output_field,start=[1,1,1],count=[mm,nm,1])
+call gatherfield(dcp0,output_field,grid)
+if(nproc == 0)stat = nf90_put_var(ncid,dcp0id,output_field,start=[1,1,1],count=[grid % mm,grid % nm,1])
 
-call gatherfield(dcg0,output_field)
-if(nproc == 0)stat = nf90_put_var(ncid,dcg0id,output_field,start=[1,1,1],count=[mm,nm,1])
+call gatherfield(dcg0,output_field,grid)
+if(nproc == 0)stat = nf90_put_var(ncid,dcg0id,output_field,start=[1,1,1],count=[grid % mm,grid % nm,1])
 
-call gatherfield(dcp,output_field)
-if(nproc == 0)stat = nf90_put_var(ncid,dcpid,output_field,start=[1,1,1],count=[mm,nm,1])
+call gatherfield(dcp,output_field,grid)
+if(nproc == 0)stat = nf90_put_var(ncid,dcpid,output_field,start=[1,1,1],count=[grid % mm,grid % nm,1])
 
-call gatherfield(dcg,output_field)
-if(nproc == 0)stat = nf90_put_var(ncid,dcgid,output_field,start=[1,1,1],count=[mm,nm,1])
+call gatherfield(dcg,output_field,grid)
+if(nproc == 0)stat = nf90_put_var(ncid,dcgid,output_field,start=[1,1,1],count=[grid % mm,grid % nm,1])
 
 if(config % stokes)then
 
@@ -857,16 +847,16 @@ if(config % stokes)then
 
   do l=1,lm
 
-    call gatherfield(us(istart:iend,l),output_field)
-    if(nproc == 0)stat = nf90_put_var(ncid,usid,output_field,start=[1,1,l,1],count=[mm,nm,1,1])
+    call gatherfield(us(istart:iend,l),output_field,grid)
+    if(nproc == 0)stat = nf90_put_var(ncid,usid,output_field,start=[1,1,l,1],count=[grid % mm,grid % nm,1,1])
 
-    call gatherfield(vs(istart:iend,l),output_field)
-    if(nproc == 0)stat = nf90_put_var(ncid,vsid,output_field,start=[1,1,l,1],count=[mm,nm,1,1])
+    call gatherfield(vs(istart:iend,l),output_field,grid)
+    if(nproc == 0)stat = nf90_put_var(ncid,vsid,output_field,start=[1,1,l,1],count=[grid % mm,grid % nm,1,1])
 
   end do
 
-  call gatherfield(ds(istart:iend),output_field)
-  if(nproc == 0)stat = nf90_put_var(ncid,dsid,output_field,start=[1,1,1],count=[mm,nm,1])
+  call gatherfield(ds(istart:iend),output_field,grid)
+  if(nproc == 0)stat = nf90_put_var(ncid,dsid,output_field,start=[1,1,1],count=[grid % mm,grid % nm,1])
 
 end if
 
@@ -875,24 +865,31 @@ if(nproc == 0)then
   write(unit=*,fmt='(a)')'umwm: output_nc: output written to output/umwmout_'//timestrnew//'.nc'
 end if
 
+end associate
+
 end subroutine output_grid_nc
 
 
-subroutine gatherfield(field, field_mn)
+subroutine gatherfield(field, field_mn, grid)
 ! This subroutine gathers a field on root processor 
 ! and remaps it on a 2-d array.
 #ifdef MPI
 use mpi
-use umwm_mpi
+use umwm_mpi, only: gather_array
 #endif
-use umwm_util,only:remap_i2mn
 use, intrinsic :: ieee_arithmetic
 
-real, intent(in) :: field(istart:iend)
-real, intent(out) :: field_mn(mm,nm)
+type(grid_type), intent(in) :: grid
+real, intent(in) :: field(grid % istart:grid % iend)
+real, intent(out) :: field_mn(grid % mm,grid % nm)
 
-real :: field_ii(imm)
+real :: field_ii(grid % imm)
 real :: nan
+
+#ifdef MPI
+integer :: nn
+integer :: status(MPI_STATUS_SIZE)
+#endif
 
 field_ii = ieee_value(nan, ieee_quiet_nan)
 
@@ -900,11 +897,11 @@ field_ii = ieee_value(nan, ieee_quiet_nan)
 if(mpiisblocking)then
 
   if(nproc/=0)then
-    call mpi_send(field(istart:iend),ilen,MPI_REAL,&
+    call mpi_send(field(grid % istart:grid % iend),grid % ilen,MPI_REAL,&
                   0,nproc,MPI_COMM_WORLD,ierr)
   else
     do nn=1,mpisize-1
-      call mpi_recv(field_ii(istart_(nn):iend_(nn)),ilen_(nn),&
+      call mpi_recv(field_ii(grid % istart_all(nn):grid % iend_all(nn)),grid % ilen_all(nn),&
                     MPI_REAL,nn,nn,MPI_COMM_WORLD,status,ierr)
     end do
   end if
@@ -912,14 +909,14 @@ if(mpiisblocking)then
 else
 
  ! non-blocking gather:
-  call gather_array(field, field_ii(1:im))
+  call gather_array(field, field_ii(1:grid % im), grid)
 
 end if
 #endif
 
 if(nproc == 0)then
-  field_ii(istart:iend) = field(istart:iend)
-  field_mn = remap_i2mn(field_ii)
+  field_ii(grid % istart:grid % iend) = field(grid % istart:grid % iend)
+  field_mn = grid % remap_i2mn(field_ii)
 end if
 
 end subroutine gatherfield

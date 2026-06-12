@@ -8,17 +8,18 @@ module umwm_stokes
   real, allocatable :: util(:,:,:), arg(:,:,:)
 contains
 
-  subroutine stokes_drift(spectrum, config, option)
+  subroutine stokes_drift(spectrum, config, grid, option)
     ! Computes wave-induced Stokes drift
 
     use umwm_constants, only: eulerinv
     use umwm_config, only: config_type
-    use umwm_module, only: twopi, d, e, f, k, dwn, dth, istart, iend, &
-                           cth, sth,nproc
+    use umwm_grid, only: grid_type
+    use umwm_module, only: twopi, e, f, k, dwn, dth, cth, sth,nproc
     use umwm_spectrum, only: spectrum_type
 
     type(spectrum_type), intent(in) :: spectrum
     type(config_type), intent(in) :: config
+    type(grid_type), intent(in) :: grid
     character(4), intent(in), optional :: option
     integer :: i, l, o, p
     real :: ust_efolding
@@ -33,24 +34,24 @@ contains
         depth = - config % stokes_depths
 
         ! allocate stokes velocities and utility array
-        allocate(us(istart:iend,lm))
-        allocate(vs(istart:iend,lm))
-        allocate(usmag(istart:iend,lm))
-        allocate(ds(istart:iend))
-        allocate(util(spectrum % num_frequencies,istart:iend,lm))
-        allocate(arg(spectrum % num_frequencies,istart:iend,lm))
-        allocate(kd(spectrum % num_frequencies,istart:iend))
+        allocate(us(grid % istart:grid % iend,lm))
+        allocate(vs(grid % istart:grid % iend,lm))
+        allocate(usmag(grid % istart:grid % iend,lm))
+        allocate(ds(grid % istart:grid % iend))
+        allocate(util(spectrum % num_frequencies,grid % istart:grid % iend,lm))
+        allocate(arg(spectrum % num_frequencies,grid % istart:grid % iend,lm))
+        allocate(kd(spectrum % num_frequencies,grid % istart:grid % iend))
 
-        do concurrent (o=1:spectrum % num_frequencies, i=istart:iend)
-          kd(o,i) = k(o,i) * d(i)
+        do concurrent (o=1:spectrum % num_frequencies, i=grid % istart:grid % iend)
+          kd(o,i) = k(o,i) * grid % d(i)
         end do
 
         ! compute exponent
         do l = 1, lm
-          do i = istart, iend
+          do i = grid % istart, grid % iend
             do o = 1, spectrum % num_frequencies
 
-              arg(o,i,l) = 2 * k(o,i) * (depth(l) + d(i))
+              arg(o,i,l) = 2 * k(o,i) * (depth(l) + grid % d(i))
 
               if(abs(arg(o,i,l)) > 50 .or. kd(o,i) > 50) then
                 ! hyperbolic trig. functions would overflow;
@@ -60,13 +61,13 @@ contains
               else
                 ! first order approximation for arbitrary depth
                 util(o,i,l) = twopi * f(o) * k(o,i)**2 &
-                            * cosh(2 * k(o,i) * (depth(l) + d(i)))&
+                            * cosh(2 * k(o,i) * (depth(l) + grid % d(i)))&
                             / sinh(kd(o,i))**2 * dwn(o,i) * dth
               end if
 
             end do
           
-            if (abs(depth(l)) > d(i)) util(:,i,l) = 0
+            if (abs(depth(l)) > grid % d(i)) util(:,i,l) = 0
 
           end do
         end do
@@ -84,7 +85,7 @@ contains
 
     ! stokes velocities
     do l = 1, lm
-      do i = istart, iend
+      do i = grid % istart, grid % iend
         do p = 1, spectrum % num_directions
           do o = 1, spectrum % num_frequencies
             us(i,l) = us(i,l) + util(o,i,l) * e(o,p,i) * cth(p)
@@ -98,7 +99,7 @@ contains
     usmag = sqrt(us**2 + vs**2)
 
     ! Stokes e-folding depth
-    do i = istart, iend
+    do i = grid % istart, grid % iend
 
       if (usmag(i,1) == 0) then
         ds(i) = 0

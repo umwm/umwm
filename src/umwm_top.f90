@@ -4,32 +4,30 @@ module umwm_top
 
 contains
 
-  subroutine umwm_initialize(config, spectrum)
+  subroutine umwm_initialize(config, spectrum, grid)
 
     use umwm_config, only: config_type
-    use umwm_init,  only: alloc, grid, masks, partition, remap, init
+    use umwm_grid, only: grid_type
+    use umwm_init,  only: alloc, init
     use umwm_io,    only: input_nc, output_grid
     use umwm_spectrum, only: spectrum_type
     use umwm_stokes,only: stokes_drift
 
     type(config_type), intent(in) :: config
     type(spectrum_type), intent(in) :: spectrum
+    type(grid_type), intent(in) :: grid
 
-    call alloc(1, config)       ! allocate 2-d arrays
-    call grid(config)           ! define model grid
-    call masks(config)          ! define seamasks
-    call partition(config)      ! domain partitioning
-    call alloc(2, config, spectrum) ! allocate unrolled arrays
-    call remap(config)          ! remap 2-d arrays to 1-d
-    call output_grid(config)    ! output a grid file
-    call input_nc(config, config % starttimestr) ! read initial fields
-    call init(config, spectrum) ! initialize model variables
-    call stokes_drift(spectrum, config, 'init') ! initialize stokes drift arrays
+    call alloc(1, config, grid)       ! allocate 2-d arrays
+    call alloc(2, config, grid, spectrum) ! allocate unrolled arrays
+    call output_grid(config, grid)    ! output a grid file
+    call input_nc(config, config % starttimestr, grid) ! read initial fields
+    call init(config, spectrum, grid) ! initialize model variables
+    call stokes_drift(spectrum, config, grid, 'init') ! initialize stokes drift arrays
 
   end subroutine umwm_initialize
 
 
-  subroutine umwm_run(config, spectrum)
+  subroutine umwm_run(config, spectrum, grid)
 
 #ifdef MPI
     use umwm_mpi, only: exchange_halo
@@ -39,9 +37,10 @@ contains
 
     use umwm_config, only: config_type
     use umwm_module, only: cd, currenttime, dts, e, ef, f, first, &
-                           firstdtg, iend, iip, istart, nproc, &
+                           firstdtg, iip, nproc, &
                            nproc_plot, oc, starttime, stoptime, sumt, &
                            wdir, wspd
+    use umwm_grid, only: grid_type
     use umwm_physics, only: source, diag
     use umwm_advection,only: propagation, refraction
     use umwm_forcing, only: forcinginput, forcinginterpolate
@@ -58,6 +57,7 @@ contains
 
     type(config_type), intent(in) :: config
     type(spectrum_type), intent(in) :: spectrum
+    type(grid_type), intent(in) :: grid
 
     character(19) :: currenttimestr
     logical :: fullhour
@@ -70,7 +70,7 @@ contains
     currenttimestr = trim(currenttime % strftime('%Y-%m-%d_%H:%M:%S'))
 
     ! read wave spectrum field from a restart file if necessary:
-    if (first .and. config % restart) call restart_read(config % starttimestr, spectrum)
+    if (first .and. config % restart) call restart_read(config % starttimestr, spectrum, grid)
 
     do while (currenttime < stoptime) ! outer time loop
 
@@ -88,7 +88,7 @@ contains
       ! in case of esmf coupling, fields are assumed to be updated
       ! externally, and this call is not used.
 #ifndef ESMF
-      call forcinginput(config, currenttimestr)
+      call forcinginput(config, currenttimestr, grid)
 #endif
 
       ! inner time loop: global time step
@@ -96,42 +96,42 @@ contains
       do while (sumt < config % dtg)
 
 #ifndef ESMF
-        call forcinginterpolate(config) ! interpolate force fields in time
+        call forcinginterpolate(config, grid) ! interpolate force fields in time
 #endif
 
-        call sin_d12(config, spectrum) ! compute source input term Sin
-        call sds_d12(config, spectrum) ! compute source dissipation term Sds
-        call snl_d12(config, spectrum) ! compute non-linear source term Snl
-        call s_ice(config, spectrum)   ! compute sea ice attenuation term Sice
-        call source(config, spectrum)  ! integrate source functions
+        call sin_d12(config, spectrum, grid) ! compute source input term Sin
+        call sds_d12(config, spectrum, grid) ! compute source dissipation term Sds
+        call snl_d12(config, spectrum, grid) ! compute non-linear source term Snl
+        call s_ice(config, spectrum, grid)   ! compute sea ice attenuation term Sice
+        call source(config, spectrum, grid)  ! integrate source functions
 
 #ifdef MPI
-        call exchange_halo(config, spectrum) ! exchange halo points
+        call exchange_halo(config, spectrum, grid) ! exchange halo points
 #endif
 
-        call propagation(config, spectrum) ! compute advection and integrate
+        call propagation(config, spectrum, grid) ! compute advection and integrate
 
 #ifdef ESMF
-        e(:,:,istart:iend) = ef(:,:,istart:iend) ! update
+        e(:,:,grid % istart:grid % iend) = ef(:,:,grid % istart:grid % iend) ! update
 #endif
 
-        call refraction(config, spectrum)    ! compute refraction and integrate
+        call refraction(config, spectrum, grid)    ! compute refraction and integrate
 
-        e(:,:,istart:iend) = ef(:,:,istart:iend) ! update
+        e(:,:,grid % istart:grid % iend) = ef(:,:,grid % istart:grid % iend) ! update
 
-        call stress(config, 'atm', spectrum) ! compute wind stress and drag coefficient
+        call stress(config, 'atm', spectrum, grid) ! compute wind stress and drag coefficient
 
 #ifdef ESMF
-        call stress(config, 'ocn', spectrum) ! compute stress into ocean top and bottom
+        call stress(config, 'ocn', spectrum, grid) ! compute stress into ocean top and bottom
 #endif
 
         if (first) then
 
           ! diagnostic calculations before output
-          call diag(spectrum)
+          call diag(spectrum, grid)
 
-          if (config % outgrid > 0) call output_grid_nc(config, config % starttimestr, spectrum)
-          if (config % outspec > 0) call output_spectrum_nc(config, config % starttimestr, spectrum)
+          if (config % outgrid > 0) call output_grid_nc(config, config % starttimestr, spectrum, grid)
+          if (config % outspec > 0) call output_spectrum_nc(config, config % starttimestr, spectrum, grid)
 
 #ifdef MPI
           call mpi_barrier(MPI_COMM_WORLD, ierr)
@@ -157,9 +157,9 @@ contains
       end do ! end while(sumt<dtg) loop
 
       if (firstdtg) firstdtg = .false.
-      if (config % stokes) call stokes_drift(spectrum, config)
+      if (config % stokes) call stokes_drift(spectrum, config, grid)
 
-      call diag(spectrum) ! model diagnostics for output
+      call diag(spectrum, grid) ! model diagnostics for output
 
       fullhour = currenttime % getminute() == 0 &
            .and. currenttime % getsecond() == 0
@@ -168,32 +168,32 @@ contains
       if(config % outgrid > 0)then
         if(mod(currenttime % gethour(),config % outgrid) == 0 .and. fullhour)then
 #ifndef ESMF
-          call stress(config, 'ocn', spectrum)
+          call stress(config, 'ocn', spectrum, grid)
 #endif
-          call output_grid_nc(config, currenttimestr, spectrum)
+          call output_grid_nc(config, currenttimestr, spectrum, grid)
         end if
       elseif(config % outgrid == -1)then
 #ifndef ESMF
-        call stress(config, 'ocn', spectrum)
+        call stress(config, 'ocn', spectrum, grid)
 #endif
-        call output_grid_nc(config, currenttimestr, spectrum)
+        call output_grid_nc(config, currenttimestr, spectrum, grid)
       end if
 
       ! spectrum output
       if (config % outspec > 0) then
         if (mod(currenttime % gethour(),config % outspec) == 0 .and. fullhour) then
-          call output_spectrum_nc(config, currenttimestr, spectrum)
+          call output_spectrum_nc(config, currenttimestr, spectrum, grid)
         end if
       else if (config % outspec == -1) then
-        call output_spectrum_nc(config, currenttimestr, spectrum)
+        call output_spectrum_nc(config, currenttimestr, spectrum, grid)
       end if
 
       ! restart output
       if (config % outrst > 0) then
         if (mod(currenttime % gethour(), config % outrst) == 0 .and. fullhour)&
-        call restart_write(currenttimestr, spectrum)
+        call restart_write(currenttimestr, spectrum, grid)
       else if (config % outspec == -1) then
-        call restart_write(currenttimestr, spectrum)
+        call restart_write(currenttimestr, spectrum, grid)
       end if
 
     end do ! end outer loop
@@ -203,10 +203,13 @@ contains
   end subroutine umwm_run
 
 
-  subroutine umwm_finalize
+  subroutine umwm_finalize(grid)
+    use umwm_grid, only: grid_type
     use umwm_util, only: dealloc
     use umwm_env, only: env_stop
+    type(grid_type), intent(inout) :: grid
     call dealloc() ! deallocate arrays
+    call grid % finalize()
     call env_stop()
   end subroutine umwm_finalize
 

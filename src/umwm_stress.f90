@@ -3,8 +3,8 @@ module umwm_stress
   !! Module with functions and subroutines to evaluate stresses.
 
   use umwm_module, only: bf1, bf2, cd, cp0, cth, dthg, dummy, e, &
-                         epsx_atm, epsx_ocn, epsy_atm, epsy_ocn, iend, &
-                         invcp0, istart, k, kdk, oc, &
+                         epsx_atm, epsx_ocn, epsy_atm, epsy_ocn, &
+                         invcp0, k, kdk, oc, &
                          rhoa, rhow, sbf, sds, sdt, sdv, snl, ssin, &
                          sth, tailatmx, tailatmy, tailocnx, tailocny, &
                          taux, taux1, taux2, taux3, taux_diag, taux_form, &
@@ -15,6 +15,7 @@ module umwm_stress
   use umwm_advection, only: zerocurrents
   use umwm_config, only: config_type
   use umwm_constants, only: rk
+  use umwm_grid, only: grid_type
   use umwm_spectrum, only: spectrum_type
   use umwm_stokes, only: u_stokes => us, v_stokes => vs
 
@@ -25,22 +26,25 @@ module umwm_stress
 
 contains
 
-  subroutine stress(config, option, spectrum)
+  subroutine stress(config, option, spectrum, grid)
 
     type(config_type), intent(in) :: config
     character(3), intent(in) :: option
     type(spectrum_type), intent(in) :: spectrum
+    type(grid_type), intent(in) :: grid
 
     integer :: i, o, p
 
-    real(rk) :: taux_util(spectrum % num_frequencies, istart:iend)
-    real(rk) :: tauy_util(spectrum % num_frequencies, istart:iend)
-    real(rk) :: tail(istart:iend)
+    real(rk) :: taux_util(spectrum % num_frequencies, grid % istart:grid % iend)
+    real(rk) :: tauy_util(spectrum % num_frequencies, grid % istart:grid % iend)
+    real(rk) :: tail(grid % istart:grid % iend)
 
     ! wind speed and direction relative to surface velocity
-    real(rk) :: wspdrel(istart:iend), wdirrel(istart:iend)
+    real(rk) :: wspdrel(grid % istart:grid % iend), wdirrel(grid % istart:grid % iend)
 
-    real(rk) :: cd_form(istart:iend), cd_skin(istart:iend)
+    real(rk) :: cd_form(grid % istart:grid % iend), cd_skin(grid % istart:grid % iend)
+
+    associate(istart => grid % istart, iend => grid % iend)
 
     ! evaluate wind speed dependent tail
     tail = stress_tail(wspd(istart:iend), k(spectrum % num_frequencies,istart:iend))
@@ -283,6 +287,8 @@ contains
       ustar = sqrt(sqrt(taux**2 + tauy**2) / rhoa(istart:iend))
 
     end if ! if(option=='atm')
+
+    end associate
 
   end subroutine stress
 

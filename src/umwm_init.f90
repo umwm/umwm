@@ -5,89 +5,41 @@ use mpi
 #endif
 use umwm_constants, only: rk
 use umwm_dispersion, only: group_speed, wavenumber
+use umwm_grid, only: grid_type
 use umwm_spectrum, only: spectrum_type
-use umwm_module, only: allowedoutputtimes, ar, ar_2d, bf1, bf1_renorm, &
-                       bf1a, bf2, bf2_renorm, cd, cfllim, cg0, cgmax, &
-                       cgmxx, cgmxy, cgmyy, cothkd, cp0, cth, cth2, &
-                       cth2pp, cth_curv, curv, d, d_2d, dcg, dcg0, &
-                       dcp, dcp0, delx, dely, dlat, dlnf, dlon, dmin, &
-                       dom, dr, dummy, dth, dthg, dpt, dtamin, dtg, &
-                       dwd, dwl, dwn, dwp, dx, dx_2d, dxn, dxs, dy, &
-                       dy_2d, dye, dyw, e, ef, epsx_atm, epsx_ocn, &
-                       epsy_atm, epsy_ocn, explim, f, fieldscale1, &
-                       fieldscale2, fice, fice0, fice_2d, fice_lth, &
-                       fice_uth, ficeb, ficef, fillestuaries, filllakes, &
-                       first, first_col_len, firstdtg, fkovg, fcutoff, &
-                       fmax, fmin, fprog, g, gridfromfile, gustiness, &
-                       gustu, gustv, ht, ie, iend, ierr, iie, iin, iis, &
-                       iistart, ii, iiend, iiw, im, imm, in, inv_sds_power, &
-                       invcp0, is, isglobal, istart, iw, i_exchange_indices, &
-                       iip, k, k3dk, k4, kappa, kdk, l2, last_col_len, &
-                       lat, log10overz, logl2overz, lon, mask, mi, mindelx, &
-                       mm, momx, momy, mpisize, mss, mss_fac, mwd, mwl, &
-                       mwp, ni, nm, nproc, nproc_out, nproc_plot, nu_air, &
-                       nu_water, oc, om, oneovar, oneovdth, oneovdx, oneovdy, &
-                       oneoverk4, outgrid, outspec, outrst, physics_time_step, &
-                       pi, pl, pm, pr, psim, psiml2, rhoa, rhoa0, rhoa_2d, &
-                       rhoab, rhoaf, rhorat, rhow, rhow0, rhow_2d, rhowb, &
-                       rhowf, restart, rotl, rotr, sbf, sbf_fac, sbp_fac, &
-                       sds, sds_fac, sds_power, sdt, sdt_fac, sdv, sfct, &
-                       shelt, sice, sin_diss1, sin_diss2, sin_fac, snl, &
-                       snl_arg, snl_fac, ssin, sth, sth_curv, stokes, &
-                       starttimestr_nml, stoptimestr_nml, tailatmx, tailatmy, tailocnx, tailocny, taux, taux1, &
-                       taux2, taux3, taux_diag, taux_form, taux_ocnbot, &
-                       taux_ocntop, taux_skin, taux_snl, tauy, tauy1, &
-                       tauy2, tauy3, tauy_diag, tauy_form, tauy_ocnbot, &
-                       tauy_ocntop, tauy_skin, tauy_snl, th, topofromfile, &
-                       twonu, twopi, twopisds_fac, uc, uc0, uc_2d, ucb, &
-                       ucf, ustar, uw, uwb, uwf, vc, vc0, vc_2d, vcb, &
-                       vcf, vw, vwb, vwf, wdir, wdir0, wdir_2d, wspd, &
-                       wspd0, wspd_2d, x, xpl, y, ypl, z
+use umwm_module
 
 implicit none
-
-character :: remap_dir
 
 contains
 
 
-subroutine alloc(option, config, spectrum)
+subroutine alloc(option, config, grid, spectrum)
   ! Allocates UMWM arrays
 use umwm_config, only: config_type
 
 integer,intent(in) :: option
 type(config_type), intent(in) :: config
+type(grid_type), intent(in) :: grid
 type(spectrum_type), intent(in), optional :: spectrum
 
 ! allocate 2-d native arrays:
 if(option==1)then
 
-  ! Legacy explicit-shape helpers and MPI interfaces still use these dimensions.
-  mm = config % mm
-  nm = config % nm
   om = config % om
   pm = config % pm
   fmin = config % fmin
   fmax = config % fmax
 
-  allocate(ar_2d(mm,nm))
-  allocate(curv(mm,nm))
-  allocate(d_2d(mm,nm),dx_2d(mm,nm),dy_2d(mm,nm))
-  allocate(dlon(mm,nm),dlat(mm,nm))
-  allocate(gustu(mm,nm),gustv(mm,nm))
-  allocate(ii(mm,nm))
-  allocate(lat(mm,nm),lon(mm,nm))
-  allocate(x(mm,nm),y(mm,nm))
-  allocate(mask(mm,nm))
-  allocate(nproc_out(mm,nm))
-  allocate(rhoa_2d(mm,nm),rhow_2d(mm,nm))
-  allocate(wspd_2d(mm,nm))
-  allocate(uc_2d(mm,nm),ucb(mm,nm),ucf(mm,nm))
-  allocate(uw(mm,nm),uwb(mm,nm),uwf(mm,nm))
-  allocate(vc_2d(mm,nm),vcb(mm,nm),vcf(mm,nm))
-  allocate(vw(mm,nm),vwb(mm,nm),vwf(mm,nm))
-  allocate(wdir_2d(mm,nm))
-  allocate(fice_2d(mm,nm),ficeb(mm,nm),ficef(mm,nm))
+  allocate(gustu(grid % mm,grid % nm), gustv(grid % mm,grid % nm))
+  allocate(rhoa_2d(grid % mm,grid % nm), rhow_2d(grid % mm,grid % nm))
+  allocate(wspd_2d(grid % mm,grid % nm))
+  allocate(uc_2d(grid % mm,grid % nm), ucb(grid % mm,grid % nm), ucf(grid % mm,grid % nm))
+  allocate(uw(grid % mm,grid % nm), uwb(grid % mm,grid % nm), uwf(grid % mm,grid % nm))
+  allocate(vc_2d(grid % mm,grid % nm), vcb(grid % mm,grid % nm), vcf(grid % mm,grid % nm))
+  allocate(vw(grid % mm,grid % nm), vwb(grid % mm,grid % nm), vwf(grid % mm,grid % nm))
+  allocate(wdir_2d(grid % mm,grid % nm))
+  allocate(fice_2d(grid % mm,grid % nm), ficeb(grid % mm,grid % nm), ficef(grid % mm,grid % nm))
 
 ! allocate remapped arrays:
 elseif(option==2)then
@@ -103,45 +55,33 @@ elseif(option==2)then
   allocate(dom(om),f(om))
   allocate(cth(pm),cth2(pm),pl(pm),pr(pm),sth(pm),th(pm))
 
-  allocate(cth_curv(pm,istart:iend))
-  allocate(sth_curv(pm,istart:iend))
-
-  allocate(iw(imm),ie(imm),is(imm),in(imm))
-  allocate(iiw(imm),iie(imm),iis(imm),iin(imm))
-
-  allocate(mi(imm),ni(imm))
-
-  allocate(oc(istart:iend))
+  allocate(oc(grid % istart:grid % iend))
 
   ! 2-d arrays (remapped):
-  allocate(ar(istart:iend))        ! grid cell surface area
-  allocate(cd(istart:iend))        ! air-side drag coefficient
-  allocate(d(imm),dx(imm),dy(imm)) ! depth and grid cell increments
-  allocate(dxs(istart:iend),dxn(istart:iend)) ! cell edges
-  allocate(dyw(istart:iend),dye(istart:iend)) ! cell edges
-  allocate(fcutoff(istart:iend))   ! cutoff frequency
-  allocate(ht(istart:iend))        ! significant wave height
-  allocate(mss(istart:iend))       ! mean-squared slope
+  allocate(cd(grid % istart:grid % iend))        ! air-side drag coefficient
+  allocate(fcutoff(grid % istart:grid % iend))   ! cutoff frequency
+  allocate(ht(grid % istart:grid % iend))        ! significant wave height
+  allocate(mss(grid % istart:grid % iend))       ! mean-squared slope
 
-  allocate(shelt(istart:iend))     ! sheltering coefficient
+  allocate(shelt(grid % istart:grid % iend))     ! sheltering coefficient
   shelt = 0
 
-  allocate(physics_time_step(istart:iend))
+  allocate(physics_time_step(grid % istart:grid % iend))
   physics_time_step = 0 
 
   ! mean spectrum quantities:
-  allocate(mwd(istart:iend)) ! direction
-  allocate(mwp(istart:iend)) ! period
-  allocate(mwl(istart:iend)) ! wavelength
+  allocate(mwd(grid % istart:grid % iend)) ! direction
+  allocate(mwp(grid % istart:grid % iend)) ! period
+  allocate(mwl(grid % istart:grid % iend)) ! wavelength
 
   ! dominant spectrum quantities:
-  allocate(dwd(istart:iend))  ! direction
-  allocate(dwp(istart:iend))  ! period
-  allocate(dwl(istart:iend))  ! wavelength
-  allocate(dcp0(istart:iend)) ! intrinsic phase speed
-  allocate(dcp(istart:iend))  ! phase speed
-  allocate(dcg0(istart:iend)) ! intrinsic group speed
-  allocate(dcg(istart:iend))  ! group speed
+  allocate(dwd(grid % istart:grid % iend))  ! direction
+  allocate(dwp(grid % istart:grid % iend))  ! period
+  allocate(dwl(grid % istart:grid % iend))  ! wavelength
+  allocate(dcp0(grid % istart:grid % iend)) ! intrinsic phase speed
+  allocate(dcp(grid % istart:grid % iend))  ! phase speed
+  allocate(dcg0(grid % istart:grid % iend)) ! intrinsic group speed
+  allocate(dcg(grid % istart:grid % iend))  ! group speed
 
   dwd  = 0
   dwp  = 0
@@ -151,993 +91,127 @@ elseif(option==2)then
   dcp  = 0
   dcg  = 0
 
-  ! inverse area and grid cell increments:
-  allocate(oneovar(istart:iend),oneovdx(istart:iend),oneovdy(istart:iend))
-
-  allocate(momx(istart:iend),momy(istart:iend)) ! total wave momentum
-  allocate(cgmxx(istart:iend),cgmxy(istart:iend),cgmyy(istart:iend)) ! cg*m
+  allocate(momx(grid % istart:grid % iend), momy(grid % istart:grid % iend)) ! total wave momentum
+  allocate(cgmxx(grid % istart:grid % iend), cgmxy(grid % istart:grid % iend), &
+           cgmyy(grid % istart:grid % iend)) ! cg*m
 
   ! momentum fluxes:
-  allocate(taux(istart:iend),tauy(istart:iend))
+  allocate(taux(grid % istart:grid % iend), tauy(grid % istart:grid % iend))
   taux = 0; tauy = 0
 
-  allocate(taux_form(istart:iend),tauy_form(istart:iend))
+  allocate(taux_form(grid % istart:grid % iend), tauy_form(grid % istart:grid % iend))
   taux_form = 0; tauy_form = 0
 
-  allocate(taux_skin(istart:iend),tauy_skin(istart:iend))
+  allocate(taux_skin(grid % istart:grid % iend), tauy_skin(grid % istart:grid % iend))
   taux_skin = 0; tauy_skin = 0
 
-  allocate(taux_diag(istart:iend),tauy_diag(istart:iend))
+  allocate(taux_diag(grid % istart:grid % iend), tauy_diag(grid % istart:grid % iend))
   taux_diag = 0; tauy_diag = 0
 
-  allocate(taux_ocntop(istart:iend),tauy_ocntop(istart:iend))
+  allocate(taux_ocntop(grid % istart:grid % iend), tauy_ocntop(grid % istart:grid % iend))
   taux_ocntop = 0; tauy_ocntop = 0
 
-  allocate(taux_ocnbot(istart:iend),tauy_ocnbot(istart:iend))
+  allocate(taux_ocnbot(grid % istart:grid % iend), tauy_ocnbot(grid % istart:grid % iend))
   taux_ocnbot = 0; tauy_ocnbot = 0
 
-  allocate(taux_snl(istart:iend),tauy_snl(istart:iend))
+  allocate(taux_snl(grid % istart:grid % iend), tauy_snl(grid % istart:grid % iend))
   taux_snl = 0; tauy_snl = 0
 
-  allocate(epsx_atm(istart:iend), epsy_atm(istart:iend))
+  allocate(epsx_atm(grid % istart:grid % iend), epsy_atm(grid % istart:grid % iend))
   epsx_atm = 0; epsy_atm = 0
 
-  allocate(epsx_ocn(istart:iend), epsy_ocn(istart:iend))
+  allocate(epsx_ocn(grid % istart:grid % iend), epsy_ocn(grid % istart:grid % iend))
   epsx_ocn = 0; epsy_ocn = 0
 
-  allocate(taux1(istart:iend),tauy1(istart:iend))
-  allocate(taux2(istart:iend),tauy2(istart:iend))
-  allocate(taux3(istart:iend),tauy3(istart:iend))
+  allocate(taux1(grid % istart:grid % iend), tauy1(grid % istart:grid % iend))
+  allocate(taux2(grid % istart:grid % iend), tauy2(grid % istart:grid % iend))
+  allocate(taux3(grid % istart:grid % iend), tauy3(grid % istart:grid % iend))
 
   taux1 = 0; tauy1 = 0
   taux2 = 0; tauy2 = 0
   taux3 = 0; tauy3 = 0
 
-  allocate(tailatmx(istart:iend),tailatmy(istart:iend))
-  allocate(tailocnx(istart:iend),tailocny(istart:iend))
+  allocate(tailatmx(grid % istart:grid % iend), tailatmy(grid % istart:grid % iend))
+  allocate(tailocnx(grid % istart:grid % iend), tailocny(grid % istart:grid % iend))
 
-  allocate(ustar(istart:iend)) ! air-side friction velocity
+  allocate(ustar(grid % istart:grid % iend)) ! air-side friction velocity
 
-  allocate(wspd(imm)) ! wind speed
+  allocate(wspd(grid % imm)) ! wind speed
   wspd = 0
 
-  allocate(fice(imm))
+  allocate(fice(grid % imm))
   fice = 0
   
-  allocate(wdir(imm))                       ! wind direction
+  allocate(wdir(grid % imm))                       ! wind direction
   wdir = 0
 
-  allocate(uc(imm),vc(imm)) ! ocean currents
+  allocate(uc(grid % imm), vc(grid % imm)) ! ocean currents
   uc = 0; vc = 0
 
-  allocate(rhoa(imm),rhoab(imm),rhoaf(imm)) ! air density
-  allocate(rhow(imm),rhowb(imm),rhowf(imm)) ! water density
-  allocate(rhorat(imm))                     ! air/water density ratio
+  allocate(rhoa(grid % imm), rhoab(grid % imm), rhoaf(grid % imm)) ! air density
+  allocate(rhow(grid % imm), rhowb(grid % imm), rhowf(grid % imm)) ! water density
+  allocate(rhorat(grid % imm))                                     ! air/water density ratio
 
-  allocate(psim(imm)) ! integrated stability function for momentum
+  allocate(psim(grid % imm)) ! integrated stability function for momentum
   psim = 0
 
   ! 3-d arrays (remapped):
-  allocate(bf1_renorm(om,istart:iend))
-  allocate(bf2_renorm(om,istart:iend))
-  allocate(    cothkd(om,istart:iend))
-  allocate(       dwn(om,istart:iend))
-  allocate(     fkovg(om,istart:iend))
-  allocate(    invcp0(om,istart:iend))
-  allocate(        k4(om,istart:iend))
-  allocate(       kdk(om,istart:iend))
-  allocate(      k3dk(om,istart:iend))
-  allocate( oneoverk4(om,istart:iend))
-  allocate(       sbf(om,istart:iend))
-  allocate(       sdt(om,istart:iend))
-  allocate(       sdv(om,istart:iend))
-  allocate(   snl_arg(om,istart:iend))
-  allocate(        l2(om,istart:iend))
-  allocate(logl2overz(om,istart:iend))
+  allocate(bf1_renorm(om,grid % istart:grid % iend))
+  allocate(bf2_renorm(om,grid % istart:grid % iend))
+  allocate(    cothkd(om,grid % istart:grid % iend))
+  allocate(       dwn(om,grid % istart:grid % iend))
+  allocate(     fkovg(om,grid % istart:grid % iend))
+  allocate(    invcp0(om,grid % istart:grid % iend))
+  allocate(        k4(om,grid % istart:grid % iend))
+  allocate(       kdk(om,grid % istart:grid % iend))
+  allocate(      k3dk(om,grid % istart:grid % iend))
+  allocate( oneoverk4(om,grid % istart:grid % iend))
+  allocate(       sbf(om,grid % istart:grid % iend))
+  allocate(       sdt(om,grid % istart:grid % iend))
+  allocate(       sdv(om,grid % istart:grid % iend))
+  allocate(   snl_arg(om,grid % istart:grid % iend))
+  allocate(        l2(om,grid % istart:grid % iend))
+  allocate(logl2overz(om,grid % istart:grid % iend))
 
-  allocate(psiml2(om,istart:iend))
+  allocate(psiml2(om,grid % istart:grid % iend))
   psiml2 = 0
 
   ! 4-d arrays (remapped):
-  allocate(   ef(om,pm,istart:iend)) ! wave variance spectrum, forward in time
-  allocate(dummy(om,pm,istart:iend)) ! dummy array, used in sds, advection and refraction
-  allocate( rotl(om,pm,istart:iend)) ! anti-clockwise rotation, used in refraction
-  allocate( rotr(om,pm,istart:iend)) ! clockwise rotation, used in refraction
-  allocate(  sds(om,pm,istart:iend)) ! wave dissipation sink function
-  allocate(  snl(om,pm,istart:iend)) ! wave downshifting source/sink function
-  allocate( ssin(om,pm,istart:iend)) ! wind input source/sink function
+  allocate(   ef(om,pm,grid % istart:grid % iend)) ! wave variance spectrum, forward in time
+  allocate(dummy(om,pm,grid % istart:grid % iend)) ! dummy array, used in sds, advection and refraction
+  allocate( rotl(om,pm,grid % istart:grid % iend)) ! anti-clockwise rotation, used in refraction
+  allocate( rotr(om,pm,grid % istart:grid % iend)) ! clockwise rotation, used in refraction
+  allocate(  sds(om,pm,grid % istart:grid % iend)) ! wave dissipation sink function
+  allocate(  snl(om,pm,grid % istart:grid % iend)) ! wave downshifting source/sink function
+  allocate( ssin(om,pm,grid % istart:grid % iend)) ! wind input source/sink function
 
-  allocate( sice(om,istart:iend)) ! wave attenuation by sea ice function
+  allocate( sice(om,grid % istart:grid % iend)) ! wave attenuation by sea ice function
+
+  allocate(e(om,pm,grid % iistart-1:grid % iiend))
+  allocate(cp0(om,grid % iistart-1:grid % iiend))
+  allocate(cg0(om,grid % iistart-1:grid % iiend))
+  allocate(k(om,grid % istart:grid % iend))
+
+  e = tiny(e)
 
 end if ! if(option)
 
 end subroutine alloc
 
 
-subroutine grid(config)
-! Defines grid spacing and grid cell areas
-use umwm_config, only: config_type
-use netcdf
-use umwm_constants, only: r_earth
-use umwm_io, only: nc_check
-use umwm_util, only: raiseexception, distance_haversine
 
-type(config_type), intent(in) :: config
-logical :: loniscontinuous = .true.
 
-integer :: m, n
-integer :: ncid, varid, stat
-
-real, allocatable :: abscoslat(:,:), lon_tmp(:,:), rotx(:,:), roty(:,:)
-real, allocatable :: rlon(:,:), rlat(:,:)
-
-if(config % gridfromfile)then
-
-  stat = nf90_open('input/umwm.gridtopo',nf90_nowrite,ncid)
-
-  if(stat/=0)then
-
-    if(nproc==0)then
-      call raiseexception('warning','grid',&
-                          'input/umwm.gridtopo not found; trying input/umwm.grid')
-    end if
-
-    stat = nf90_open('input/umwm.grid',nf90_nowrite,ncid)
-
-    if(stat/=0)then
-
-      if(nproc==0)then
-        call raiseexception('abort','grid',&
-                            'input/umwm.grid not found. make sure input files are in place')
-      end if
-
-      stop
-
-    end if
-
-  end if
-
-  call nc_check(nf90_inq_varid(ncid,'lon',varid))
-  call nc_check(nf90_get_var(ncid,varid,lon))
-  call nc_check(nf90_inq_varid(ncid,'lat',varid))
-  call nc_check(nf90_get_var(ncid,varid,lat))
-  call nc_check(nf90_close(ncid))
-
-  allocate(abscoslat(mm,nm),lon_tmp(mm,nm),rotx(mm,nm),roty(mm,nm))
-  allocate(rlon(mm,nm),rlat(mm,nm))
-
-  ! figure out if longitude field is continuous:
-  if(minval(lon) <- 175 .and. maxval(lon) >175)loniscontinuous = .false.
-
-  lon_tmp = lon
-
-  ! store original lon array before modifying:
-  if(.not.loniscontinuous)where(lon < 0)lon = lon+360
-
-  do n=1,nm
-    do m=2,mm-1
-      dlon(m,n) = 0.5*(lon(m+1,n)-lon(m-1,n))
-    end do
-  end do
-
-  dlon(1,:)  = 2*dlon(2,:)-dlon(3,:)
-  dlon(mm,:) = 2*dlon(mm-1,:)-dlon(mm-2,:)
-
-  do n=2,nm-1
-    do m=1,mm
-      dlat(m,n) = 0.5*(lat(m,n+1)-lat(m,n-1))
-    end do
-  end do
-  dlat(:,1)  = 2*dlat(:,2)-dlat(:,3)
-  dlat(:,nm) = 2*dlat(:,nm-1)-dlat(:,nm-2)
-
-  abscoslat = abs(cos(dr*lat))
-
-  ! revert to original lon array:
-  lon = lon_tmp
-
-  rlon = lon*twopi/360.
-  rlat = lat*twopi/360.
-
-  do n=1,nm
-    do m=2,mm-1
-      dx_2d(m,n) = r_earth * distance_haversine(0.5*(rlon(m-1,n) + rlon(m  ,n)), &
-                                                0.5*(rlon(m  ,n) + rlon(m+1,n)), &
-                                                0.5*(rlat(m-1,n) + rlat(m  ,n)), &
-                                                0.5*(rlat(m  ,n) + rlat(m+1,n)))
-    end do
-  end do
-
-  dx_2d(1,:)  = 2*dx_2d(2,:)-dx_2d(3,:)
-  dx_2d(mm,:) = 2*dx_2d(mm-1,:)-dx_2d(mm-2,:)
-
-  do n=2,nm-1
-    do m=1,mm
-      dy_2d(m,n) = r_earth * distance_haversine(0.5*(rlon(m,n-1) + rlon(m,n  )), &
-                                                0.5*(rlon(m,n  ) + rlon(m,n+1)), &
-                                                0.5*(rlat(m,n-1) + rlat(m,n  )), &
-                                                0.5*(rlat(m,n  ) + rlat(m,n+1)))
-    end do
-  end do
-
-  dy_2d(:,1)  = 2*dy_2d(:,2)-dy_2d(:,3)
-  dy_2d(:,nm) = 2*dy_2d(:,nm-1)-dy_2d(:,nm-2)
-
-  ! compute grid rotation for great circle propagation
-  curv = 0
-  do n = 1,nm
-    do m = 2,mm-1
-      curv(m,n) = atan2(sin(rlon(m+1,n)-rlon(m-1,n))*cos(rlat(m+1,n)),&
-                        cos(rlat(m-1,n))*sin(rlat(m+1,n))&
-                       -sin(rlat(m-1,n))*cos(rlat(m+1,n))*cos(rlon(m+1,n)-rlon(m-1,n)))
-    end do
-  end do
-
-  if(config % isglobal)then
-    m = 1
-    curv(m,:) = atan2(sin(rlon(m+1,:)-rlon(mm,:))*cos(rlat(m+1,:)),&
-                      cos(rlat(mm,:))*sin(rlat(m+1,:))&
-                     -sin(rlat(mm,:))*cos(rlat(m+1,:))*cos(rlon(m+1,:)-rlon(mm,:)))
-    m = mm
-    curv(m,:) = atan2(sin(rlon(1,:)-rlon(m-1,:))*cos(rlat(1,:)),&
-                      cos(rlat(m-1,:))*sin(rlat(1,:))&
-                     -sin(rlat(m-1,:))*cos(rlat(1,:))*cos(rlon(1,:)-rlon(m-1,:)))
-  else
-    curv(1,:) = curv(2,:)
-    curv(mm,:) = curv(mm-1,:)
-  end if
-
-  curv = curv-0.5*pi
-
-  deallocate(abscoslat,lon_tmp,rotx,roty,rlon,rlat)
-
-else ! use constant value from namelist
-
-  dx_2d = config % delx
-  dy_2d = config % dely
-
-  curv = 0
-
-  lon = 0
-  lat = 0
-  dlon = 0
-  dlat = 0
-
-  x(1,:) = 0
-  do m = 2,mm
-    x(m,:) = x(m-1,:)+0.5*(dx_2d(m-1,:)+dx_2d(m,:))
-  end do
-
-  y(:,1) = 0
-  do n = 2,nm
-    y(:,n) = y(:,n-1)+0.5*(dy_2d(:,n-1)+dy_2d(:,n))
-  end do
-
-end if
-
-if(config % topofromfile)then ! read depth field from file
-
-  call nc_check(nf90_open('input/umwm.gridtopo',nf90_nowrite,ncid))
-  call nc_check(nf90_inq_varid(ncid,'z',varid))
-  call nc_check(nf90_get_var(ncid,varid,d_2d))
-  call nc_check(nf90_close(ncid))
-
-else ! use constant value from namelist
-
-  d_2d = config % dpt
-
-end if
-
-! compute cell areas and reciprocals:
-ar_2d = dx_2d*dy_2d
-
-if(nproc == 0)then
-  write(*,fmt=101)'umwm: grid: dx min/max/mean [m]:     ',&
-                  minval(dx_2d),maxval(dx_2d),sum(dx_2d)/(mm*nm)
-  write(*,fmt=101)'umwm: grid: dy min/max/mean [m]:     ',&
-                  minval(dy_2d),maxval(dy_2d),sum(dy_2d)/(mm*nm)
-  write(*,fmt=101)'umwm: grid: area min/max/mean [m^2]: ',&
-                  minval(ar_2d),maxval(ar_2d),sum(ar_2d)/(mm*nm)
-end if
-
-101 format(a,3(f15.2,1x))
-
-end subroutine grid
-
-
-subroutine masks(config)
-! Defines landmasks and optionally removes one-cell wide estuaries and lakes
-use umwm_config, only: config_type
-
-type(config_type), intent(in) :: config
-logical :: iterate
-
-integer :: m, n
-integer :: exm, exn
-integer :: cnt, fillcount
-
-! set masks:
-if(config % topofromfile)then
-
-  ! set initial seamask everywhere:
-  mask = 1
-
-  ! set up boundary points:
-  mask(:,1)  = 0
-  mask(:,nm) = 0
-
-  ! close e and w edges if limited area:
-  if(.not.config % isglobal)then
-    mask(1,:)  = 0
-    mask(mm,:) = 0
-  end if
-
-  ! set land mask where depth is non-negative, and then
-  ! set depth to dmin:
-  where(d_2d>=0)
-    mask = 0
-    d_2d = config % dmin
-  endwhere
-
-  ! make depths positive and limit to dmin:
-  d_2d = abs(d_2d)
-  where(d_2d<config % dmin)d_2d = config % dmin
-
-  ! fill estuaries and isolated sea points:
-  if(config % fillestuaries)then
-    fillcount = 0
-    iterate = .true.
-    do while(iterate) ! iterate as long as there are points to be modified
-      iterate = .false.
-      do n=2,nm-1
-        do m=2,mm-1
-
-          if(mask(m,n)==1)then
-
-            cnt = 0
-            if(mask(m-1,n)==1)cnt = cnt+1
-            if(mask(m+1,n)==1)cnt = cnt+1
-            if(mask(m,n-1)==1)cnt = cnt+1
-            if(mask(m,n+1)==1)cnt = cnt+1
-
-            if(cnt<=1)then
-              mask(m,n) = 0
-              fillcount = fillcount+1
-              iterate   = .true.
-            end if
-
-          end if ! if(mask(m,n)==1)
-
-        end do
-      end do
-    end do ! while loop
-    if(nproc==0)write(*,fmt=100)'umwm: masks: filled cells with 3-land neighbours,',&
-                                fillcount,' cells total.'
-  end if
-
-  ! discard lakes or unwanted closed basin from the domain:
-  if(config % filllakes)then
-    open(unit=24,file='namelists/exclude.nml')
-    do
-      read(unit=24,fmt=*,end=107)exm,exn
-      fillcount = 0
-      call fill(exm,exn,fillcount)
-      if(nproc==0)write(*,fmt=101)'umwm: masks: filled closed sea at i,j:',&
-                                  exm,exn,', ',fillcount,' cells total.'
-    end do
-  end if ! if(filllakes)
-
-107 close(unit=24)
-
-100 format(a,i8,a)
-101 format(a,2(i5,1x),a,i8,a)
-
-else
-
-  ! set initial mask everywhere:
-  mask = 1
-
-  ! set up boundary points
-  mask(:, 1) = 0
-  mask(:,nm) = 0
-
-  ! close e and w edges if limited area:
-  if(.not.config % isglobal)then
-    mask( 1,:)  = 0
-    mask(mm,:) = 0
-  end if
-
-  where(mask==0)d_2d = config % dmin
-
-end if
-
-! calculate the upper index for 1-d arrays:
-im = count(mask==1)
-imm = mm*nm
-
-! print out summary:
-if(nproc==0)then
-  write(unit=*,fmt=302)imm
-  write(unit=*,fmt=303)imm-im,float(imm-im)/float(imm)*100.
-  write(unit=*,fmt=304)im,float(im)/float(imm)*100.
-  write(unit=*,fmt=305)minval(d_2d,mask==1)
-  write(unit=*,fmt=306)maxval(d_2d,mask==1)
-end if
-
-302 format('umwm: masks: total number of grid points: ',i9)
-303 format('umwm: masks: number of land points:       ',i9,', ',f5.1,'%')
-304 format('umwm: masks: number of sea points:        ',i9,', ',f5.1,'%')
-305 format('umwm: masks: shallowest point:            ',f9.3,' meters')
-306 format('umwm: masks: deepest point:               ',f9.3,' meters')
-
-end subroutine masks
-
-
-
-recursive subroutine fill(m, n, fillcount)
-! Mask out enclosed seas chosen by user.
-
-integer, intent(in) :: m, n
-integer, intent(in out) :: fillcount
-
-! return if reached domain edge:
-if (any(m == [1, mm]) .or. any(n == [1, nm])) return
-
-! fill:
-mask(m,n) = 0
-
-fillcount = fillcount+1
-
-! recurse in all directions:
-if (mask(m-1,n) == 1) call fill(m-1, n, fillcount)
-if (mask(m+1,n) == 1) call fill(m+1, n, fillcount)
-if (mask(m,n-1) == 1) call fill(m, n-1, fillcount)
-if (mask(m,n+1) == 1) call fill(m, n+1, fillcount)
-
-end subroutine fill
-
-
-subroutine partition(config)
-! Partitions the domain for parallel computation.
-use umwm_config, only: config_type
-
-#ifdef MPI
-use umwm_mpi
-
-integer :: nn
-#ifdef ESMF
-integer :: i, m, n
-#endif
-#endif
-type(config_type), intent(in) :: config
-
-if (config % isglobal) continue
-
-#ifndef MPI
-istart  = 1
-iend    = im
-iistart = istart
-iiend   = iend
-#else
-
-allocate(istart_(0:mpisize-1),iend_(0:mpisize-1),ilen_(0:mpisize-1))
-
-! find out what is the length of my part:
-im_mod = mod(im,mpisize)
-if(im_mod==0)then
-  ilen   = im/mpisize
-  istart = nproc*ilen+1
-  iend   = istart+ilen-1
-else
-  ilen   = floor(float(im)/float(mpisize))
-  istart = nproc*ilen+1
-  iend   = istart+ilen-1
-  do nn=1,im_mod
-    if(nproc==nn-1)ilen = ilen+1
-  end do
-end if
-
-! adjust start/end boundaries:
-if(nproc<im_mod)then
-  if(nproc==0)then
-    iend = iend+1
-  else
-    istart = istart+nproc
-    iend   = iend+nproc+1
-  end if
-else
-  istart = istart+im_mod
-  iend   = istart+ilen-1
-end if
-
-! Which direction for remapping? (matters only in parallel or global mode)
-if (mm >= nm) then
-  remap_dir = 'v'
-else
-  remap_dir = 'h'
-end if
-
-if (config % isglobal) remap_dir = 'v'
-
-! The code below adjusts the start and end indices of each tile
-! because currently ESMF DEBlockList accepts only regular rectangular
-! domains.
-
-#ifdef ESMF
-if (remap_dir == 'h') then ! row-major remapping
-
-  ! adjust ends first:
-  i = 0
-  outer1: do n = 1, nm
-    inner1: do m = 1, mm
-      if (mask(m,n) == 1) i = i + 1
-      if (i == iend .and. m /= mm) then
-        iend = iend + count(mask(m+1:mm,n) == 1)
-        exit outer1
-      end if
-    end do inner1
-  end do outer1
-
-  ! now adjust beginnings (all but proc 0):
-  if (nproc /= 0) then
-    i = 0
-    outer2: do n = 1, nm
-      inner2: do m = 1, mm
-        if (mask(m,n) == 1) i = i + 1
-        if (i == istart .and. m /= 1 .and. count(mask(1:m-1,n) == 1) > 0) then
-          istart = istart + count(mask(m:mm,n) == 1)
-          exit outer2
-        end if
-      end do inner2
-    end do outer2
-  end if
-
-else if (remap_dir == 'v') then ! column-major remapping
-
-  ! adjust ends first:
-  i = 0
-  outer3: do m = 1, mm
-    inner3: do n = 1, nm
-      if (mask(m,n) == 1) i = i + 1
-      if (i == iend .and. n /= nm) then
-        iend = iend + count(mask(m,n+1:nm) == 1)
-        exit outer3
-      end if
-    end do inner3
-  end do outer3
-
-  ! now adjust beginnings (all but proc 0):
-  if (nproc /= 0) then
-    i = 0
-    outer4: do m = 1, mm
-      inner4: do n = 1, nm
-        if (mask(m,n) == 1) i = i + 1
-        if (i == istart .and. n /= 1 .and. count(mask(m,1:n-1) == 1) > 0) then
-          istart = istart + count(mask(m,n:nm) == 1)
-          exit outer4
-        end if
-      end do inner4
-    end do outer4
-  end if
-
-end if
-
-! adjust tile length:
-ilen = iend - istart + 1
-
-#endif
-
-! gather tile mpisize information to root process:
-call mpi_gather(istart,1,MPI_INTEGER,istart_,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
-call mpi_gather(iend,1,MPI_INTEGER,iend_,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
-call mpi_gather(ilen,1,MPI_INTEGER,ilen_,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
-
-if(nproc==0)then
-
-  write(*,fmt='(a)')'umwm: partition: tiling summary:'
-  write(*,fmt='(a)')'+---------+------------+----------------+----------------+'
-  write(*,fmt='(a)')'|  nproc  |    ilen    |     istart     |      iend      |'
-  write(*,fmt='(a)')'+---------+------------+----------------+----------------+'
-!                      1234567   1234567890   12345678901234   12345678901234
-  do nn=0,mpisize-1
-    write(*,fmt=307)nn,ilen_(nn),istart_(nn),iend_(nn)
-  end do
-
-  write(*,fmt='(a)')'+---------+------------+----------------+----------------+'
-
-end if
-
-307 format('| ',i7,' | ',i10,' | ',2(i14,' | '))
-
-#endif
-
-end subroutine partition
-
-
-subroutine remap(config)
-! Remaps two-dimensional arrays into one-dimensional
-! arrays while leaving out land points. it also assigns
-! and links neighboring points that are needed for
-! spatial differencing, and builds the communication
-! interface between processes.
-use umwm_config, only: config_type
-#ifdef MPI
-use umwm_mpi
-#endif
-
-type(config_type), intent(in) :: config
-integer :: i,m,n
-
-#ifdef MPI
-integer :: nn
-integer :: counter, itemp
-integer, dimension(:), allocatable :: n_exchange_indices
-#endif
-
-! remapping section:
-! unroll 2-d array into a contiguous 1-d array of sea-only points.
-! first part contains only sea-points; the second part contains only
-! land-points, which are necessary for grid mpisize information in advection
-! routine.
-
-! in serial mode this does not matter, but we must pick one:
-#ifndef MPI
-  remap_dir = 'v'
-#endif
-
-! first construct (m,n)->(i) transformation:
-ii = 0
-i  = 0
-if(remap_dir == 'h')then ! column-major
-
-  ! sea points:
-  do n=1,nm
-    do m=1,mm
-      if(mask(m,n) == 1)then
-        i = i+1
-        ii(m,n) = i
-        dx(i) = dx_2d(m,n)
-        dy(i) = dy_2d(m,n)
-        d(i)  = d_2d(m,n)
-      end if
-    end do
-  end do
-
-  ! land points:
-  do n=1,nm
-    do m=1,mm
-      if(mask(m,n) == 0)then
-        i = i+1
-        ii(m,n) = i
-        dx(i) = dx_2d(m,n)
-        dy(i) = dy_2d(m,n)
-        d(i)  = d_2d(m,n)
-      end if
-    end do
-  end do
-
-elseif(remap_dir == 'v')then ! row-major
-
-  ! sea points:
-  do m=1,mm
-    do n=1,nm
-      if(mask(m,n) == 1)then
-        i = i+1
-        ii(m,n) = i
-        dx(i) = dx_2d(m,n)
-        dy(i) = dy_2d(m,n)
-        d(i)  = d_2d(m,n)
-      end if
-    end do
-  end do
-
-  ! land points:
-  do m=1,mm
-    do n=1,nm
-      if(mask(m,n) == 0)then
-        i = i+1
-        ii(m,n) = i
-        dx(i) = dx_2d(m,n)
-        dy(i) = dy_2d(m,n)
-        d(i)  = d_2d(m,n)
-      end if
-    end do
-  end do
-
-else
-
-  stop 'umwm: remap: error - remap_dir must be ''h'' or ''v'''
-
-end if
-
-! now construct (i)->(m,n) transformation:
-mi = 0
-ni = 0
-do n=1,nm
-  do m=1,mm
-    i = ii(m,n)
-    mi(i) = m
-    ni(i) = n
-  end do
-end do
-
-! neighboring point indices for advection and refraction:
-is = 0
-in = 0
-iw = 0
-ie = 0
-do n=2,nm-1
-  do m=2,mm-1
-    i = ii(m,n)
-    is(i) = ii(m,n-1)
-    in(i) = ii(m,n+1)
-    iw(i) = ii(m-1,n)
-    ie(i) = ii(m+1,n)
-  end do
-end do
-
-! adjust periodic boundary:
-if(config % isglobal)then
-  do n=2,nm-1
-
-    is(ii(1,n)) = ii(1,n-1)
-    in(ii(1,n)) = ii(1,n+1)
-    iw(ii(1,n)) = ii(mm,n)
-    ie(ii(1,n)) = ii(2,n)
-
-    is(ii(mm,n)) = ii(mm,n-1)
-    in(ii(mm,n)) = ii(mm,n+1)
-    iw(ii(mm,n)) = ii(mm-1,n)
-    ie(ii(mm,n)) = ii(1,n)
-
-  end do
-end if
-
-! true indices:
-! (is,in,iw,ie will be aliased for land points)
-iis = is
-iin = in
-iiw = iw
-iie = ie
-
-! cell edges in x and y:
-do i = istart,iend
-  dxn(i) = 0.5*(dx(i)+dx(iin(i)))
-  dxs(i) = 0.5*(dx(i)+dx(iis(i)))
-  dye(i) = 0.5*(dy(i)+dy(iie(i)))
-  dyw(i) = 0.5*(dy(i)+dy(iiw(i)))
-end do
-
-#ifdef MPI
-! allocate c, cg, and e, and initialize:
-if(nproc==0)then ! root process
-
-  iistart = istart ! start point
-  itemp = iend     ! end point (first guess)
-
-  do
-    if(remap_dir == 'h')iiend = in(itemp)
-    if(remap_dir == 'v')iiend = ie(itemp)
-    ! if land point, go one cell back and cycle:
-    if(iiend>im)then
-      itemp = itemp-1
-      cycle
-   ! if sea point, exit loop:
-    else
-      exit
-    end if
-  end do
-
-elseif(nproc==mpisize-1)then ! last process
-
-  itemp = istart ! start point (first guess)
-  iiend = iend   ! end point
-
-  do
-    if(remap_dir == 'h')iistart = is(itemp)
-    if(remap_dir == 'v')iistart = iw(itemp)
-    ! if land point, go one cell forward and cycle:
-    if(iistart>im)then
-      itemp = itemp+1
-      cycle
-    ! if sea point, exit loop:
-    else
-      exit
-    end if
-  end do
-
-else ! everybody else
-
-  itemp = istart ! start point (first guess)
-
-  do
-    if(remap_dir == 'h')iistart = is(itemp)
-    if(remap_dir == 'v')iistart = iw(itemp)
-    ! if land point, go one cell forward and cycle:
-    if(iistart>im)then
-      itemp = itemp+1
-      cycle
-      ! if sea point, exit loop:
-    else
-      exit
-    end if
-  end do
-
-  itemp = iend ! end point (first guess)
-
-  do
-    if(remap_dir == 'h')iiend = in(itemp)
-    if(remap_dir == 'v')iiend = ie(itemp)
-    ! if land point, go one cell back and cycle:
-    if(iiend>im)then
-      itemp = itemp-1
-      cycle
-    ! if sea point, exit loop:
-    else
-      exit
-    end if
-  end do
-
-end if ! if(nproc==0)
-
-if(config % isglobal)then
-
-  allocate(n_exchange_indices(0))
-
-  first_col_len = 0
-  do n = 2, nm-1
-    if (mask(1,n) == 1 .and. mask(mm,n) == 1) then
-      n_exchange_indices = [n_exchange_indices, n]
-      first_col_len = first_col_len + 1
-    end if
-  end do
-  last_col_len = first_col_len
-
-  allocate(i_exchange_indices(first_col_len))
-
-  ! find west neighbor indices on first processor
-  if (nproc == 0) then
-
-    ! find unrolled halo exchange indices
-    do n = 1, first_col_len
-      i_exchange_indices(n) = ii(1,n_exchange_indices(n))
-    end do
-
-    ! adjust the start halo index for the number
-    ! of water points in easternmost column
-    iistart = iistart - last_col_len
-
-    counter = 0
-    m = 1
-    do n = 2, nm-1
-      if (mask(m,n) == 1) then
-        i = ii(m,n)
-        if (mask(mi(iw(i)),ni(iw(i))) == 0) then
-          ! west neighbor is land
-          iw(i) = iistart - 1
-        else
-          ! west neighbor is water
-          iw(i) = iistart + counter
-          counter = counter + 1
-        end if
-      end if
-    end do
-
-  end if
-
-  ! find east neighbor indices on last processor
-  if (nproc == mpisize-1) then
-
-    ! find unrolled halo exchange indices
-    do n = 1, first_col_len
-      i_exchange_indices(n) = ii(mm,n_exchange_indices(n))
-    end do
-
-    ! adjust the end halo index for the number
-    ! of water points in easternmost column
-    iiend = iiend + first_col_len
-
-    counter = 1
-    m = mm
-    do n = 2, nm-1
-      if (mask(m,n) == 1) then
-        i = ii(m,n)
-        if (mask(mi(ie(i)),ni(ie(i))) == 0) then
-          ! east neighbor is land
-          ie(i) = iistart - 1
-        else
-          ! east neighbor is water
-          ie(i) = iend + counter
-          counter = counter + 1
-        end if
-      end if
-    end do
-
-  end if
-
-end if
-
-#endif
-
-! allocate and add a ghost land point at the beggining:
-allocate(e(om,pm,iistart-1:iiend))
-allocate(cp0(om,iistart-1:iiend))
-allocate(cg0(om,iistart-1:iiend))
-allocate(k(om,istart:iend))
-
-! initialize:
-e = tiny(e)
-
-#ifdef MPI
-! distribute iistart and iiend to everyone:
-allocate(iistart_(0:mpisize-1),iiend_(0:mpisize-1))
-call mpi_allgather(iistart,1,MPI_INTEGER,iistart_,1,&
-                   MPI_INTEGER,MPI_COMM_WORLD,ierr)
-call mpi_allgather(iiend,1,MPI_INTEGER,iiend_,1,&
-                   MPI_INTEGER,MPI_COMM_WORLD,ierr)
-#endif
-
-! treat land points for cp0, cg0, and e:
-! (needed for advection terms)
-do i = istart, iend
-  if (is(i) < iistart .or. is(i) > iiend) is(i) = iistart - 1
-  if (in(i) < iistart .or. in(i) > iiend) in(i) = iistart - 1
-  if (ie(i) < iistart .or. ie(i) > iiend) ie(i) = iistart - 1
-  if (iw(i) < iistart .or. iw(i) > iiend) iw(i) = iistart - 1
-end do
-
-#ifdef MPI
-! create the domain partiotioning field for output:
-if (nproc == 0) then
-nproc_out = -1
-  do n = 1, nm
-    do m = 1, mm
-      do nn = 0, mpisize-1
-        if (ii(m,n) >= istart_(nn) .and. ii(m,n) <= iend_(nn)) then
-          nproc_out(m,n) = nn
-          exit
-        end if
-      end do
-    end do
-  end do
-end if
-
-if(nproc==0)then
-
-  write(*,fmt='(a)')'umwm: remap: tiling with halo summary:'
-  write(*,fmt='(a)')'+---------+------------+----------------+----------------+'
-  write(*,fmt='(a)')'|  nproc  |   iilen    |    iistart     |     iiend      |'
-  write(*,fmt='(a)')'+---------+------------+----------------+----------------+'
-!                      1234567   1234567890   12345678901234   12345678901234
-  do nn=0,mpisize-1
-    write(*,fmt=310)nn,iiend_(nn)-iistart_(nn)+1,iistart_(nn),iiend_(nn)
-  end do
-
-  write(*,fmt='(a)')'+---------+------------+----------------+----------------+'
-
-end if
-
-310 format('| ',i7,' | ',i10,' | ',2(i14,' | '))
-
-#endif
-
-end subroutine remap
-
-
-subroutine init(config, spectrum)
+subroutine init(config, spectrum, grid)
 ! Initialize model variables such as frequencies, direction angles,
 ! phase speed and group velocity, wave numbers, etc.
 use umwm_config, only: config_type
-#ifdef MPI
-use umwm_mpi, only:istart_,iend_
-#endif
 use umwm_util,only:raiseexception
-
-use umwm_util, only: remap_mn2i
 
 type(config_type), intent(in) :: config
 type(spectrum_type), intent(in) :: spectrum
+type(grid_type), intent(in) :: grid
 integer :: i, o, p, pp, ind
+real :: mindelx
 
 #ifdef MPI
 integer :: n
@@ -1176,12 +250,6 @@ else
   cfllim = 1./sqrt(2.)
 end if
 
-! compute grid cell areas and reciprocals:
-ar      = dx(istart:iend)*dy(istart:iend)
-oneovdx = 1./dx(istart:iend)
-oneovdy = 1./dy(istart:iend)
-oneovar = 1./ar
-
 ! compute diffusion values in 2 frequenciess:
 bf1  = exp(-16*dlnf*dlnf)
 bf2  = exp(-64*dlnf*dlnf)
@@ -1191,14 +259,6 @@ bf1  = bf1a
 
 cth = cos(th) ! cosines
 sth = sin(th) ! sines
-
-! calculate wave ray directions adjusted for grid curvature:
-do i=istart,iend
-  do p=1,pm
-    cth_curv(p,i) = cos(th(p)+curv(mi(i),ni(i)))
-    sth_curv(p,i) = sin(th(p)+curv(mi(i),ni(i)))
-  end do
-end do
 
 ! "left" and "right" directional indices for refraction:
 do p=1,pm
@@ -1225,10 +285,10 @@ do p=1,pm
 end do
 
 ! compute wave numbers, phase speeds, and group velocities:
-call dispersion(config)
+call dispersion(config, grid)
 
-mindelx = min(minval(dx_2d,mask==1),minval(dy_2d,mask==1))
-cgmax   = maxval(cg0(:,istart:iend))
+mindelx = min(minval(grid % dx_2d, grid % mask == 1), minval(grid % dy_2d, grid % mask == 1))
+cgmax   = maxval(cg0(:,grid % istart:grid % iend))
 dtamin  = 0.98*cfllim*mindelx/cgmax
 
 first    = .true.
@@ -1240,29 +300,29 @@ else
 end if
 
 ! if sea ice from file, update the fice field
-if (config % seaice) fice = remap_mn2i(ficef)
+if (config % seaice) fice = grid % remap_mn2i(ficef)
 
 ! if forcing from file, update the wspd field for ustar first guess
-if (config % winds) wspd = remap_mn2i(sqrt(uwf**2 + vwf**2))
+if (config % winds) wspd = grid % remap_mn2i(sqrt(uwf**2 + vwf**2))
 
 ! initialize drag coefficient (Large and Pond, 1981):
 cd = 1.2e-3
-do concurrent (i=istart:iend, wspd(i) > 11)
+do concurrent (i=grid % istart:grid % iend, wspd(i) > 11)
   cd(i) = (0.49 + 0.065 * wspd(i)) * 1e-3
 end do
 
 ! initialize friction velocity:
-do i=istart,iend
+do i=grid % istart,grid % iend
   ustar(i) = sqrt(cd(i))*wspd(i)
 end do
 
 #ifdef MPI
 
 ! figure out which process will print to screen:
-iip = ii(config % xpl, config % ypl)
-if(mask(config % xpl, config % ypl)==0)then
+iip = grid % ii(config % xpl, config % ypl)
+if(grid % mask(config % xpl, config % ypl)==0)then
   if(nproc==0)then
-    write(0,*)config % xpl, config % ypl, mask(config % xpl, config % ypl)
+    write(0,*)config % xpl, config % ypl, grid % mask(config % xpl, config % ypl)
 
     call raiseexception('warning','init',&
                         'land-point chosen for stdout, may go out of bounds')
@@ -1274,7 +334,7 @@ end if
 
 if(nproc==0)then
   do n=0,mpisize-1
-    if(iip>=istart_(n).and.iip<=iend_(n))nproc_plot = n
+    if(iip>=grid % istart_all(n).and.iip<=grid % iend_all(n))nproc_plot = n
   end do
 end if
 
@@ -1283,7 +343,7 @@ call mpi_bcast(iip,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
 
 #else
 
-iip = ii(config % xpl, config % ypl)
+iip = grid % ii(config % xpl, config % ypl)
 
 #endif
 
@@ -1297,8 +357,8 @@ write(*,fmt=103)
 do o=1,om
   write(*,fmt=101)o,f(o),1./f(o),                                     &
                   minval(k(o,:),dim=1),maxval(k(o,:),dim=1),          &
-                  minval(cp0(o,1:im),dim=1),maxval(cp0(o,1:im),dim=1),&
-                  minval(cg0(o,1:im),dim=1),maxval(cg0(o,1:im),dim=1)
+                  minval(cp0(o,1:grid % im),dim=1),maxval(cp0(o,1:grid % im),dim=1),&
+                  minval(cg0(o,1:grid % im),dim=1),maxval(cg0(o,1:grid % im),dim=1)
 end do
 101 format(1x,i2,8(2x,f7.4))
 write(*,fmt=102)
@@ -1311,36 +371,35 @@ write(*,fmt=102)
 end subroutine init
 
 
-subroutine dispersion(config)
+subroutine dispersion(config, grid)
 ! Iteratively solve the dispersion relation by iteration,
 ! and compute phase and group velocities in absolute reference frame (w/ currents)
 use umwm_config, only: config_type
-#ifdef MPI
-use umwm_mpi
-#endif
 
 #ifdef MPI
 integer :: sendcount, recvcount
 integer :: sendtag, recvtag
 integer :: src, dest
+integer :: status(MPI_STATUS_SIZE)
 #endif
 
 type(config_type), intent(in) :: config
+type(grid_type), intent(in) :: grid
 integer :: i,o
 
-real,dimension(om,istart:iend) :: kd
+real,dimension(om,grid % istart:grid % iend) :: kd
 
 if(nproc==0)write(*,'(a)')'umwm: dispersion: solving for dispersion relationship;'
 
-do concurrent (o=1:om, i=istart:iend)
-  k(o,i) = real(wavenumber(real(f(o), rk), real(d(i), rk), real(config % rhow0, rk), &
+do concurrent (o=1:om, i=grid % istart:grid % iend)
+  k(o,i) = real(wavenumber(real(f(o), rk), real(grid % d(i), rk), real(config % rhow0, rk), &
                             real(config % g, rk), real(config % sfct, rk)), kind(k))
 end do
 
 if(nproc==0)write(*,'(a)')'umwm: dispersion: dispersion relationship done;'
 
-do concurrent (o=1:om, i=istart:iend)
-  kd(o,i) = k(o,i) * d(i)
+do concurrent (o=1:om, i=grid % istart:grid % iend)
+  kd(o,i) = k(o,i) * grid % d(i)
 end do
 
 ! limit kd to avoid floating overflow in transcendental functions:
@@ -1350,16 +409,16 @@ where(kd>20.)kd = 20.
 cp0 = tiny(cp0)
 cg0 = tiny(cg0)
 
-do concurrent (o=1:om, i=istart:iend)
+do concurrent (o=1:om, i=grid % istart:grid % iend)
 
   cp0(o,i) = twopi*f(o)/k(o,i)
-  cg0(o,i) = real(group_speed(real(k(o,i), rk), real(d(i), rk), &
+  cg0(o,i) = real(group_speed(real(k(o,i), rk), real(grid % d(i), rk), &
                               real(config % rhow0, rk), real(config % g, rk), &
                               real(config % sfct, rk)), kind(cg0))
 end do
 
 ! compute some frequently used arrays:
-do concurrent (o=1:om, i=istart:iend)
+do concurrent (o=1:om, i=grid % istart:grid % iend)
 
   dwn(o,i)       = dom(o)/abs(cg0(o,i))                         ! dk
   l2(o,i)        = 0.5*abs(cp0(o,i))/f(o)                       ! lambda/2 (half wavelength)
@@ -1381,7 +440,7 @@ bf1_renorm = 0.
 bf2_renorm = 0.
 snl_arg    = 0.
 
-do i=istart,iend
+do i=grid % istart,grid % iend
   do o=1,om-2
     bf1_renorm(o,i) = config % snl_fac*bf1*kdk(o+1,i)/kdk(o,i)
     bf2_renorm(o,i) = config % snl_fac*bf2*kdk(o+2,i)/kdk(o,i)
@@ -1398,12 +457,12 @@ where(l2>20.)logl2overz = log(20./config % z)
 #ifdef MPI
 if(nproc<mpisize-1)then ! communicate with process above:
 
-  sendcount = om*(iend-iistart_(nproc+1)+1) ; dest = nproc+1 ; sendtag = nproc
-  recvcount = om*(iiend-iend)               ; src  = nproc+1 ; recvtag = src
+  sendcount = om*(grid % iend-grid % iistart_all(nproc+1)+1) ; dest = nproc+1 ; sendtag = nproc
+  recvcount = om*(grid % iiend-grid % iend)                  ; src  = nproc+1 ; recvtag = src
 
-  call mpi_sendrecv(cp0(:,iistart_(nproc+1):iend),sendcount,&
+  call mpi_sendrecv(cp0(:,grid % iistart_all(nproc+1):grid % iend),sendcount,&
                     MPI_REAL,dest,sendtag,                  &
-                    cp0(:,iend+1:iiend),recvcount,          &
+                    cp0(:,grid % iend+1:grid % iiend),recvcount,          &
                     MPI_REAL,src,recvtag,                   &
                     MPI_COMM_WORLD,status,ierr)
 
@@ -1411,12 +470,12 @@ end if
 
 if(nproc>0)then ! communicate with process below:
 
-  sendcount = om*(iiend_(nproc-1)-istart+1) ; dest = nproc-1 ; sendtag = nproc
-  recvcount = om*(istart-iistart)           ; src  = nproc-1 ; recvtag = src
+  sendcount = om*(grid % iiend_all(nproc-1)-grid % istart+1) ; dest = nproc-1 ; sendtag = nproc
+  recvcount = om*(grid % istart-grid % iistart)              ; src  = nproc-1 ; recvtag = src
 
-  call mpi_sendrecv(cp0(:,istart:iiend_(nproc-1)),sendcount,&
+  call mpi_sendrecv(cp0(:,grid % istart:grid % iiend_all(nproc-1)),sendcount,&
                     MPI_REAL,dest,sendtag,                  &
-                    cp0(:,iistart:istart-1),recvcount,      &
+                    cp0(:,grid % iistart:grid % istart-1),recvcount,      &
                     MPI_REAL,src,recvtag,                   &
                     MPI_COMM_WORLD,status,ierr)
 
@@ -1426,12 +485,12 @@ call mpi_barrier(MPI_COMM_WORLD,ierr)
 
 if(nproc<mpisize-1)then ! communicate with process above:
 
-  sendcount = om*(iend-iistart_(nproc+1)+1) ; dest = nproc+1 ; sendtag = nproc
-  recvcount = om*(iiend-iend)               ; src  = nproc+1 ; recvtag = src
+  sendcount = om*(grid % iend-grid % iistart_all(nproc+1)+1) ; dest = nproc+1 ; sendtag = nproc
+  recvcount = om*(grid % iiend-grid % iend)                  ; src  = nproc+1 ; recvtag = src
 
-  call mpi_sendrecv(cg0(:,iistart_(nproc+1):iend),sendcount,&
+  call mpi_sendrecv(cg0(:,grid % iistart_all(nproc+1):grid % iend),sendcount,&
                     MPI_REAL,dest,sendtag,                  &
-                    cg0(:,iend+1:iiend),recvcount,          &
+                    cg0(:,grid % iend+1:grid % iiend),recvcount,          &
                     MPI_REAL,src,recvtag,                   &
                     MPI_COMM_WORLD,status,ierr)
 
@@ -1439,12 +498,12 @@ end if
 
 if(nproc>0)then ! communicate with process below:
 
-  sendcount = om*(iiend_(nproc-1)-istart+1) ; dest = nproc-1 ; sendtag = nproc
-  recvcount = om*(istart-iistart)           ; src  = nproc-1 ; recvtag = src
+  sendcount = om*(grid % iiend_all(nproc-1)-grid % istart+1) ; dest = nproc-1 ; sendtag = nproc
+  recvcount = om*(grid % istart-grid % iistart)              ; src  = nproc-1 ; recvtag = src
 
-  call mpi_sendrecv(cg0(:,istart:iiend_(nproc-1)),sendcount,&
+  call mpi_sendrecv(cg0(:,grid % istart:grid % iiend_all(nproc-1)),sendcount,&
                     MPI_REAL,dest,sendtag,                  &
-                    cg0(:,iistart:istart-1),recvcount,      &
+                    cg0(:,grid % iistart:grid % istart-1),recvcount,      &
                     MPI_REAL,src,recvtag,                   &
                     MPI_COMM_WORLD,status,ierr)
 
@@ -1457,12 +516,12 @@ if(config % isglobal)then
 
   if(nproc==0)then ! communicate with last tile:
 
-    sendcount = om*first_col_len ; dest = mpisize-1 ; sendtag = nproc
-    recvcount = om*last_col_len  ; src  = mpisize-1 ; recvtag = src
+    sendcount = om*grid % first_col_len ; dest = mpisize-1 ; sendtag = nproc
+    recvcount = om*grid % last_col_len  ; src  = mpisize-1 ; recvtag = src
 
-    call mpi_sendrecv(cp0(:,istart:(istart+first_col_len-1)),sendcount,&
+    call mpi_sendrecv(cp0(:,grid % istart:(grid % istart+grid % first_col_len-1)),sendcount,&
                       MPI_REAL,dest,sendtag,                           &
-                      cp0(:,iistart:istart-1),recvcount,               &
+                      cp0(:,grid % iistart:grid % istart-1),recvcount,  &
                       MPI_REAL,src,recvtag,                            &
                       MPI_COMM_WORLD,status,ierr)
 
@@ -1470,12 +529,12 @@ if(config % isglobal)then
 
   if(nproc==mpisize-1)then ! communicate with first tile:
 
-    sendcount = om*last_col_len  ; dest = 0 ; sendtag = nproc
-    recvcount = om*first_col_len ; src  = 0 ; recvtag = src
+    sendcount = om*grid % last_col_len  ; dest = 0 ; sendtag = nproc
+    recvcount = om*grid % first_col_len ; src  = 0 ; recvtag = src
 
-    call mpi_sendrecv(cp0(:,(iend-last_col_len+1):iend),sendcount,&
+    call mpi_sendrecv(cp0(:,(grid % iend-grid % last_col_len+1):grid % iend),sendcount,&
                       MPI_REAL,dest,sendtag,                      &
-                      cp0(:,iend+1:iiend),recvcount,              &
+                      cp0(:,grid % iend+1:grid % iiend),recvcount,&
                       MPI_REAL,src,recvtag,                       &
                       MPI_COMM_WORLD,status,ierr)
 
@@ -1485,12 +544,12 @@ if(config % isglobal)then
 
   if(nproc==0)then ! communicate with last tile:
 
-    sendcount = om*first_col_len ; dest = mpisize-1 ; sendtag = nproc
-    recvcount = om*last_col_len  ; src  = mpisize-1 ; recvtag = src
+    sendcount = om*grid % first_col_len ; dest = mpisize-1 ; sendtag = nproc
+    recvcount = om*grid % last_col_len  ; src  = mpisize-1 ; recvtag = src
 
-    call mpi_sendrecv(cg0(:,istart:(istart+first_col_len-1)),sendcount,&
+    call mpi_sendrecv(cg0(:,grid % istart:(grid % istart+grid % first_col_len-1)),sendcount,&
                       MPI_REAL,dest,sendtag,                           &
-                      cg0(:,iistart:istart-1),recvcount,               &
+                      cg0(:,grid % iistart:grid % istart-1),recvcount,  &
                       MPI_REAL,src,recvtag,                            &
                       MPI_COMM_WORLD,status,ierr)
 
@@ -1498,12 +557,12 @@ if(config % isglobal)then
 
   if(nproc==mpisize-1)then ! communicate with first tile:
 
-    sendcount = om*last_col_len  ; dest = 0 ; sendtag = nproc
-    recvcount = om*first_col_len ; src  = 0 ; recvtag = src
+    sendcount = om*grid % last_col_len  ; dest = 0 ; sendtag = nproc
+    recvcount = om*grid % first_col_len ; src  = 0 ; recvtag = src
 
-    call mpi_sendrecv(cg0(:,(iend-last_col_len+1):iend),sendcount,&
+    call mpi_sendrecv(cg0(:,(grid % iend-grid % last_col_len+1):grid % iend),sendcount,&
                       MPI_REAL,dest,sendtag,                      &
-                      cg0(:,iend+1:iiend),recvcount,              &
+                      cg0(:,grid % iend+1:grid % iiend),recvcount,&
                       MPI_REAL,src,recvtag,                       &
                       MPI_COMM_WORLD,status,ierr)
 
@@ -1514,8 +573,8 @@ end if
 
 ! handle land points for cp and cg (needed for advection/refraction)
 do o=1,om
-  cp0(o,iistart-1) = minval(cp0(o,istart:iend))
-  cg0(o,iistart-1) = minval(cg0(o,istart:iend))
+  cp0(o,grid % iistart-1) = minval(cp0(o,grid % istart:grid % iend))
+  cg0(o,grid % iistart-1) = minval(cg0(o,grid % istart:grid % iend))
 end do
 
 end subroutine dispersion

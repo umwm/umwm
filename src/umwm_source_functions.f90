@@ -1,10 +1,11 @@
 module umwm_source_functions
   ! Module that provides wave source functions.
   use umwm_config, only: config_type
+  use umwm_grid, only: grid_type
   use umwm_module, only: bf1_renorm, bf2_renorm, cg0, cothkd, cp0, cth, &
                          cth2pp, dth, dummy, e, f, fcutoff, fice, &
                          fieldscale1, fieldscale2, fkovg, &
-                         iend, istart, k, k3dk, k4, kdk, logl2overz, &
+                         k, k3dk, k4, kdk, logl2overz, &
                          mss_fac, oc, psim, psiml2, rhorat, sds, &
                          sdt, shelt, sice, &
                          snl, ssin, sth, th, twopi, twopisds_fac, &
@@ -21,12 +22,15 @@ module umwm_source_functions
 
 contains
 
-  subroutine sin_d12(config, spectrum)
+  subroutine sin_d12(config, spectrum, grid)
     ! Wind input function based on Jeffreys's sheltering hypothesis
     ! and described by Donelan et al. (2012).
     type(config_type), intent(in) :: config
     type(spectrum_type), intent(in) :: spectrum
+    type(grid_type), intent(in) :: grid
     integer :: i, o, p
+
+    associate(istart => grid % istart, iend => grid % iend)
 
     ! protection against low wind speed values
     wspd = max(wspd, 1e-2)
@@ -89,14 +93,19 @@ contains
       end do
     end do
 
+    end associate
+
   end subroutine sin_d12
 
 
-  subroutine sds_d12(config, spectrum)
+  subroutine sds_d12(config, spectrum, grid)
     ! Wave dissipation function described by Donelan et al. (2012).
     type(config_type), intent(in) :: config
     type(spectrum_type), intent(in) :: spectrum
+    type(grid_type), intent(in) :: grid
     integer :: i, o, p
+
+    associate(istart => grid % istart, iend => grid % iend)
 
     dummy = 0
 
@@ -114,14 +123,17 @@ contains
       sds(o,p,i) = twopisds_fac * f(o) * dummy(o,p,i) * (e(o,p,i) * k4(o,i))**config % sds_power
     end do
 
+    end associate
+
   end subroutine sds_d12
 
 
-  subroutine s_ice(config, spectrum)
+  subroutine s_ice(config, spectrum, grid)
     ! Wave attenuation by sea ice, following Kohoun et al. (2014).
 
     type(config_type), intent(in) :: config
     type(spectrum_type), intent(in) :: spectrum
+    type(grid_type), intent(in) :: grid
     integer :: i, o, p
 
     ! parameters from Kohout et al. 2014
@@ -132,6 +144,8 @@ contains
     real, dimension(spectrum % num_frequencies, spectrum % num_directions) :: spectrumbin
 
     real :: ht_
+
+    associate(istart => grid % istart, iend => grid % iend)
   
     sice = 0.0
 
@@ -164,14 +178,19 @@ contains
  
     end do
 
+    end associate
+
   end subroutine s_ice
 
   
-  subroutine snl_d12(config, spectrum)
+  subroutine snl_d12(config, spectrum, grid)
 
     type(config_type), intent(in) :: config
     type(spectrum_type), intent(in) :: spectrum
+    type(grid_type), intent(in) :: grid
     integer :: o, p, i
+
+    associate(istart => grid % istart, iend => grid % iend)
 
     snl = 0
 
@@ -196,6 +215,8 @@ contains
     do concurrent(o = 1:spectrum % num_frequencies, i = istart:iend)
       sdt(o,i) = config % sdt_fac * sqrt(rhorat(i)) * ustar(i) * k(o,i)
     end do
+
+    end associate
 
   end subroutine snl_d12
 

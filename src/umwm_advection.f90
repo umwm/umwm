@@ -6,12 +6,11 @@ module umwm_advection
 #if defined(MPI)
   use mpi
 #endif
-  use umwm_module, only: cg0, cp0, cth, cth_curv, dta, dtr, dts, dth, &
-                         dxn, dxs, dye, dyw, e, ef, fice, &
-                         first, ie, iend, ierr, iie, iin, iis, iistart, &
-                         iiend, iiw, in, is, istart, iw, oc, &
-                         oneovar, oneovdth, oneovdx, oneovdy, pl, &
-                         pr, rotl, rotr, sth, sth_curv, uc, vc
+  use umwm_grid, only: grid_type
+  use umwm_module, only: cg0, cp0, cth, dta, dtr, dts, dth, &
+                         e, ef, fice, first, ierr, oc, &
+                         oneovdth, pl, &
+                         pr, rotl, rotr, sth, uc, vc
   use umwm_config, only: config_type
   use umwm_spectrum, only: spectrum_type
 
@@ -21,21 +20,30 @@ module umwm_advection
 
 contains
 
-  subroutine propagation(config, spectrum)
+  subroutine propagation(config, spectrum, grid)
 
     ! 1st order upstream finite difference advection in geographical space.
 
     type(config_type), intent(in) :: config
     type(spectrum_type), intent(in) :: spectrum
+    type(grid_type), intent(in) :: grid
     integer :: num_directions
     integer :: o, p, i
     real :: cge, cgw, cgn, cgs
     real :: feup, fedn, fwup, fwdn, fnup, fndn, fsup, fsdn
 
-    real :: flux(spectrum % num_frequencies, spectrum % num_directions, istart:iend)
+    real :: flux(spectrum % num_frequencies, spectrum % num_directions, grid % istart:grid % iend)
 
     num_directions = spectrum % num_directions
     flux = 0
+
+    associate(istart => grid % istart, iend => grid % iend, &
+              iistart => grid % iistart, iiend => grid % iiend, &
+              ie => grid % ie, iw => grid % iw, in => grid % in, is => grid % is, &
+              iie => grid % iie, iiw => grid % iiw, iin => grid % iin, iis => grid % iis, &
+              dxn => grid % dxn, dxs => grid % dxs, dye => grid % dye, dyw => grid % dyw, &
+              oneovar => grid % oneovar, cth_curv => grid % cth_curv, &
+              sth_curv => grid % sth_curv)
 
     do concurrent(i = istart:iend)
       do concurrent(o = 1:oc(i), p = 1:num_directions)
@@ -106,25 +114,33 @@ contains
       end do
     end do
 
+    end associate
+
   end subroutine propagation
 
 
-  subroutine refraction(config, spectrum)
+  subroutine refraction(config, spectrum, grid)
 
     ! 1st order upstream finite difference advection in
     ! directional space -- bottom- and current-induced refraction.
 
     type(config_type), intent(in) :: config
     type(spectrum_type), intent(in) :: spectrum
+    type(grid_type), intent(in) :: grid
     integer :: num_directions
     integer :: i, o, p
     logical :: compute_rotation_tendency
     real :: sendbuffer
     real, save :: dtr_temp
 
-    real :: flux(spectrum % num_frequencies, spectrum % num_directions, istart:iend)
+    real :: flux(spectrum % num_frequencies, spectrum % num_directions, grid % istart:grid % iend)
 
     num_directions = spectrum % num_directions
+
+    associate(istart => grid % istart, iend => grid % iend, &
+              ie => grid % ie, iw => grid % iw, in => grid % in, is => grid % is, &
+              iie => grid % iie, iiw => grid % iiw, iin => grid % iin, iis => grid % iis, &
+              oneovdx => grid % oneovdx, oneovdy => grid % oneovdy)
 
 #ifdef ESMF
     ! always compute in coupled mode:
@@ -191,6 +207,8 @@ contains
 
       end do
     end do
+
+    end associate
 
   end subroutine refraction
 

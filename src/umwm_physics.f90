@@ -3,20 +3,21 @@ module umwm_physics
   use umwm_module, only: cg0, cgmxx, cgmxy, cgmyy, cothkd, cp0, cth, &
                          dcg, dcg0, dcp, dcp0, dta, dtamin, dth, &
                          dthg, dts, dummy, dwd, dwl, dwp, e, ef, &
-                         f, first, ht, iend, ierr, inv_sds_power, invcp0, &
-                         istart, k, k3dk, kdk, momx, momy, mss, mwd, mwl, &
+                         f, first, ht, ierr, inv_sds_power, invcp0, &
+                         k, k3dk, kdk, momx, momy, mss, mwd, mwl, &
                          mwp, oc, oneoverk4, physics_time_step, &
                          rhow, sbf, sds, sdt, sdv, sice, snl, &
                          snl_arg, ssin, sth, sumt, th, twopi, &
                          twopisds_fac, uc, vc
   use umwm_config, only: config_type
+  use umwm_grid, only: grid_type
   use umwm_spectrum, only: spectrum_type
 
   implicit none
 
 contains
 
-subroutine source(config, spectrum)
+subroutine source(config, spectrum, grid)
 
   ! TODO move to umwm_integration.f90
 
@@ -26,6 +27,7 @@ use mpi
 
 type(config_type), intent(in) :: config
 type(spectrum_type), intent(in) :: spectrum
+type(grid_type), intent(in) :: grid
 integer :: i,o,p
 
 #ifdef MPI
@@ -33,6 +35,8 @@ real :: send_buff
 #endif
 
 !real,save :: explim_ramp
+
+associate(istart => grid % istart, iend => grid % iend)
 
 ! calculate the exponential argument:
 ef = 0
@@ -98,23 +102,28 @@ end do
 
 e(:,:,istart:iend) = 0.5*(e(:,:,istart:iend)+ef(:,:,istart:iend))
 
+end associate
+
 endsubroutine source
 
 
-subroutine diag(spectrum)
+subroutine diag(spectrum, grid)
 
 ! TODO move to umwm_diagnostics.f90
 
 type(spectrum_type), intent(in) :: spectrum
+type(grid_type), intent(in) :: grid
 integer              :: o,p,i
 integer              :: opeak,ppeak
 integer,dimension(2) :: spectrum_peak_loc
 
 real                        :: mag,xcomp,ycomp
-real,dimension(istart:iend) :: m0,m2
+real,dimension(grid % istart:grid % iend) :: m0,m2
 real,dimension(spectrum % num_frequencies, spectrum % num_directions) :: spectrumbin
 
 real :: ekdkovcp
+
+associate(istart => grid % istart, iend => grid % iend)
 
 m0 = 0
 m2 = 0
@@ -217,6 +226,8 @@ do i=istart,iend
   dcg(i) = dcg0(i)+uc(i)*cth(ppeak)+vc(i)*sth(ppeak)
 
 end do
+
+end associate
 
 end subroutine diag
 
