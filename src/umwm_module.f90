@@ -41,7 +41,6 @@ module umwm_module
   real :: delx,dely
   real :: dpt,dlnf,dmin,dtg,dts,dth,dthg
   real :: explim
-  real :: fmin,fmax,fprog
   real :: fieldscale1,fieldscale2
   real :: g,gustiness
   real :: inv_sds_power

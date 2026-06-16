@@ -3,6 +3,7 @@ module umwm_init
 #ifdef MPI
 use mpi
 #endif
+use umwm_config, only: config_type
 use umwm_constants, only: rk
 use umwm_dispersion, only: group_speed, wavenumber
 use umwm_grid, only: grid_type
@@ -14,32 +15,15 @@ implicit none
 contains
 
 
-subroutine alloc(option, config, grid, spectrum)
+subroutine alloc(grid, spectrum)
   ! Allocates UMWM arrays
-use umwm_config, only: config_type
+  type(grid_type), intent(in) :: grid
+  type(spectrum_type), intent(in) :: spectrum
 
-integer,intent(in) :: option
-type(config_type), intent(in) :: config
-type(grid_type), intent(in) :: grid
-type(spectrum_type), intent(in), optional :: spectrum
-
-! allocate 2-d native arrays:
-if(option==1)then
-
-  om = config % om
-  pm = config % pm
-  fmin = config % fmin
-  fmax = config % fmax
-
-! allocate remapped arrays:
-elseif(option==2)then
-
-  if (present(spectrum)) then
-    om = spectrum % num_frequencies
-    pm = spectrum % num_directions
-    fmin = real(spectrum % frequency_min, kind(fmin))
-    fmax = real(spectrum % frequency_max, kind(fmax))
-  end if
+  associate( &
+    om => spectrum % num_frequencies, &
+    pm => spectrum % num_directions &
+  )
 
   ! 1-d arrays:
   allocate(dom(om),f(om))
@@ -57,7 +41,7 @@ elseif(option==2)then
   shelt = 0
 
   allocate(physics_time_step(grid % istart:grid % iend))
-  physics_time_step = 0 
+  physics_time_step = 0
 
   ! mean spectrum quantities:
   allocate(mwd(grid % istart:grid % iend)) ! direction
@@ -168,11 +152,9 @@ elseif(option==2)then
 
   e = tiny(e)
 
-end if ! if(option)
+  end associate
 
 end subroutine alloc
-
-
 
 
 subroutine init(config, spectrum, grid, forcing)
@@ -196,8 +178,6 @@ integer :: n
 ! initialize legacy spectrum aliases:
 om = spectrum % num_frequencies
 pm = spectrum % num_directions
-fmin = real(spectrum % frequency_min, kind(fmin))
-fmax = real(spectrum % frequency_max, kind(fmax))
 dlnf = real(spectrum % dlnf, kind(dlnf))
 dth = real(spectrum % dth, kind(dth))
 

@@ -19,7 +19,7 @@ contains
     type(grid_type), intent(in) :: grid
     type(forcing_type), intent(inout) :: forcing
 
-    call alloc(2, config, grid, spectrum) ! allocate unrolled arrays
+    call alloc(grid, spectrum) ! allocate unrolled arrays
     call output_grid(config, grid)    ! output a grid file
     call forcing % load(config, config % starttimestr, grid) ! read initial fields
     call init(config, spectrum, grid, forcing) ! initialize model variables
