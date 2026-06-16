@@ -20,7 +20,7 @@ contains
     type(forcing_type), intent(inout) :: forcing
 
     call alloc(grid, spectrum) ! allocate unrolled arrays
-    call output_grid(config, grid)    ! output a grid file
+    call output_grid(grid)    ! output a grid file
     call forcing % load(config, config % starttimestr, grid) ! read initial fields
     call init(config, spectrum, grid, forcing) ! initialize model variables
     call stokes_drift(spectrum, config, grid, 'init') ! initialize stokes drift arrays

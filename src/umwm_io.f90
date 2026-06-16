@@ -10,11 +10,8 @@ use netcdf
 contains
 
 
-
-subroutine output_grid(config, grid)
+subroutine output_grid(grid)
 ! Outputs grid related fields into a netcdf file.
-
-type(config_type), intent(in) :: config
 type(grid_type), intent(in) :: grid
 integer :: ncid
 integer :: xdimid,ydimid
@@ -64,8 +61,6 @@ end subroutine output_grid
 
 subroutine output_spectrum_nc(config, timestr, spectrum, grid, forcing)
 ! Writes out model spectrum output in a netcdf format
-
-! arguments:
 type(config_type), intent(in) :: config
 character(19),intent(in) :: timestr
 type(spectrum_type), intent(in) :: spectrum
@@ -787,7 +782,7 @@ end subroutine output_grid_nc
 
 
 subroutine gatherfield(field, field_mn, grid)
-! This subroutine gathers a field on root processor 
+! This subroutine gathers a field on root processor
 ! and remaps it on a 2-d array.
 #ifdef MPI
 use mpi
