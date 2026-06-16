@@ -11,7 +11,8 @@ program test_forcing
 
   suite = test('test_forcing', [ &
     test(interpolation_snapshot), &
-    test(wind_speed_floor) &
+    test(wind_speed_floor), &
+    test(file_backed_rankine_forcing) &
   ])
 
   if (.not. suite % ok) error stop 1
@@ -143,9 +144,90 @@ contains
     res = test('wind_speed_floor', ok)
   end function wind_speed_floor
 
+  function file_backed_rankine_forcing() result(res)
+    type(test_result) :: res
+    type(config_type) :: config
+    type(grid_type) :: grid
+    type(forcing_type) :: forcing
+    real, allocatable :: uw0(:,:), vw0(:,:), uc0(:,:), vc0(:,:)
+    real, allocatable :: rhoa0(:), rhow0(:)
+    real, allocatable :: expected_uw(:,:), expected_vw(:,:)
+    real, allocatable :: expected_uc_2d(:,:), expected_vc_2d(:,:)
+    real, allocatable :: expected_wspd_2d(:,:), expected_wdir_2d(:,:)
+    real, allocatable :: expected_wspd(:), expected_wdir(:)
+    real, allocatable :: expected_uc(:), expected_vc(:)
+    real, allocatable :: expected_rhoa(:), expected_rhow(:), expected_rhorat(:)
+    logical :: ok
+
+    config = rankine_config()
+
+    call grid % initialize(config)
+    call forcing % initialize(config, grid)
+
+    call forcing % load(config, config % starttimestr, grid)
+    uw0 = forcing % uwf
+    vw0 = forcing % vwf
+    uc0 = forcing % ucf
+    vc0 = forcing % vcf
+    rhoa0 = forcing % rhoaf
+    rhow0 = forcing % rhowf
+
+    call forcing % update(config, '2026-01-01 01:00:00', grid)
+
+    expected_uw = 0.5 * (uw0 + forcing % uwf)
+    expected_vw = 0.5 * (vw0 + forcing % vwf)
+    expected_uc_2d = 0.5 * (uc0 + forcing % ucf)
+    expected_vc_2d = 0.5 * (vc0 + forcing % vcf)
+    expected_wspd_2d = sqrt(expected_uw**2 + expected_vw**2)
+    expected_wdir_2d = atan2(expected_vw, expected_uw)
+    expected_wspd = max(grid % remap_mn2i(expected_wspd_2d), 1e-2)
+    expected_wdir = grid % remap_mn2i(expected_wdir_2d)
+    expected_uc = grid % remap_mn2i(expected_uc_2d)
+    expected_vc = grid % remap_mn2i(expected_vc_2d)
+    expected_rhoa = 0.5 * (rhoa0 + forcing % rhoaf)
+    expected_rhow = 0.5 * (rhow0 + forcing % rhowf)
+    expected_rhorat = expected_rhoa / expected_rhow
+
+    sumt = 0.5 * config % dtg
+    call forcing % interpolate(config, grid)
+
+    ok = maxval(abs(uw0 - forcing % uwf)) > 1.0 .and. &
+         maxval(abs(vw0 - forcing % vwf)) > 1.0 .and. &
+         maxval(expected_wspd_2d) > 20.0 .and. &
+         all_nearly_equal(reshape(forcing % uw, [size(forcing % uw)]), &
+                          reshape(expected_uw, [size(expected_uw)])) .and. &
+         all_nearly_equal(reshape(forcing % vw, [size(forcing % vw)]), &
+                          reshape(expected_vw, [size(expected_vw)])) .and. &
+         all_nearly_equal(reshape(forcing % wspd_2d, [size(forcing % wspd_2d)]), &
+                          reshape(expected_wspd_2d, [size(expected_wspd_2d)])) .and. &
+         all_nearly_equal(reshape(forcing % wdir_2d, [size(forcing % wdir_2d)]), &
+                          reshape(expected_wdir_2d, [size(expected_wdir_2d)])) .and. &
+         all_nearly_equal(reshape(forcing % uc_2d, [size(forcing % uc_2d)]), &
+                          reshape(expected_uc_2d, [size(expected_uc_2d)])) .and. &
+         all_nearly_equal(reshape(forcing % vc_2d, [size(forcing % vc_2d)]), &
+                          reshape(expected_vc_2d, [size(expected_vc_2d)])) .and. &
+         all_nearly_equal(forcing % wspd, expected_wspd) .and. &
+         all_nearly_equal(forcing % wdir, expected_wdir) .and. &
+         all_nearly_equal(forcing % uc, expected_uc) .and. &
+         all_nearly_equal(forcing % vc, expected_vc) .and. &
+         all_nearly_equal(forcing % rhoa, expected_rhoa) .and. &
+         all_nearly_equal(forcing % rhow, expected_rhow) .and. &
+         all_nearly_equal(forcing % rhorat, expected_rhorat)
+
+    call forcing % finalize()
+    call grid % finalize()
+
+    res = test('file_backed_rankine_forcing', ok)
+  end function file_backed_rankine_forcing
+
   function valid_config() result(config)
     type(config_type) :: config
     config = config_type('../namelists/main.nml')
   end function valid_config
+
+  function rankine_config() result(config)
+    type(config_type) :: config
+    config = config_type('namelists/forcing_rankine.nml')
+  end function rankine_config
 
 end program test_forcing
