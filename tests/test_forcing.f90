@@ -10,7 +10,8 @@ program test_forcing
   type(test_result) :: suite
 
   suite = test('test_forcing', [ &
-    test(interpolation_snapshot) &
+    test(interpolation_snapshot), &
+    test(wind_speed_floor) &
   ])
 
   if (.not. suite % ok) error stop 1
@@ -110,6 +111,37 @@ contains
 
     res = test('interpolation_snapshot', ok)
   end function interpolation_snapshot
+
+  function wind_speed_floor() result(res)
+    type(test_result) :: res
+    type(config_type) :: config
+    type(grid_type) :: grid
+    type(forcing_type) :: forcing
+    logical :: ok
+
+    config = valid_config()
+    config % winds = .true.
+    config % dtg = 10.0
+    config % gustiness = 0.0
+
+    call grid % initialize(config)
+    call forcing % initialize(config, grid)
+
+    forcing % uwb = 0.0
+    forcing % vwb = 0.0
+    forcing % uwf = 0.0
+    forcing % vwf = 0.0
+
+    sumt = 5.0
+    call forcing % interpolate(config, grid)
+
+    ok = all(abs(forcing % wspd - 1e-2) < 1e-6)
+
+    call forcing % finalize()
+    call grid % finalize()
+
+    res = test('wind_speed_floor', ok)
+  end function wind_speed_floor
 
   function valid_config() result(config)
     type(config_type) :: config

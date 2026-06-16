@@ -10,6 +10,8 @@ module umwm_forcing
   private
   public :: forcing_type
 
+  real, parameter :: min_wind_speed = 1e-2
+
   type :: forcing_type
     logical :: readfile = .false.
 
@@ -302,6 +304,7 @@ contains
     if (config % air_density) self % rhoa = self % rhoab * (1 - alpha) + self % rhoaf * alpha
     if (config % water_density) self % rhow = self % rhowb * (1 - alpha) + self % rhowf * alpha
 
+    self % wspd = max(self % wspd, min_wind_speed)
     self % rhorat = self % rhoa / self % rhow
 
   end subroutine forcing_interpolate

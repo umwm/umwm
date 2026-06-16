@@ -1,1 +1,9 @@
-netCDF4
+certifi==2026.5.20
+cftime==1.6.5
+netCDF4==1.7.4
+numpy==2.4.6
+packaging==26.2
+pandas==3.0.3
+python-dateutil==2.9.0.post0
+six==1.17.0
+xarray==2026.4.0
