@@ -31,16 +31,6 @@ if(option==1)then
   fmin = config % fmin
   fmax = config % fmax
 
-  allocate(gustu(grid % mm,grid % nm), gustv(grid % mm,grid % nm))
-  allocate(rhoa_2d(grid % mm,grid % nm), rhow_2d(grid % mm,grid % nm))
-  allocate(wspd_2d(grid % mm,grid % nm))
-  allocate(uc_2d(grid % mm,grid % nm), ucb(grid % mm,grid % nm), ucf(grid % mm,grid % nm))
-  allocate(uw(grid % mm,grid % nm), uwb(grid % mm,grid % nm), uwf(grid % mm,grid % nm))
-  allocate(vc_2d(grid % mm,grid % nm), vcb(grid % mm,grid % nm), vcf(grid % mm,grid % nm))
-  allocate(vw(grid % mm,grid % nm), vwb(grid % mm,grid % nm), vwf(grid % mm,grid % nm))
-  allocate(wdir_2d(grid % mm,grid % nm))
-  allocate(fice_2d(grid % mm,grid % nm), ficeb(grid % mm,grid % nm), ficef(grid % mm,grid % nm))
-
 ! allocate remapped arrays:
 elseif(option==2)then
 
@@ -136,22 +126,6 @@ elseif(option==2)then
 
   allocate(ustar(grid % istart:grid % iend)) ! air-side friction velocity
 
-  allocate(wspd(grid % imm)) ! wind speed
-  wspd = 0
-
-  allocate(fice(grid % imm))
-  fice = 0
-  
-  allocate(wdir(grid % imm))                       ! wind direction
-  wdir = 0
-
-  allocate(uc(grid % imm), vc(grid % imm)) ! ocean currents
-  uc = 0; vc = 0
-
-  allocate(rhoa(grid % imm), rhoab(grid % imm), rhoaf(grid % imm)) ! air density
-  allocate(rhow(grid % imm), rhowb(grid % imm), rhowf(grid % imm)) ! water density
-  allocate(rhorat(grid % imm))                                     ! air/water density ratio
-
   allocate(psim(grid % imm)) ! integrated stability function for momentum
   psim = 0
 
@@ -201,15 +175,17 @@ end subroutine alloc
 
 
 
-subroutine init(config, spectrum, grid)
+subroutine init(config, spectrum, grid, forcing)
 ! Initialize model variables such as frequencies, direction angles,
 ! phase speed and group velocity, wave numbers, etc.
 use umwm_config, only: config_type
+use umwm_forcing, only: forcing_type
 use umwm_util,only:raiseexception
 
 type(config_type), intent(in) :: config
 type(spectrum_type), intent(in) :: spectrum
 type(grid_type), intent(in) :: grid
+type(forcing_type), intent(inout) :: forcing
 integer :: i, o, p, pp, ind
 real :: mindelx
 
@@ -232,9 +208,7 @@ th = real(spectrum % direction, kind(th))
 ! define various constants:
 dthg          = dth * config % g
 oneovdth      = 1./dth
-log10overz    = log(10. / config % z)
 twopisds_fac  = twopi * config % sds_fac
-twonu         = 2. * config % nu_water
 fieldscale1   = config % sin_diss1 / config % sin_fac
 fieldscale2   = config % sin_diss2 / config % sin_diss1
 inv_sds_power = 1. / config % sds_power
@@ -300,20 +274,20 @@ else
 end if
 
 ! if sea ice from file, update the fice field
-if (config % seaice) fice = grid % remap_mn2i(ficef)
+if (config % seaice) forcing % fice = grid % remap_mn2i(forcing % ficef)
 
 ! if forcing from file, update the wspd field for ustar first guess
-if (config % winds) wspd = grid % remap_mn2i(sqrt(uwf**2 + vwf**2))
+if (config % winds) forcing % wspd = grid % remap_mn2i(sqrt(forcing % uwf**2 + forcing % vwf**2))
 
 ! initialize drag coefficient (Large and Pond, 1981):
 cd = 1.2e-3
-do concurrent (i=grid % istart:grid % iend, wspd(i) > 11)
-  cd(i) = (0.49 + 0.065 * wspd(i)) * 1e-3
+do concurrent (i=grid % istart:grid % iend, forcing % wspd(i) > 11)
+  cd(i) = (0.49 + 0.065 * forcing % wspd(i)) * 1e-3
 end do
 
 ! initialize friction velocity:
 do i=grid % istart,grid % iend
-  ustar(i) = sqrt(cd(i))*wspd(i)
+  ustar(i) = sqrt(cd(i))*forcing % wspd(i)
 end do
 
 #ifdef MPI

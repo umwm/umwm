@@ -6,10 +6,11 @@ module umwm_physics
                          f, first, ht, ierr, inv_sds_power, invcp0, &
                          k, k3dk, kdk, momx, momy, mss, mwd, mwl, &
                          mwp, oc, oneoverk4, physics_time_step, &
-                         rhow, sbf, sds, sdt, sdv, sice, snl, &
+                         sbf, sds, sdt, sdv, sice, snl, &
                          snl_arg, ssin, sth, sumt, th, twopi, &
-                         twopisds_fac, uc, vc
+                         twopisds_fac
   use umwm_config, only: config_type
+  use umwm_forcing, only: forcing_type
   use umwm_grid, only: grid_type
   use umwm_spectrum, only: spectrum_type
 
@@ -107,12 +108,13 @@ end associate
 endsubroutine source
 
 
-subroutine diag(spectrum, grid)
+subroutine diag(spectrum, grid, forcing)
 
 ! TODO move to umwm_diagnostics.f90
 
 type(spectrum_type), intent(in) :: spectrum
 type(grid_type), intent(in) :: grid
+type(forcing_type), intent(in) :: forcing
 integer              :: o,p,i
 integer              :: opeak,ppeak
 integer,dimension(2) :: spectrum_peak_loc
@@ -163,11 +165,11 @@ do i=istart,iend
     end do
   end do
 
-  momx(i)  = momx(i)*rhow(i)*dthg
-  momy(i)  = momy(i)*rhow(i)*dthg
-  cgmxx(i) = cgmxx(i)*rhow(i)*dthg
-  cgmxy(i) = cgmxy(i)*rhow(i)*dthg
-  cgmyy(i) = cgmyy(i)*rhow(i)*dthg
+  momx(i)  = momx(i)*forcing % rhow(i)*dthg
+  momy(i)  = momy(i)*forcing % rhow(i)*dthg
+  cgmxx(i) = cgmxx(i)*forcing % rhow(i)*dthg
+  cgmxy(i) = cgmxy(i)*forcing % rhow(i)*dthg
+  cgmyy(i) = cgmyy(i)*forcing % rhow(i)*dthg
 
   ! significant wave height:
   ht(i) = 0.
@@ -222,8 +224,8 @@ do i=istart,iend
   dcg0(i) = cg0(opeak,i)                   ! dominant group speed, intrinsic
 
   ! dominant phase and group speed:
-  dcp(i) = dcp0(i)+uc(i)*cth(ppeak)+vc(i)*sth(ppeak)
-  dcg(i) = dcg0(i)+uc(i)*cth(ppeak)+vc(i)*sth(ppeak)
+  dcp(i) = dcp0(i)+forcing % uc(i)*cth(ppeak)+forcing % vc(i)*sth(ppeak)
+  dcg(i) = dcg0(i)+forcing % uc(i)*cth(ppeak)+forcing % vc(i)*sth(ppeak)
 
 end do
 

@@ -11,8 +11,6 @@ module umwm_module
   ! time objects
   type(datetime) :: starttime, stoptime, currenttime
 
-  character(len=19) :: starttimestr_nml, stoptimestr_nml
-
   ! spectrum dimensions
   integer :: om  ! number of frequency/wavenumber bins
   integer :: pm  ! number of direction bins
@@ -23,9 +21,6 @@ module umwm_module
 
   ! stdout related variables
   integer :: iip, nproc_plot, xpl, ypl
-
-  ! time stepping
-  integer :: step, timestep
 
   ! .true. during first time step
   logical :: first, firstdtg
@@ -51,14 +46,10 @@ module umwm_module
   real :: g,gustiness
   real :: inv_sds_power
   real :: kappa
-  real :: log10overz
-  real :: mss_fac
-  real :: nu_air,nu_water
   real :: oneovdth
-  real :: rhoa0,rhow0
   real :: sbf_fac,sbp_fac,sds_fac,sds_power,sdt_fac,sfct,sin_diss1
   real :: sin_diss2,sin_fac,snl_fac,sumt
-  real :: temp0,twopisds_fac,twonu
+  real :: twopisds_fac
   real :: wspd0,wdir0,uc0,vc0,z
   real :: fice0,fice_lth,fice_uth
 
@@ -77,26 +68,13 @@ module umwm_module
   real,dimension(:),allocatable :: dom
   real,dimension(:),allocatable :: f
 
-  ! 2-dimensional, unrolled arrays:
-  real,dimension(:,:),allocatable :: gustu,gustv
-  real,dimension(:,:),allocatable :: rhoa_2d,rhow_2d
-  real,dimension(:,:),allocatable :: wspd_2d,wdir_2d
-  real,dimension(:,:),allocatable :: fice_2d,ficeb,ficef
-  real,dimension(:,:),allocatable :: uwb,vwb,uw,vw,uwf,vwf
-  real,dimension(:,:),allocatable :: ucb,uc_2d,ucf,vcb,vc_2d,vcf
-
-  real,dimension(:),allocatable :: cd,dwd,dwl,dwp,fcutoff,mwf,pwf
+  real,dimension(:),allocatable :: cd,dwd,dwl,dwp,fcutoff
   real,dimension(:),allocatable :: dcp0,dcp,dcg0,dcg
   real,dimension(:),allocatable :: ht,mss,mwd,mwl,mwp,shelt
 
   real,dimension(:),allocatable :: momx,momy ! momentum in x- and y-direction
   real,dimension(:),allocatable :: cgmxx,cgmxy,cgmyy ! horizontal momentum fluxes
   real,dimension(:),allocatable :: physics_time_step
-
-  ! air and water density:
-  real,dimension(:),allocatable :: rhoab,rhoa,rhoaf
-  real,dimension(:),allocatable :: rhowb,rhow,rhowf
-  real,dimension(:),allocatable :: rhorat
 
   ! stability function
   real,dimension(:),allocatable :: psim
@@ -125,9 +103,7 @@ module umwm_module
   real,dimension(:),allocatable :: tailatmx,tailatmy
   real,dimension(:),allocatable :: tailocnx,tailocny
 
-  real,dimension(:),allocatable :: uc,vc,ustar
-  real,dimension(:),allocatable :: wspd,wdir
-  real,dimension(:),allocatable :: fice
+  real,dimension(:),allocatable :: ustar
 
   ! snl downshifting weights, used in snl routine:
   real,dimension(:,:),allocatable :: bf1_renorm,bf2_renorm

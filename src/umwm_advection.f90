@@ -6,11 +6,12 @@ module umwm_advection
 #if defined(MPI)
   use mpi
 #endif
+  use umwm_forcing, only: forcing_type
   use umwm_grid, only: grid_type
   use umwm_module, only: cg0, cp0, cth, dta, dtr, dts, dth, &
-                         e, ef, fice, first, ierr, oc, &
+                         e, ef, first, ierr, oc, &
                          oneovdth, pl, &
-                         pr, rotl, rotr, sth, uc, vc
+                         pr, rotl, rotr, sth
   use umwm_config, only: config_type
   use umwm_spectrum, only: spectrum_type
 
@@ -20,13 +21,14 @@ module umwm_advection
 
 contains
 
-  subroutine propagation(config, spectrum, grid)
+  subroutine propagation(config, spectrum, grid, forcing)
 
     ! 1st order upstream finite difference advection in geographical space.
 
     type(config_type), intent(in) :: config
     type(spectrum_type), intent(in) :: spectrum
     type(grid_type), intent(in) :: grid
+    type(forcing_type), intent(in) :: forcing
     integer :: num_directions
     integer :: o, p, i
     real :: cge, cgw, cgn, cgs
@@ -69,10 +71,10 @@ contains
 
     ! check if currents are non-zero:
     if (.not. config % isglobal) then
-      zerocurrents = .not. (any(uc(iistart:iiend) /= 0)&
-                       .or. any(vc(iistart:iiend) /= 0))
+      zerocurrents = .not. (any(forcing % uc(iistart:iiend) /= 0)&
+                       .or. any(forcing % vc(iistart:iiend) /= 0))
     else
-      zerocurrents = .not. (any(uc /= 0) .or. any(vc /= 0))
+      zerocurrents = .not. (any(forcing % uc /= 0) .or. any(forcing % vc /= 0))
     end if
 
     if (.not. zerocurrents) then ! advect wave energy by currents
@@ -80,16 +82,24 @@ contains
       do concurrent(i = istart:iend)
 
         ! x-direction
-        feup = (uc(i) + uc(iie(i)) + abs(uc(i) + uc(iie(i)))) * dye(i)
-        fedn = (uc(i) + uc(iie(i)) - abs(uc(i) + uc(iie(i)))) * dye(i)
-        fwup = (uc(i) + uc(iiw(i)) + abs(uc(i) + uc(iiw(i)))) * dyw(i)
-        fwdn = (uc(i) + uc(iiw(i)) - abs(uc(i) + uc(iiw(i)))) * dyw(i)
+        feup = (forcing % uc(i) + forcing % uc(iie(i)) + &
+                abs(forcing % uc(i) + forcing % uc(iie(i)))) * dye(i)
+        fedn = (forcing % uc(i) + forcing % uc(iie(i)) - &
+                abs(forcing % uc(i) + forcing % uc(iie(i)))) * dye(i)
+        fwup = (forcing % uc(i) + forcing % uc(iiw(i)) + &
+                abs(forcing % uc(i) + forcing % uc(iiw(i)))) * dyw(i)
+        fwdn = (forcing % uc(i) + forcing % uc(iiw(i)) - &
+                abs(forcing % uc(i) + forcing % uc(iiw(i)))) * dyw(i)
 
         ! y-direction
-        fnup = (vc(i) + vc(iin(i)) + abs(vc(i) + vc(iin(i)))) * dxn(i)
-        fndn = (vc(i) + vc(iin(i)) - abs(vc(i) + vc(iin(i)))) * dxn(i)
-        fsup = (vc(i) + vc(iis(i)) + abs(vc(i) + vc(iis(i)))) * dxs(i)
-        fsdn = (vc(i) + vc(iis(i)) - abs(vc(i) + vc(iis(i)))) * dxs(i)
+        fnup = (forcing % vc(i) + forcing % vc(iin(i)) + &
+                abs(forcing % vc(i) + forcing % vc(iin(i)))) * dxn(i)
+        fndn = (forcing % vc(i) + forcing % vc(iin(i)) - &
+                abs(forcing % vc(i) + forcing % vc(iin(i)))) * dxn(i)
+        fsup = (forcing % vc(i) + forcing % vc(iis(i)) + &
+                abs(forcing % vc(i) + forcing % vc(iis(i)))) * dxs(i)
+        fsdn = (forcing % vc(i) + forcing % vc(iis(i)) - &
+                abs(forcing % vc(i) + forcing % vc(iis(i)))) * dxs(i)
 
         do concurrent(o = 1:oc(i), p = 1:num_directions)
           flux(o,p,i) = flux(o,p,i)                                &
@@ -108,7 +118,7 @@ contains
       do concurrent(o = 1:oc(i), p = 1:num_directions)
           ef(o,p,i) = ef(o,p,i) - 0.25 * dta * flux(o,p,i) * oneovar(i)
 
-          if (fice(i) > config % fice_uth) then
+          if (forcing % fice(i) > config % fice_uth) then
             ef(o,p,i) = 0.0
           end if  
       end do
@@ -119,7 +129,7 @@ contains
   end subroutine propagation
 
 
-  subroutine refraction(config, spectrum, grid)
+  subroutine refraction(config, spectrum, grid, forcing)
 
     ! 1st order upstream finite difference advection in
     ! directional space -- bottom- and current-induced refraction.
@@ -127,6 +137,7 @@ contains
     type(config_type), intent(in) :: config
     type(spectrum_type), intent(in) :: spectrum
     type(grid_type), intent(in) :: grid
+    type(forcing_type), intent(in) :: forcing
     integer :: num_directions
     integer :: i, o, p
     logical :: compute_rotation_tendency
@@ -157,9 +168,9 @@ contains
       do concurrent(i = istart:iend)
         do concurrent(o = 1:oc(i), p = 1:num_directions)
           flux(o,p,i) = 0.5 * (((cp0(o,ie(i)) - cp0(o,iw(i))) * sth(p) &
-                               + vc(iie(i)) - vc(iiw(i))) * oneovdx(i) &
+                               + forcing % vc(iie(i)) - forcing % vc(iiw(i))) * oneovdx(i) &
                              - ((cp0(o,in(i)) - cp0(o,is(i))) * cth(p) &
-                               + uc(iin(i)) - uc(iis(i))) * oneovdy(i))
+                               + forcing % uc(iin(i)) - forcing % uc(iis(i))) * oneovdy(i))
         end do
       end do
 
@@ -201,7 +212,7 @@ contains
         ! integrate
         ef(o,p,i) = ef(o,p,i) - dtr * flux(o,p,i)
         
-        if (fice(i) > config % fice_uth) then
+        if (forcing % fice(i) > config % fice_uth) then
           ef(o,p,i) = 0.0
         end if
 

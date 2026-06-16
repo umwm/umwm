@@ -7,6 +7,7 @@ This file is a technical reference for the physics implemented in the University
 | Physics area | Main implementation | Purpose |
 | --- | --- | --- |
 | Model loop | `src/umwm_top.f90` | Calls source functions, source integration, advection, refraction, stress, Stokes drift, diagnostics, and output. |
+| Forcing state | `src/umwm_forcing.f90` | `forcing_type` owns mutable wind, current, density, sea-ice, remapped, and interpolation-scratch fields. |
 | Source functions | `src/umwm_source_functions.f90` | Wind input, wave breaking, nonlinear downshifting, turbulence, and sea-ice attenuation. |
 | Source integration and diagnostics | `src/umwm_physics.f90` | Exponential source update, diagnostic spectral tail, integrated wave diagnostics. |
 | Propagation and refraction | `src/umwm_advection.f90` | First-order upstream advection in geographic and directional space. |
@@ -16,16 +17,22 @@ This file is a technical reference for the physics implemented in the University
 | Dispersion | `src/umwm_dispersion.f90` | Capillary-gravity dispersion relation, wavenumber solve, angular frequency, and group speed. |
 | Initialization and precomputed factors | `src/umwm_init.f90` | Runtime allocation, legacy spectrum aliases, wave kinematics, integration weights, dissipation constants, CFL limits. |
 
+The top-level program constructs explicit `config`, `grid`, `spectrum`,
+and `forcing` objects. `config_type` remains the source of forcing
+switches and constants, while `forcing_type` owns the mutable runtime
+forcing snapshots and remapped fields.
+
 Within each global forcing/output time step `dtg`, UMWM repeatedly runs:
 
-1. Interpolate forcing fields.
-2. Compute `Sin`, `Sds`, `Snl`, `Sice`, plus turbulence and linear sink rates.
-3. Integrate source terms with a dynamic physics time step `dts`.
-4. Exchange MPI halos when enabled.
-5. Propagate wave variance geographically.
-6. Refract wave variance directionally.
-7. Compute atmospheric stress and drag.
-8. At output times, compute Stokes drift, diagnostics, ocean stress, spectra, grid output, and restart output.
+1. Advance file-backed forcing snapshots, when not ESMF-coupled.
+2. Interpolate `forcing` fields.
+3. Compute `Sin`, `Sds`, `Snl`, `Sice`, plus turbulence and linear sink rates.
+4. Integrate source terms with a dynamic physics time step `dts`.
+5. Exchange MPI halos when enabled.
+6. Propagate wave variance geographically.
+7. Refract wave variance directionally.
+8. Compute atmospheric stress and drag.
+9. At output times, compute Stokes drift, diagnostics, ocean stress, spectra, grid output, and restart output.
 
 ## State Variables and Conventions
 
@@ -40,6 +47,14 @@ state is discretized in:
 - time.
 
 The main spectrum array is `e(o,p,i)`.
+
+Forcing fields are represented by `type(forcing_type)` from
+`src/umwm_forcing.f90`. It stores native-grid snapshots for backward and
+forward forcing time levels, interpolated native-grid scratch fields,
+and remapped one-dimensional fields consumed by source functions,
+advection/refraction, stress, diagnostics, and output. File-backed
+updates remain disabled under `ESMF`, where coupled forcing is expected
+to be supplied externally.
 
 The spectral grid metadata is represented explicitly by
 `type(spectrum_type)` from `src/umwm_spectrum.f90`. The top-level program

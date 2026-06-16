@@ -1,100 +1,14 @@
 module umwm_io
 ! Provides input/output routines for the wave model
+use umwm_forcing, only: forcing_type
 use umwm_grid, only: grid_type
 use umwm_module
 use umwm_spectrum, only: spectrum_type
 use umwm_config, only: config_type
 use netcdf
 
-logical :: readfile
-
 contains
 
-
-
-subroutine input_nc(config, timestr, grid)
-! Reads input data files for atmospheric and oceanic fields.
-
-type(config_type), intent(in) :: config
-character(19), intent(in) :: timestr
-type(grid_type), intent(in) :: grid
-character(999) :: nc_infile
-character(19) :: readstr
-integer :: ncid,varid
-
-readstr = timestr
-readstr(11:11) = '_'
-
-! forcing fields are input from this file:
-nc_infile = 'input/umwmin_' // readstr // '.nc'
-
-! set the logical switch to .true. only if from file is requested
-! for any of the fields:
-readfile = any([config % winds, config % currents, config % air_density, &
-                config % water_density, config % seaice])
-
-if (readfile) call nc_check(nf90_open(trim(nc_infile), nf90_nowrite, ncid))
-
-if(config % winds)then
-  call nc_check(nf90_inq_varid(ncid,'uw',varid))
-  call nc_check(nf90_get_var(ncid,varid,uwf))
-  call nc_check(nf90_inq_varid(ncid,'vw',varid))
-  call nc_check(nf90_get_var(ncid,varid,vwf))
-else
-  wspd = config % wspd0
-  wdir = config % wdir0
-end if
-
-if(config % currents)then
-  call nc_check(nf90_inq_varid(ncid,'uc',varid))
-  call nc_check(nf90_get_var(ncid,varid,ucf))
-  call nc_check(nf90_inq_varid(ncid,'vc',varid))
-  call nc_check(nf90_get_var(ncid,varid,vcf))
-else
-  ucf = config % uc0
-  vcf = config % vc0
-  uc  = config % uc0
-  vc  = config % vc0
-end if
-
-if(config % seaice)then
-  call nc_check(nf90_inq_varid(ncid,'fice',varid))
-  call nc_check(nf90_get_var(ncid,varid,ficef))
-else
-  fice_2d = config % fice0
-  fice    = config % fice0
-end if
-
-where(grid % mask == 0)
-  ucf = 0
-  vcf = 0
-endwhere
-
-if(config % air_density)then
-  call nc_check(nf90_inq_varid(ncid,'rhoa',varid))
-  call nc_check(nf90_get_var(ncid,varid,rhoa_2d))
-else
-  rhoa_2d = config % rhoa0
-  rhoa    = config % rhoa0
-end if
-
-if(config % water_density)then
-  call nc_check(nf90_inq_varid(ncid,'rhow',varid))
-  call nc_check(nf90_get_var(ncid,varid,rhow_2d))
-else
-  rhow_2d = config % rhow0
-  rhow    = config % rhow0
-end if
-
-if(readfile)then
-  call nc_check(nf90_close(ncid))
-end if
-
-! remap to 1-d arrays:
-rhoaf = grid % remap_mn2i(rhoa_2d)
-rhowf = grid % remap_mn2i(rhow_2d)
-
-end subroutine input_nc
 
 
 subroutine output_grid(config, grid)
@@ -148,7 +62,7 @@ end if
 end subroutine output_grid
 
 
-subroutine output_spectrum_nc(config, timestr, spectrum, grid)
+subroutine output_spectrum_nc(config, timestr, spectrum, grid, forcing)
 ! Writes out model spectrum output in a netcdf format
 
 ! arguments:
@@ -156,6 +70,7 @@ type(config_type), intent(in) :: config
 character(19),intent(in) :: timestr
 type(spectrum_type), intent(in) :: spectrum
 type(grid_type), intent(in) :: grid
+type(forcing_type), intent(in) :: forcing
 
 character(19),save :: savetimestr
 
@@ -303,8 +218,8 @@ do nn=1,npts
     stat = nf90_put_var(ncid,sdtid,sdt(:,ispec(nn)),start=[1,counter],count=[om,1])
     stat = nf90_put_var(ncid,snlid,snl(:,:,ispec(nn)),start=[1,1,counter],count=[om,pm,1])
 
-    wspdtmp = wspd(ispec(nn))
-    wdirtmp = wdir(ispec(nn))
+    wspdtmp = forcing % wspd(ispec(nn))
+    wdirtmp = forcing % wdir(ispec(nn))
 
     stat = nf90_put_var(ncid,wspdid,wspdtmp,start=[1,counter])
     stat = nf90_put_var(ncid,wdirid,wdirtmp,start=[1,counter])
@@ -323,7 +238,7 @@ firstrun = .false.
 end subroutine output_spectrum_nc
 
 
-subroutine output_grid_nc(config, timestr, spectrum, grid)
+subroutine output_grid_nc(config, timestr, spectrum, grid, forcing)
 ! Writes out model gridded output in a netcdf format
 use umwm_stokes,only:depth,lm,us,vs,ds
 
@@ -331,6 +246,7 @@ type(config_type), intent(in) :: config
 character(19),intent(in) :: timestr
 type(spectrum_type), intent(in) :: spectrum
 type(grid_type), intent(in) :: grid
+type(forcing_type), intent(in) :: forcing
 
 character(19) :: timestrnew
 
@@ -676,25 +592,25 @@ if(nproc == 0)then
 
 end if
 
-call gatherfield(wspd(istart:iend),output_field,grid)
+call gatherfield(forcing % wspd(istart:iend),output_field,grid)
 if(nproc == 0)stat = nf90_put_var(ncid,wspdid,output_field,start=[1,1,1],count=[grid % mm,grid % nm,1])
 
-call gatherfield(wdir(istart:iend),output_field,grid)
+call gatherfield(forcing % wdir(istart:iend),output_field,grid)
 if(nproc == 0)stat = nf90_put_var(ncid,wdirid,output_field,start=[1,1,1],count=[grid % mm,grid % nm,1])
 
-call gatherfield(uc(istart:iend),output_field,grid)
+call gatherfield(forcing % uc(istart:iend),output_field,grid)
 if(nproc == 0)stat = nf90_put_var(ncid,ucid,output_field,start=[1,1,1],count=[grid % mm,grid % nm,1])
 
-call gatherfield(vc(istart:iend),output_field,grid)
+call gatherfield(forcing % vc(istart:iend),output_field,grid)
 if(nproc == 0)stat = nf90_put_var(ncid,vcid,output_field,start=[1,1,1],count=[grid % mm,grid % nm,1])
 
-call gatherfield(rhoa(istart:iend),output_field,grid)
+call gatherfield(forcing % rhoa(istart:iend),output_field,grid)
 if(nproc == 0)stat = nf90_put_var(ncid,rhoaid,output_field,start=[1,1,1],count=[grid % mm,grid % nm,1])
 
-call gatherfield(rhow(istart:iend),output_field,grid)
+call gatherfield(forcing % rhow(istart:iend),output_field,grid)
 if(nproc == 0)stat = nf90_put_var(ncid,rhowid,output_field,start=[1,1,1],count=[grid % mm,grid % nm,1])
 
-call gatherfield(fice(istart:iend),output_field,grid)
+call gatherfield(forcing % fice(istart:iend),output_field,grid)
 if(nproc == 0)stat = nf90_put_var(ncid,ficeid,output_field,start=[1,1,1],count=[grid % mm,grid % nm,1])
 
 call gatherfield(psim(istart:iend),output_field,grid)

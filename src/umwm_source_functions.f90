@@ -1,15 +1,16 @@
 module umwm_source_functions
   ! Module that provides wave source functions.
   use umwm_config, only: config_type
+  use umwm_forcing, only: forcing_type
   use umwm_grid, only: grid_type
   use umwm_module, only: bf1_renorm, bf2_renorm, cg0, cothkd, cp0, cth, &
-                         cth2pp, dth, dummy, e, f, fcutoff, fice, &
+                         cth2pp, dth, dummy, e, f, fcutoff, &
                          fieldscale1, fieldscale2, fkovg, &
                          k, k3dk, k4, kdk, logl2overz, &
-                         mss_fac, oc, psim, psiml2, rhorat, sds, &
+                         oc, psim, psiml2, sds, &
                          sdt, shelt, sice, &
                          snl, ssin, sth, th, twopi, twopisds_fac, &
-                         uc, ustar, vc, wdir, wspd
+                         ustar
   use umwm_constants, only: rk
   use umwm_sheltering, only: sheltering_coare35, sheltering_reynolds
   use umwm_spectrum, only: spectrum_type
@@ -22,21 +23,23 @@ module umwm_source_functions
 
 contains
 
-  subroutine sin_d12(config, spectrum, grid)
+  subroutine sin_d12(config, spectrum, grid, forcing)
     ! Wind input function based on Jeffreys's sheltering hypothesis
     ! and described by Donelan et al. (2012).
     type(config_type), intent(in) :: config
     type(spectrum_type), intent(in) :: spectrum
     type(grid_type), intent(in) :: grid
+    type(forcing_type), intent(in) :: forcing
     integer :: i, o, p
+    real :: wspd_clamped(grid % istart:grid % iend)
 
     associate(istart => grid % istart, iend => grid % iend)
 
     ! protection against low wind speed values
-    wspd = max(wspd, 1e-2)
+    wspd_clamped = max(forcing % wspd(istart:iend), 1e-2)
 
     ! cut-off frequency (4*pierson-moskowitz peak frequency)
-    fcutoff(istart:iend) = 0.53 * config % g / wspd(istart:iend)
+    fcutoff(istart:iend) = 0.53 * config % g / wspd_clamped
 
     where (fcutoff > config % fprog) fcutoff = config % fprog
 
@@ -51,18 +54,18 @@ contains
     ! compute wind input at height of half wavelenght:
     do concurrent (o = 1:spectrum % num_frequencies,p = 1:spectrum % num_directions, i = istart:iend)
 #ifdef ESMF
-      ssin(o,p,i) = (wspd(i) + 2.5 * ustar(i) * (logl2overz(o,i) + psim(i) - psiml2(o,i)))&
+      ssin(o,p,i) = (wspd_clamped(i) + 2.5 * ustar(i) * (logl2overz(o,i) + psim(i) - psiml2(o,i)))&
 #else
-      ssin(o,p,i) = (wspd(i) + 2.5 * ustar(i) * logl2overz(o,i))&
+      ssin(o,p,i) = (wspd_clamped(i) + 2.5 * ustar(i) * logl2overz(o,i))&
 #endif
-                  * cos(wdir(i) - th(p)) - cp0(o,i)&
-                  - uc(i) * cth(p) - vc(i) * sth(p)
+                  * cos(forcing % wdir(i) - th(p)) - cp0(o,i)&
+                  - forcing % uc(i) * cth(p) - forcing % vc(i) * sth(p)
     end do
 
     ssin = config % sin_fac * abs(ssin) * ssin
 
     ! compute variable sheltering coefficient
-    shelt = sheltering_coare35(wspd(istart:iend))
+    shelt = sheltering_coare35(wspd_clamped)
 
     ! apply variable sheltering coefficient
     do concurrent(o = 1:spectrum % num_frequencies, p = 1:spectrum % num_directions, i = istart:iend, ssin(o,p,i) > 0)
@@ -76,12 +79,12 @@ contains
 
     ! further reduce for swell that overruns the wind
     do concurrent (o = 1:spectrum % num_frequencies, p = 1:spectrum % num_directions, &
-                   i = istart:iend, ssin(o,p,i) < 0 .and. cos(wdir(i)-th(p)) > 0)
+                   i = istart:iend, ssin(o,p,i) < 0 .and. cos(forcing % wdir(i)-th(p)) > 0)
       ssin(o,p,i) = ssin(o,p,i) * fieldscale2
     end do
 
     do concurrent (o = 1:spectrum % num_frequencies, p = 1:spectrum % num_directions, i = istart:iend)
-      ssin(o,p,i) = (1 - fice(i)) * twopi * rhorat(i) * ssin(o,p,i) * fkovg(o,i)
+      ssin(o,p,i) = (1 - forcing % fice(i)) * twopi * forcing % rhorat(i) * ssin(o,p,i) * fkovg(o,i)
     end do
 
     ! prevent negative sin for diagnostic tail
@@ -128,12 +131,13 @@ contains
   end subroutine sds_d12
 
 
-  subroutine s_ice(config, spectrum, grid)
+  subroutine s_ice(config, spectrum, grid, forcing)
     ! Wave attenuation by sea ice, following Kohoun et al. (2014).
 
     type(config_type), intent(in) :: config
     type(spectrum_type), intent(in) :: spectrum
     type(grid_type), intent(in) :: grid
+    type(forcing_type), intent(in) :: forcing
     integer :: i, o, p
 
     ! parameters from Kohout et al. 2014
@@ -146,48 +150,49 @@ contains
     real :: ht_
 
     associate(istart => grid % istart, iend => grid % iend)
-  
+
     sice = 0.0
 
     do i = istart, iend
 
-      if (fice(i) > config % fice_lth) then
- 
+      if (forcing % fice(i) > config % fice_lth) then
+
         ht_ = 0.0
- 
+
         do p = 1, spectrum % num_directions
           do o = 1, spectrum % num_frequencies
             spectrumbin(o,p) = e(o,p,i) * kdk(o,i)
- 
+
             ht_ = ht_ + spectrumbin(o,p)
           end do
         end do
- 
+
         ht_ = 4 * sqrt(ht_ * dth) ! significant wave height
- 
+
         ! wave attenuation from sea ice in the two SWH regimes
         if (ht_ < H_th) then
           sice(:,i) = C1 * ht_
         else
           sice(:,i) = C2
         end if
-        
+
         sice(:,i) = 2 * cg0(:,i) * sice(:,i)
-         
+
       end if
- 
+
     end do
 
     end associate
 
   end subroutine s_ice
 
-  
-  subroutine snl_d12(config, spectrum, grid)
+
+  subroutine snl_d12(config, spectrum, grid, forcing)
 
     type(config_type), intent(in) :: config
     type(spectrum_type), intent(in) :: spectrum
     type(grid_type), intent(in) :: grid
+    type(forcing_type), intent(in) :: forcing
     integer :: o, p, i
 
     associate(istart => grid % istart, iend => grid % iend)
@@ -213,7 +218,7 @@ contains
 
     ! compute dissipation due to turbulence
     do concurrent(o = 1:spectrum % num_frequencies, i = istart:iend)
-      sdt(o,i) = config % sdt_fac * sqrt(rhorat(i)) * ustar(i) * k(o,i)
+      sdt(o,i) = config % sdt_fac * sqrt(forcing % rhorat(i)) * ustar(i) * k(o,i)
     end do
 
     end associate
