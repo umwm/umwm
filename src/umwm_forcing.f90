@@ -8,7 +8,7 @@ module umwm_forcing
   implicit none
 
   private
-  public :: forcing_type
+  public :: forcing_type, min_wind_speed
 
   real, parameter :: min_wind_speed = 1e-2
 
@@ -37,6 +37,7 @@ module umwm_forcing
     procedure :: load => forcing_load
     procedure :: update => forcing_update
     procedure :: interpolate => forcing_interpolate
+    procedure :: apply_wind_speed_floor => forcing_apply_wind_speed_floor
   end type forcing_type
 
 contains
@@ -116,6 +117,7 @@ contains
     self % rhow = config % rhow0
 
     self % rhorat = self % rhoa / self % rhow
+    call self % apply_wind_speed_floor()
 
   end subroutine forcing_initialize
 
@@ -250,6 +252,7 @@ contains
     self % rhoaf = grid % remap_mn2i(self % rhoa_2d)
     self % rhowf = grid % remap_mn2i(self % rhow_2d)
     self % rhorat = self % rhoa / self % rhow
+    call self % apply_wind_speed_floor()
 
   end subroutine forcing_load
 
@@ -304,10 +307,18 @@ contains
     if (config % air_density) self % rhoa = self % rhoab * (1 - alpha) + self % rhoaf * alpha
     if (config % water_density) self % rhow = self % rhowb * (1 - alpha) + self % rhowf * alpha
 
-    self % wspd = max(self % wspd, min_wind_speed)
+    call self % apply_wind_speed_floor()
     self % rhorat = self % rhoa / self % rhow
 
   end subroutine forcing_interpolate
+
+
+  subroutine forcing_apply_wind_speed_floor(self)
+    class(forcing_type), intent(inout) :: self
+
+    if (allocated(self % wspd)) self % wspd = max(self % wspd, min_wind_speed)
+
+  end subroutine forcing_apply_wind_speed_floor
 
 
   subroutine forcing_nc_check(stat)

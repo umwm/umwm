@@ -1,7 +1,7 @@
 module umwm_source_functions
   ! Module that provides wave source functions.
   use umwm_config, only: config_type
-  use umwm_forcing, only: forcing_type
+  use umwm_forcing, only: forcing_type, min_wind_speed
   use umwm_grid, only: grid_type
   use umwm_module, only: bf1_renorm, bf2_renorm, cg0, cothkd, cp0, cth, &
                          cth2pp, dth, dummy, e, f, fcutoff, &
@@ -36,7 +36,7 @@ contains
     associate(istart => grid % istart, iend => grid % iend)
 
     ! protection against low wind speed values
-    wspd_clamped = max(forcing % wspd(istart:iend), 1e-2)
+    wspd_clamped = max(forcing % wspd(istart:iend), min_wind_speed)
 
     ! cut-off frequency (4*pierson-moskowitz peak frequency)
     fcutoff(istart:iend) = 0.53 * config % g / wspd_clamped

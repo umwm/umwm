@@ -98,6 +98,8 @@ contains
 
 #ifndef ESMF
         call forcing % interpolate(config, grid) ! interpolate force fields in time
+#else
+        call forcing % apply_wind_speed_floor()
 #endif
 
         call sin_d12(config, spectrum, grid, forcing) ! compute source input term Sin

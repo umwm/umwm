@@ -258,6 +258,7 @@ if (config % seaice) forcing % fice = grid % remap_mn2i(forcing % ficef)
 
 ! if forcing from file, update the wspd field for ustar first guess
 if (config % winds) forcing % wspd = grid % remap_mn2i(sqrt(forcing % uwf**2 + forcing % vwf**2))
+call forcing % apply_wind_speed_floor()
 
 ! initialize drag coefficient (Large and Pond, 1981):
 cd = 1.2e-3

@@ -1,7 +1,7 @@
 program test_forcing
   use tuff, only: test, test_result, nearly_equal, all_nearly_equal
   use umwm_config, only: config_type
-  use umwm_forcing, only: forcing_type
+  use umwm_forcing, only: forcing_type, min_wind_speed
   use umwm_grid, only: grid_type
   use umwm_module, only: sumt
 
@@ -12,6 +12,7 @@ program test_forcing
   suite = test('test_forcing', [ &
     test(interpolation_snapshot), &
     test(wind_speed_floor), &
+    test(stored_wind_speed_floor), &
     test(file_backed_rankine_forcing) &
   ])
 
@@ -136,13 +137,42 @@ contains
     sumt = 5.0
     call forcing % interpolate(config, grid)
 
-    ok = all(abs(forcing % wspd - 1e-2) < 1e-6)
+    ok = all(abs(forcing % wspd - min_wind_speed) < 1e-6)
 
     call forcing % finalize()
     call grid % finalize()
 
     res = test('wind_speed_floor', ok)
   end function wind_speed_floor
+
+  function stored_wind_speed_floor() result(res)
+    type(test_result) :: res
+    type(config_type) :: config
+    type(grid_type) :: grid
+    type(forcing_type) :: forcing
+    logical :: ok
+
+    config = valid_config()
+    config % winds = .false.
+    config % wspd0 = 0.0
+
+    call grid % initialize(config)
+    call forcing % initialize(config, grid)
+
+    ok = all(abs(forcing % wspd - min_wind_speed) < 1e-6)
+
+    call forcing % load(config, config % starttimestr, grid)
+    ok = ok .and. all(abs(forcing % wspd - min_wind_speed) < 1e-6)
+
+    forcing % wspd = 0.0
+    call forcing % apply_wind_speed_floor()
+    ok = ok .and. all(abs(forcing % wspd - min_wind_speed) < 1e-6)
+
+    call forcing % finalize()
+    call grid % finalize()
+
+    res = test('stored_wind_speed_floor', ok)
+  end function stored_wind_speed_floor
 
   function file_backed_rankine_forcing() result(res)
     type(test_result) :: res
