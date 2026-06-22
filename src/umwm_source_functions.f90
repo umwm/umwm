@@ -88,11 +88,9 @@ contains
     end do
 
     ! prevent negative sin for diagnostic tail
-    do i = istart, iend
-      do p = 1, spectrum % num_directions
-        do o = oc(i)+1, spectrum % num_frequencies
-          ssin(o,p,i) = max(ssin(o,p,i), 0._rk)
-        end do
+    do concurrent(i = istart:iend, p = 1:spectrum % num_directions)
+      do o = oc(i)+1, spectrum % num_frequencies
+        ssin(o,p,i) = max(ssin(o,p,i), 0._rk)
       end do
     end do
 
