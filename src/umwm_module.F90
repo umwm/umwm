@@ -9,9 +9,9 @@ module umwm_module
   logical, parameter :: mpiisblocking = .false.
 
   ! time objects
-  type(datetime) :: starttime, stoptime, currenttime
+  type(datetime) :: starttime, stoptime, currenttime, reftime
 
-  character(len=19) :: starttimestr_nml, stoptimestr_nml
+  character(len=19) :: starttimestr_nml, stoptimestr_nml, reftimestr_nml
 
   ! domain dimensions
   integer :: mm  ! domain size in x
@@ -75,7 +75,7 @@ module umwm_module
   real :: temp0,twopisds_fac,twonu
   real :: wspd0,wdir0,uc0,vc0,z
   real :: fice0,fice_lth,fice_uth
-
+  
   integer, parameter :: allowedoutputtimes(10) = [-1, 0, 1, 2, 3, 4, 6, 8, 12, 24]
 
   ! 1-D allocatable arrays:

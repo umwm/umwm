@@ -14,17 +14,17 @@ contains
 
 subroutine nmlread
 ! Opens namelist file namelists/main.nml and reads runtime input parameters.
-use umwm_module,only:starttimestr_nml,stoptimestr_nml
+use umwm_module,only:starttimestr_nml,stoptimestr_nml,reftimestr_nml
 use umwm_io,  only:winds,currents,air_density,water_density,seaice
 use umwm_util,only:raiseexception
 
 logical :: namelistok
 
 ! local variables for reading from namelist
-character(19) :: starttimestr,stoptimestr
+character(19) :: starttimestr,stoptimestr,reftimestr
 
 namelist /domain/ isglobal,mm,nm,om,pm,fmin,fmax,fprog,starttimestr,&
-stoptimestr,dtg,restart
+stoptimestr,reftimestr,dtg,restart
 
 namelist /physics/ g,nu_air,nu_water,sfct,kappa,z,gustiness,dmin,    &
 explim,sin_fac,sin_diss1,sin_diss2,sds_fac,sds_power,mss_fac,snl_fac,&
@@ -40,6 +40,9 @@ namelist /forcing_constant/ wspd0,wdir0,uc0,vc0,rhoa0,rhow0,fice0,fice_lth,fice_
 namelist /output/ outgrid,outspec,outrst,xpl,ypl,stokes
 
 ! read simulation parameters from the main namelist:
+
+reftimestr = '1970-01-01 00:00:00'
+
 open(unit=21,file='namelists/main.nml',status='old',&
      form='formatted',access='sequential',action='read')
   read(unit=21,nml=domain)
@@ -148,6 +151,7 @@ end if
 ! copy values from namelist into global variables
 starttimestr_nml = starttimestr
 stoptimestr_nml = stoptimestr
+reftimestr_nml = reftimestr
 
 end subroutine nmlread
 

@@ -7,7 +7,7 @@ contains
   subroutine umwm_initialize
 
     use umwm_env, only: env_init
-    use umwm_module,only: starttimestr => starttimestr_nml
+    use umwm_module,only: starttimestr => starttimestr_nml,reftimestr => reftimestr_nml
     use umwm_init,  only: nmlread, alloc, grid, masks, partition, alloc, remap, init
     use umwm_io,    only: input_nc, output_grid
     use umwm_stokes,only: stokes_drift
@@ -28,7 +28,7 @@ contains
   end subroutine umwm_initialize
 
 
-  subroutine umwm_run(starttimestr, stoptimestr)
+  subroutine umwm_run(starttimestr, stoptimestr, reftimestr)
 
 #ifdef MPI
     use umwm_mpi, only: exchange_halo
@@ -49,7 +49,7 @@ contains
 
     use datetime_module
 
-    character(19), intent(in) :: starttimestr, stoptimestr
+    character(19), intent(in) :: starttimestr, stoptimestr, reftimestr
 
     character(19) :: currenttimestr
     logical :: fullhour
@@ -57,10 +57,11 @@ contains
     ! convert start and stop time strings to datetime objects:
     starttime = strptime(starttimestr,'%Y-%m-%d %H:%M:%S')
     stoptime  = strptime(stoptimestr, '%Y-%m-%d %H:%M:%S')
+    reftime   = strptime(reftimestr, '%Y-%m-%d %H:%M:%S')
 
-    currenttime = starttime
+    currenttime = starttime 
     currenttimestr = trim(currenttime % strftime('%Y-%m-%d_%H:%M:%S'))
-
+    
     ! read wave spectrum field from a restart file if necessary:
     if (first .and. restart) call restart_read(starttimestr)
 
@@ -121,9 +122,11 @@ contains
 
           ! diagnostic calculations before output
           call diag()
-
-          if (outgrid > 0) call output_grid_nc(starttimestr)
-          if (outspec > 0) call output_spectrum_nc(starttimestr)
+          
+          if (.not.restart) then
+            if (outgrid > 0) call output_grid_nc(starttimestr)
+            if (outspec > 0) call output_spectrum_nc(starttimestr)
+	  end if  
 
 #ifdef MPI
           call mpi_barrier(MPI_COMM_WORLD, ierr)

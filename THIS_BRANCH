@@ -1,0 +1,21 @@
+Changes in this branch:
+
+* Add a time axis to the output files, if appropriate.
+  - all output in umwmout*-files during a time segment between two restarts is collected in one file
+    instead of a sequence of files. An unlimited time axis is added that makes the results readable for many 
+    netcdf-based analysis tools like ferret, grads, panoply, ncl ... Not all are tested. 
+  - The time stamp in the file name points to the start time of the time slice in the file.
+  - Spectral output is already accumulated in single files. The missing time axis is added.
+  - calculate times in seconds with respect to some reference time. default: 1970-01-01 00:00
+    The reference time may be changed in main.nml 
+  - Initialising the model, the initial time step is stored in the output. This information was 
+    written in code in the master branch, but is overwritten in the next time step. 
+  - Starting from a restart file, the initial (first) time step is not written to output, since it is 
+    already stored in the previous output file. This makes aggregation over the time axis of several 
+    time slices easier, which would fail, if a time step is found twice.    
+    
+* ferret does not honor the "description" of a variable. Adding "long_name" makes the output more readable.     
+    
+* Correct an error in the time span calculated by in datetime_module. The first day has day number 0. 
+  Using the new reference time makes the error unvisible, since only differences are used. It is
+  corrected anyway.  
