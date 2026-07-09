@@ -194,9 +194,9 @@ contains
       ! restart output
       if (config % outrst > 0) then
         if (mod(currenttime % gethour(), config % outrst) == 0 .and. fullhour)&
-        call restart_write(currenttimestr, spectrum, grid)
-      else if (config % outspec == -1) then
-        call restart_write(currenttimestr, spectrum, grid)
+        call restart_write(currenttimestr, config % reftimestr, spectrum, grid)
+      else if (config % outrst == -1) then
+        call restart_write(currenttimestr, config % reftimestr, spectrum, grid)
       end if
 
     end do ! end outer loop

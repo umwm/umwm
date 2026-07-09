@@ -1,6 +1,8 @@
 module umwm_restart
   ! Provides read and write subroutines for UMWM restart files
+  use, intrinsic :: iso_fortran_env, only: real64
   use umwm_grid, only: grid_type
+  use umwm_io, only: put_time_metadata, seconds_since_reference
   use umwm_module, only: e, f, ierr, k, mpisize, nproc, ustar
   use netcdf
   use umwm_spectrum, only: spectrum_type
@@ -62,15 +64,17 @@ contains
   end subroutine restart_read
 
 
-  subroutine restart_write(timestr, spectrum, grid)
+  subroutine restart_write(timestr, reftimestr, spectrum, grid)
     character(19), intent(in) :: timestr
+    character(*), intent(in) :: reftimestr
     type(spectrum_type), intent(in) :: spectrum
     type(grid_type), intent(in) :: grid
   
     integer :: i, nn
-    integer :: stat, ncid, xdimid, fdimid, thdimid
-    integer :: kid, lonid, latid, freqid, thetaid, ustid, specid
+    integer :: stat, ncid, xdimid, fdimid, thdimid, tdimid
+    integer :: kid, lonid, latid, freqid, thetaid, timeid, ustid, specid
     real :: lon_tmp(grid % im), lat_tmp(grid % im)
+    real(real64) :: time_value(1)
 
     if (nproc == 0) then
 
@@ -80,6 +84,10 @@ contains
       stat = nf90_def_dim(ncid, 'x', grid % im, xdimid)
       stat = nf90_def_dim(ncid, 'f', spectrum % num_frequencies, fdimid)
       stat = nf90_def_dim(ncid, 'th', spectrum % num_directions, thdimid)
+      stat = nf90_def_dim(ncid, 'time', 1, tdimid)
+
+      stat = nf90_def_var(ncid, 'time', nf90_double, [tdimid], timeid)
+      call put_time_metadata(ncid, timeid, reftimestr)
 
       stat = nf90_def_var(ncid, 'lon', nf90_float, [xdimid], lonid)
       stat = nf90_put_att(ncid, lonid, name='description', values='longitude')
@@ -117,6 +125,8 @@ contains
         lat_tmp(i) = grid % lat(grid % mi(i), grid % ni(i))
       end do
 
+      time_value(1) = seconds_since_reference(timestr, reftimestr)
+      stat = nf90_put_var(ncid, timeid, time_value, start=[1], count=[1])
       stat = nf90_put_var(ncid, lonid, lon_tmp)
       stat = nf90_put_var(ncid, latid, lat_tmp)
       stat = nf90_put_var(ncid, freqid, spectrum % frequency)
