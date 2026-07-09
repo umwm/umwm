@@ -7,8 +7,8 @@
   fmin         = 0.0313                ! Lowest frequency bin [Hz]
   fmax         = 2.0                   ! Highest frequency bin [Hz]
   fprog        = 2.0                   ! Highest prognostic frequency bin [Hz]
-  startTimeStr = '2012-01-01 00:00:00' ! Simulation start time
-  stopTimeStr  = '2012-01-01 06:00:00' ! Simulation end time
+  startTimeStr = '2026-01-01 00:00:00' ! Simulation start time
+  stopTimeStr  = '2026-01-01 06:00:00' ! Simulation end time
   dtg          = 3600                  ! Global (I/O) time step [s]
   restart      = .false.               ! Restart from file
 /
