@@ -1,4 +1,5 @@
 program test_config
+  use iso_fortran_env, only: iostat_end
   use tuff, only: test, test_result, nearly_equal
   use umwm_config, only: config_type
 
@@ -11,6 +12,8 @@ program test_config
     test(invalid_grid_size), &
     test(invalid_pm), &
     test(invalid_frequency_ordering), &
+    test(reference_time_read), &
+    test(invalid_reference_time), &
     test(invalid_output_interval), &
     test(invalid_seaice_thresholds), &
     test(invalid_stokes_depths), &
@@ -37,6 +40,7 @@ contains
       nearly_equal(config % fmax, 2.0) .and. &
       trim(config % starttimestr) == '2012-01-01 00:00:00' .and. &
       trim(config % stoptimestr) == '2012-01-01 06:00:00' .and. &
+      trim(config % reftimestr) == '1970-01-01 00:00:00' .and. &
       nearly_equal(config % g, 9.80665) .and. &
       nearly_equal(config % delx, 10000.0) .and. &
       (.not. config % winds) .and. &
@@ -79,6 +83,33 @@ contains
     res = test('invalid_frequency_ordering', &
       .not. config % validate(stop_on_error=.false., rank=1))
   end function invalid_frequency_ordering
+
+
+  function reference_time_read() result(res)
+    type(test_result) :: res
+    type(config_type) :: config
+    character(len=*), parameter :: test_path = '/tmp/umwm-test-config-reftime.nml'
+    character(len=*), parameter :: ref_time = '2010-05-06 07:08:09'
+    logical :: ok
+
+    ok = write_config_with_ref_time(test_path, ref_time)
+    config = config_type(test_path)
+    ok = ok .and. config % validate(stop_on_error=.false., rank=1)
+
+    res = test('reference_time_read', ok .and. &
+      trim(config % reftimestr) == ref_time)
+  end function reference_time_read
+
+
+  function invalid_reference_time() result(res)
+    type(test_result) :: res
+    type(config_type) :: config
+
+    config = valid_config()
+    config % reftimestr = '2012-99-01 00:00:00'
+    res = test('invalid_reference_time', &
+      .not. config % validate(stop_on_error=.false., rank=1))
+  end function invalid_reference_time
 
 
   function invalid_output_interval() result(res)
@@ -131,5 +162,46 @@ contains
 
     config = config_type('../namelists/main.nml')
   end function valid_config
+
+
+  logical function write_config_with_ref_time(path, ref_time) result(ok)
+    character(len=*), intent(in) :: path
+    character(len=*), intent(in) :: ref_time
+
+    character(len=512) :: line
+    integer :: input_unit
+    integer :: output_unit
+    integer :: stat
+    logical :: in_domain
+
+    ok = .false.
+    open(newunit=input_unit, file='../namelists/main.nml', status='old', &
+         form='formatted', access='sequential', action='read', iostat=stat)
+    if (stat /= 0) return
+
+    open(newunit=output_unit, file=path, status='replace', form='formatted', &
+         access='sequential', action='write', iostat=stat)
+    if (stat /= 0) then
+      close(input_unit)
+      return
+    end if
+
+    in_domain = .false.
+    do
+      read(input_unit, '(a)', iostat=stat) line
+      if (stat /= 0) exit
+
+      if (trim(adjustl(line)) == '&DOMAIN') in_domain = .true.
+      if (in_domain .and. trim(adjustl(line)) == '/') then
+        write(output_unit, '(a)') "  refTimeStr  = '" // ref_time // "'"
+        in_domain = .false.
+      end if
+      write(output_unit, '(a)') trim(line)
+    end do
+
+    close(input_unit)
+    close(output_unit)
+    ok = stat == iostat_end
+  end function write_config_with_ref_time
 
 end program test_config

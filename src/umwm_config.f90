@@ -25,6 +25,7 @@ module umwm_config
     real :: fprog = 0.
     character(len=19) :: starttimestr = ''
     character(len=19) :: stoptimestr = ''
+    character(len=19) :: reftimestr = '1970-01-01 00:00:00'
     real :: dtg = 0.
     logical :: restart = .false.
 
@@ -111,7 +112,7 @@ contains
 
     call read_domain(unit, res%isglobal, res%mm, res%nm, res%om, res%pm, &
       res%fmin, res%fmax, res%fprog, res%starttimestr, res%stoptimestr, &
-      res%dtg, res%restart, stat, iomsg)
+      res%reftimestr, res%dtg, res%restart, stat, iomsg)
     if (stat == 0) call read_physics(unit, res%g, res%nu_air, res%nu_water, &
       res%sfct, res%kappa, res%z, res%gustiness, res%dmin, res%explim, &
       res%sin_fac, res%sin_diss1, res%sin_diss2, res%sds_fac, &
@@ -148,17 +149,18 @@ contains
 
 
   subroutine read_domain(unit, isglobal, mm, nm, om, pm, fmin, fmax, fprog, &
-                         starttimestr, stoptimestr, dtg, restart, stat, iomsg)
+                         starttimestr, stoptimestr, reftimestr, dtg, restart, &
+                         stat, iomsg)
     integer, intent(in) :: unit
     logical, intent(inout) :: isglobal, restart
     integer, intent(inout) :: mm, nm, om, pm
     real, intent(inout) :: fmin, fmax, fprog, dtg
-    character(len=*), intent(inout) :: starttimestr, stoptimestr
+    character(len=*), intent(inout) :: starttimestr, stoptimestr, reftimestr
     integer, intent(out) :: stat
     character(len=*), intent(out) :: iomsg
 
     namelist /domain/ isglobal, mm, nm, om, pm, fmin, fmax, fprog, &
-      starttimestr, stoptimestr, dtg, restart
+      starttimestr, stoptimestr, reftimestr, dtg, restart
 
     read(unit, nml=domain, iostat=stat, iomsg=iomsg)
   end subroutine read_domain
@@ -345,6 +347,11 @@ contains
     if (.not. valid_timestamp(self%stoptimestr, year, month, day, hour, minute, second)) &
       call diagnostic('error', &
         'bad value in main.nml: stopTimeStr must be YYYY-MM-DD HH:MM:SS', &
+        ok, rank_value)
+
+    if (.not. valid_timestamp(self%reftimestr, year, month, day, hour, minute, second)) &
+      call diagnostic('error', &
+        'bad value in main.nml: refTimeStr must be YYYY-MM-DD HH:MM:SS', &
         ok, rank_value)
 
     if (valid_timestamp(self%starttimestr, year, month, day, hour, minute, second) .and. &

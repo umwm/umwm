@@ -58,7 +58,7 @@ umwm_mpi.o:         umwm_mpi.f90       umwm_config.o umwm_grid.o umwm_module.o u
 umwm_init.o:        umwm_init.f90       umwm_config.o umwm_forcing.o umwm_grid.o umwm_module.o umwm_spectrum.o umwm_mpi.o umwm_util.o umwm_constants.o umwm_dispersion.o
 umwm_physics.o:     umwm_physics.f90    umwm_config.o umwm_forcing.o umwm_grid.o umwm_module.o umwm_spectrum.o umwm_advection.o
 umwm_advection.o:   umwm_advection.f90  umwm_config.o umwm_forcing.o umwm_grid.o umwm_module.o umwm_spectrum.o
-umwm_io.o:          umwm_io.f90         umwm_config.o umwm_forcing.o umwm_grid.o umwm_module.o umwm_spectrum.o umwm_mpi.o umwm_util.o umwm_stokes.o
+umwm_io.o:          umwm_io.f90         datetime_module.o umwm_config.o umwm_forcing.o umwm_grid.o umwm_module.o umwm_spectrum.o umwm_mpi.o umwm_util.o umwm_stokes.o
 umwm_forcing.o:     umwm_forcing.f90    umwm_config.o umwm_grid.o umwm_module.o
 umwm_util.o:        umwm_util.f90       umwm_module.o umwm_spectrum.o
 umwm_restart.o:     umwm_restart.f90    umwm_grid.o umwm_module.o umwm_spectrum.o umwm_io.o

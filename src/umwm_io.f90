@@ -1,10 +1,12 @@
 module umwm_io
 ! Provides input/output routines for the wave model
+use, intrinsic :: iso_fortran_env, only: real64
 use umwm_forcing, only: forcing_type
 use umwm_grid, only: grid_type
 use umwm_module
 use umwm_spectrum, only: spectrum_type
 use umwm_config, only: config_type
+use datetime_module, only: date2num, datetime, strptime
 use netcdf
 
 contains
@@ -78,7 +80,7 @@ integer,dimension(2) :: xy_coords
 integer :: stat
 integer :: ncid
 integer :: fdimid,thdimid,tdimid,scalarid
-integer :: lon_scalarid,lat_scalarid,wspdid,wdirid
+integer :: lon_scalarid,lat_scalarid,timeid,wspdid,wdirid
 integer :: specid,sinid,sdsid,snlid,freqid,thetaid,wlid
 integer :: sdtid,sdvid,sbfid
 
@@ -90,6 +92,7 @@ character(40),dimension(999),save :: spectrumid
 
 real :: latspec,lonspec
 real :: wspdtmp,wdirtmp
+real(real64) :: time_value(1)
 
 integer,save :: counter = 1
 logical,save :: firstrun = .true.
@@ -162,6 +165,7 @@ do nn=1,npts
       stat = nf90_def_dim(ncid, 'time', NF90_UNLIMITED, tdimid)
 
       ! define variables:
+      stat = nf90_def_var(ncid, 'time', NF90_DOUBLE, [tdimid], timeid)
       stat = nf90_def_var(ncid, 'frequency', NF90_FLOAT, [fdimid], freqid)
       stat = nf90_def_var(ncid, 'wavenumber', NF90_FLOAT, [fdimid], wlid)
       stat = nf90_def_var(ncid, 'direction', NF90_FLOAT, [thdimid], thetaid)
@@ -176,6 +180,22 @@ do nn=1,npts
       stat = nf90_def_var(ncid, 'Sdv', NF90_FLOAT, [fdimid], sdvid)
       stat = nf90_def_var(ncid, 'Sbf', NF90_FLOAT, [fdimid], sbfid)
       stat = nf90_def_var(ncid, 'Snl', NF90_FLOAT, [fdimid,thdimid,tdimid], snlid)
+
+      call put_time_metadata(ncid, timeid, config % reftimestr)
+      call put_description(ncid, freqid, 'Frequency')
+      call put_description(ncid, wlid, 'Wavenumber')
+      call put_description(ncid, thetaid, 'Direction')
+      call put_description(ncid, lon_scalarid, 'Longitude')
+      call put_description(ncid, lat_scalarid, 'Latitude')
+      call put_description(ncid, wspdid, 'Wind speed')
+      call put_description(ncid, wdirid, 'Wind direction')
+      call put_description(ncid, specid, 'Surface elevation variance spectrum')
+      call put_description(ncid, sinid, 'Wind input/export rate')
+      call put_description(ncid, sdsid, 'Wave breaking decay rate')
+      call put_description(ncid, sdtid, 'Turbulent dissipation rate')
+      call put_description(ncid, sdvid, 'Viscous dissipation rate')
+      call put_description(ncid, sbfid, 'Combined bottom friction and bottom percolation rate')
+      call put_description(ncid, snlid, 'Nonlinear wave-wave interaction absolute source/sink tendency')
 
       ! end of definition mode:
       stat = nf90_enddef(ncid)
@@ -201,12 +221,15 @@ do nn=1,npts
       stat = nf90_inq_varid(ncid, 'Sds', sdsid)
       stat = nf90_inq_varid(ncid, 'Sdt', sdtid)
       stat = nf90_inq_varid(ncid, 'Snl', snlid)
+      stat = nf90_inq_varid(ncid, 'time', timeid)
       stat = nf90_inq_varid(ncid, 'wspd', wspdid)
       stat = nf90_inq_varid(ncid, 'wdir', wdirid)
 
     end if
 
     ! fill in variables:
+    time_value(1) = seconds_since_reference(timestr, config % reftimestr)
+    stat = nf90_put_var(ncid,timeid,time_value,start=[counter],count=[1])
     stat = nf90_put_var(ncid,specid,e(:,:,ispec(nn)),start=[1,1,counter],count=[om,pm,1])
     stat = nf90_put_var(ncid,sinid,ssin(:,:,ispec(nn)),start=[1,1,counter],count=[om,pm,1])
     stat = nf90_put_var(ncid,sdsid,sds(:,:,ispec(nn)),start=[1,1,counter],count=[om,pm,1])
@@ -248,7 +271,7 @@ character(19) :: timestrnew
 integer :: stat
 integer :: ncid
 integer :: xdimid,ydimid,zdimid,fdimid,thdimid,tdimid
-integer :: lonid,latid,maskid,depthid,swhid,mwpid
+integer :: lonid,latid,timeid,maskid,depthid,swhid,mwpid
 integer :: freqid,thetaid
 integer :: wspdid,wdirid
 integer :: rhoaid,rhowid
@@ -278,6 +301,7 @@ integer :: physics_time_stepid
 integer :: l
 
 real :: output_field(grid % mm,grid % nm)
+real(real64) :: time_value(1)
 
 timestrnew = timestr
 timestrnew(11:11) = '_'
@@ -296,280 +320,273 @@ if(nproc == 0)then
   stat = nf90_def_dim(ncid,'th',spectrum % num_directions,thdimid)
   stat = nf90_def_dim(ncid,'time',NF90_UNLIMITED,tdimid)
 
+  stat = nf90_def_var(ncid,'time',NF90_DOUBLE,[tdimid],timeid)
+  call put_time_metadata(ncid, timeid, config % reftimestr)
+
   if(config % stokes)then
 
     stat = nf90_def_dim(ncid,'z',lm,zdimid)
 
     stat = nf90_def_var(ncid,'z',NF90_FLOAT,[zdimid],zid)
-    stat = nf90_put_att(ncid,zid,name='description',values='depth')
+    call put_description(ncid,zid,'depth')
     stat = nf90_put_att(ncid,zid,name='units',values='m')
 
     stat = nf90_def_var(ncid,'u_stokes',NF90_FLOAT,[xdimid,ydimid,zdimid,tdimid],usid)
-    stat = nf90_put_att(ncid,usid,name='description',values='stokes drift x-component')
+    call put_description(ncid,usid,'stokes drift x-component')
     stat = nf90_put_att(ncid,usid,name='units',values='m/s')
 
     stat = nf90_def_var(ncid,'v_stokes',NF90_FLOAT,[xdimid,ydimid,zdimid,tdimid],vsid)
-    stat = nf90_put_att(ncid,vsid,name='description',values='stokes drift y-component')
+    call put_description(ncid,vsid,'stokes drift y-component')
     stat = nf90_put_att(ncid,vsid,name='units',values='m/s')
 
     stat = nf90_def_var(ncid,'d_stokes',NF90_FLOAT,[xdimid,ydimid,tdimid],dsid)
-    stat = nf90_put_att(ncid,dsid,name='description',values='stokes drift e-folding depth')
+    call put_description(ncid,dsid,'stokes drift e-folding depth')
     stat = nf90_put_att(ncid,dsid,name='units',values='m')
 
   end if
 
   stat = nf90_def_var(ncid,'frequency',NF90_FLOAT,[fdimid],freqid)
-  stat = nf90_put_att(ncid,freqid,name='description',values='frequency')
+  call put_description(ncid,freqid,'frequency')
   stat = nf90_put_att(ncid,freqid,name='units',values='hz')
 
   stat = nf90_def_var(ncid,'theta',NF90_FLOAT,[thdimid],thetaid)
-  stat = nf90_put_att(ncid,thetaid,name='description',values='directions')
+  call put_description(ncid,thetaid,'directions')
   stat = nf90_put_att(ncid,thetaid,name='units',values='rad')
 
   stat = nf90_def_var(ncid,'lon',NF90_FLOAT,[xdimid,ydimid,tdimid],lonid)
-  stat = nf90_put_att(ncid,lonid,name='description',values='longitude')
+  call put_description(ncid,lonid,'longitude')
   stat = nf90_put_att(ncid,lonid,name='units',values='degrees east')
 
   stat = nf90_def_var(ncid,'lat',NF90_FLOAT,[xdimid,ydimid,tdimid],latid)
-  stat = nf90_put_att(ncid,latid,name='description',values='latitude')
+  call put_description(ncid,latid,'latitude')
   stat = nf90_put_att(ncid,latid,name='units',values='degrees north')
 
   stat = nf90_def_var(ncid,'seamask',nf90_int,[xdimid,ydimid,tdimid],maskid)
-  stat = nf90_put_att(ncid,maskid,name='description',values='seamask')
+  call put_description(ncid,maskid,'seamask')
   stat = nf90_put_att(ncid,maskid,name='units',values='non-dimensional')
 
   stat = nf90_def_var(ncid,'depth',NF90_FLOAT,[xdimid,ydimid,tdimid],depthid)
-  stat = nf90_put_att(ncid,depthid,name='description',values='ocean depth')
+  call put_description(ncid,depthid,'ocean depth')
   stat = nf90_put_att(ncid,depthid,name='units',values='m')
 
   stat = nf90_def_var(ncid,'wspd',NF90_FLOAT,[xdimid,ydimid,tdimid],wspdid)
-  stat = nf90_put_att(ncid,wspdid,name='description',values='wind speed')
+  call put_description(ncid,wspdid,'wind speed')
   stat = nf90_put_att(ncid,wspdid,name='units',values='m/s')
 
   stat = nf90_def_var(ncid,'wdir',NF90_FLOAT,[xdimid,ydimid,tdimid],wdirid)
-  stat = nf90_put_att(ncid,wdirid,name='description',values='wind direction')
+  call put_description(ncid,wdirid,'wind direction')
   stat = nf90_put_att(ncid,wdirid,name='units',values='rad')
 
   stat = nf90_def_var(ncid,'uc',NF90_FLOAT,[xdimid,ydimid,tdimid],ucid)
-  stat = nf90_put_att(ncid,ucid,name='description',values='ocean current, x-component')
+  call put_description(ncid,ucid,'ocean current, x-component')
   stat = nf90_put_att(ncid,ucid,name='units',values='m/s')
 
   stat = nf90_def_var(ncid,'vc',NF90_FLOAT,[xdimid,ydimid,tdimid],vcid)
-  stat = nf90_put_att(ncid,vcid,name='description',values='ocean current, y-component')
+  call put_description(ncid,vcid,'ocean current, y-component')
   stat = nf90_put_att(ncid,vcid,name='units',values='m/s')
 
   stat = nf90_def_var(ncid,'rhoa',NF90_FLOAT,[xdimid,ydimid,tdimid],rhoaid)
-  stat = nf90_put_att(ncid,rhoaid,name='description',values='air density')
+  call put_description(ncid,rhoaid,'air density')
   stat = nf90_put_att(ncid,rhoaid,name='units',values='kg/m^3')
 
   stat = nf90_def_var(ncid,'rhow',NF90_FLOAT,[xdimid,ydimid,tdimid],rhowid)
-  stat = nf90_put_att(ncid,rhowid,name='description',values='water density')
+  call put_description(ncid,rhowid,'water density')
   stat = nf90_put_att(ncid,rhowid,name='units',values='kg/m^3')
 
   stat = nf90_def_var(ncid,'fice',NF90_FLOAT,[xdimid,ydimid,tdimid],ficeid)
-  stat = nf90_put_att(ncid,ficeid,name='description',values='seaice fraction')
+  call put_description(ncid,ficeid,'seaice fraction')
   stat = nf90_put_att(ncid,ficeid,name='units',values='non-dimensional')
 
   stat = nf90_def_var(ncid,'psim',NF90_FLOAT,[xdimid,ydimid,tdimid],psimid)
-  stat = nf90_put_att(ncid,psimid,name='description',values='universal stability function for momentum')
+  call put_description(ncid,psimid,'universal stability function for momentum')
   stat = nf90_put_att(ncid,psimid,name='units',values='non-dimensional')
 
   stat = nf90_def_var(ncid,'momx',NF90_FLOAT,[xdimid,ydimid,tdimid],momxid)
-  stat = nf90_put_att(ncid,momxid,name='description',values='momentum, x-component')
+  call put_description(ncid,momxid,'momentum, x-component')
   stat = nf90_put_att(ncid,momxid,name='units',values='kgm/s')
 
   stat = nf90_def_var(ncid,'momy',NF90_FLOAT,[xdimid,ydimid,tdimid],momyid)
-  stat = nf90_put_att(ncid,momyid,name='description',values='momentum, y-component')
+  call put_description(ncid,momyid,'momentum, y-component')
   stat = nf90_put_att(ncid,momyid,name='units',values='kgm/s')
 
   stat = nf90_def_var(ncid,'cgmxx',NF90_FLOAT,[xdimid,ydimid,tdimid],cgmxxid)
-  stat = nf90_put_att(ncid,cgmxxid,name='description',values='cg*momentum, xx-component')
+  call put_description(ncid,cgmxxid,'cg*momentum, xx-component')
   stat = nf90_put_att(ncid,cgmxxid,name='units',values='kgm^2/s^2')
 
   stat = nf90_def_var(ncid,'cgmxy',NF90_FLOAT,[xdimid,ydimid,tdimid],cgmxyid)
-  stat = nf90_put_att(ncid,cgmxyid,name='description',values='cg*momentum, xy-component')
+  call put_description(ncid,cgmxyid,'cg*momentum, xy-component')
   stat = nf90_put_att(ncid,cgmxyid,name='units',values='kgm^2/s^2')
 
   stat = nf90_def_var(ncid,'cgmyy',NF90_FLOAT,[xdimid,ydimid,tdimid],cgmyyid)
-  stat = nf90_put_att(ncid,cgmyyid,name='description',values='cg*momentum, yy-component')
+  call put_description(ncid,cgmyyid,'cg*momentum, yy-component')
   stat = nf90_put_att(ncid,cgmyyid,name='units',values='kgm^2/s^2')
 
   stat = nf90_def_var(ncid,'shelt',NF90_FLOAT,[xdimid,ydimid,tdimid],sheltid)
-  stat = nf90_put_att(ncid,sheltid,name='description',values='sheltering coefficient')
+  call put_description(ncid,sheltid,'sheltering coefficient')
   stat = nf90_put_att(ncid,sheltid,name='units',values='non-dimensional')
 
   stat = nf90_def_var(ncid,'epsx_atm',NF90_FLOAT,[xdimid,ydimid,tdimid],epsx_atmid)
-  stat = nf90_put_att(ncid,epsx_atmid,name='description',values='wave energy growth flux, x-component')
+  call put_description(ncid,epsx_atmid,'wave energy growth flux, x-component')
   stat = nf90_put_att(ncid,epsx_atmid,name='units',values='kg/s^3')
 
   stat = nf90_def_var(ncid,'epsy_atm',NF90_FLOAT,[xdimid,ydimid,tdimid],epsy_atmid)
-  stat = nf90_put_att(ncid,epsy_atmid,name='description',values='wave energy growth flux, y-component')
+  call put_description(ncid,epsy_atmid,'wave energy growth flux, y-component')
   stat = nf90_put_att(ncid,epsy_atmid,name='units',values='kg/s^3')
 
   stat = nf90_def_var(ncid,'epsx_ocn',NF90_FLOAT,[xdimid,ydimid,tdimid],epsx_ocnid)
-  stat = nf90_put_att(ncid,epsx_ocnid,name='description',values='wave energy dissipation flux, x-component')
+  call put_description(ncid,epsx_ocnid,'wave energy dissipation flux, x-component')
   stat = nf90_put_att(ncid,epsx_ocnid,name='units',values='kg/s^3')
 
   stat = nf90_def_var(ncid,'epsy_ocn',NF90_FLOAT,[xdimid,ydimid,tdimid],epsy_ocnid)
-  stat = nf90_put_att(ncid,epsy_ocnid,name='description',values='wave energy dissipation flux, y-component')
+  call put_description(ncid,epsy_ocnid,'wave energy dissipation flux, y-component')
   stat = nf90_put_att(ncid,epsy_ocnid,name='units',values='kg/s^3')
 
   stat = nf90_def_var(ncid,'taux_form',NF90_FLOAT,[xdimid,ydimid,tdimid],taux_formid)
-  stat = nf90_put_att(ncid,taux_formid,name='description',values='form drag, x-component')
+  call put_description(ncid,taux_formid,'form drag, x-component')
   stat = nf90_put_att(ncid,taux_formid,name='units',values='n/m^2')
 
   stat = nf90_def_var(ncid,'tauy_form',NF90_FLOAT,[xdimid,ydimid,tdimid],tauy_formid)
-  stat = nf90_put_att(ncid,tauy_formid,name='description',values='form drag, y-component')
+  call put_description(ncid,tauy_formid,'form drag, y-component')
   stat = nf90_put_att(ncid,tauy_formid,name='units',values='n/m^2')
 
   stat = nf90_def_var(ncid,'taux_form_1',NF90_FLOAT,[xdimid,ydimid,tdimid],tfdx1id)
-  stat = nf90_put_att(ncid,tfdx1id,name='description',values='form drag, part 1, x-component')
+  call put_description(ncid,tfdx1id,'form drag, part 1, x-component')
   stat = nf90_put_att(ncid,tfdx1id,name='units',values='n/m^2')
 
   stat = nf90_def_var(ncid,'tauy_form_1',NF90_FLOAT,[xdimid,ydimid,tdimid],tfdy1id)
-  stat = nf90_put_att(ncid,tfdy1id,name='description',values='form drag, part 1, y-component')
+  call put_description(ncid,tfdy1id,'form drag, part 1, y-component')
   stat = nf90_put_att(ncid,tfdy1id,name='units',values='n/m^2')
 
   stat = nf90_def_var(ncid,'taux_form_2',NF90_FLOAT,[xdimid,ydimid,tdimid],tfdx2id)
-  stat = nf90_put_att(ncid,tfdx2id,name='description',values='form drag, part 2, x-component')
+  call put_description(ncid,tfdx2id,'form drag, part 2, x-component')
   stat = nf90_put_att(ncid,tfdx2id,name='units',values='n/m^2')
 
   stat = nf90_def_var(ncid,'tauy_form_2',NF90_FLOAT,[xdimid,ydimid,tdimid],tfdy2id)
-  stat = nf90_put_att(ncid,tfdy2id,name='description',values='form drag, part 2, y-component')
+  call put_description(ncid,tfdy2id,'form drag, part 2, y-component')
   stat = nf90_put_att(ncid,tfdy2id,name='units',values='n/m^2')
 
   stat = nf90_def_var(ncid,'taux_form_3',NF90_FLOAT,[xdimid,ydimid,tdimid],tfdx3id)
-  stat = nf90_put_att(ncid,tfdx3id,name='description',values='form drag, part 3, x-component')
+  call put_description(ncid,tfdx3id,'form drag, part 3, x-component')
   stat = nf90_put_att(ncid,tfdx3id,name='units',values='n/m^2')
 
   stat = nf90_def_var(ncid,'tauy_form_3',NF90_FLOAT,[xdimid,ydimid,tdimid],tfdy3id)
-  stat = nf90_put_att(ncid,tfdy3id,name='description',values='form drag, part 3, y-component')
+  call put_description(ncid,tfdy3id,'form drag, part 3, y-component')
   stat = nf90_put_att(ncid,tfdy3id,name='units',values='n/m^2')
 
   stat = nf90_def_var(ncid,'taux_skin',NF90_FLOAT,[xdimid,ydimid,tdimid],taux_skinid)
-  stat = nf90_put_att(ncid,taux_skinid,name='description',values='skin drag, x-component')
+  call put_description(ncid,taux_skinid,'skin drag, x-component')
   stat = nf90_put_att(ncid,taux_skinid,name='units',values='n/m^2')
 
   stat = nf90_def_var(ncid,'tauy_skin',NF90_FLOAT,[xdimid,ydimid,tdimid],tauy_skinid)
-  stat = nf90_put_att(ncid,tauy_skinid,name='description',values='skin drag, y-component')
+  call put_description(ncid,tauy_skinid,'skin drag, y-component')
   stat = nf90_put_att(ncid,tauy_skinid,name='units',values='n/m^2')
 
   stat = nf90_def_var(ncid,'taux_diag',NF90_FLOAT,[xdimid,ydimid,tdimid],taux_diagid)
-  stat = nf90_put_att(ncid,taux_diagid,name='description',values='diagnostic form drag, x-component')
+  call put_description(ncid,taux_diagid,'diagnostic form drag, x-component')
   stat = nf90_put_att(ncid,taux_diagid,name='units',values='n/m^2')
 
   stat = nf90_def_var(ncid,'tauy_diag',NF90_FLOAT,[xdimid,ydimid,tdimid],tauy_diagid)
-  stat = nf90_put_att(ncid,tauy_diagid,name='description',values='diagnostic form drag, y-component')
+  call put_description(ncid,tauy_diagid,'diagnostic form drag, y-component')
   stat = nf90_put_att(ncid,tauy_diagid,name='units',values='n/m^2')
 
   stat = nf90_def_var(ncid,'taux_ocn',NF90_FLOAT,[xdimid,ydimid,tdimid],taux_ocnid)
-  stat = nf90_put_att(ncid,taux_ocnid,name='description',&
-                      values='momentum flux from breaking waves to ocean top, x-component')
+  call put_description(ncid,taux_ocnid,'momentum flux from breaking waves to ocean top, x-component')
   stat = nf90_put_att(ncid,taux_ocnid,name='units',values='n/m^2')
 
   stat = nf90_def_var(ncid,'tauy_ocn',NF90_FLOAT,[xdimid,ydimid,tdimid],tauy_ocnid)
-  stat = nf90_put_att(ncid,tauy_ocnid,name='description',&
-                      values='momentum flux from breaking waves to ocean top, y-component')
+  call put_description(ncid,tauy_ocnid,'momentum flux from breaking waves to ocean top, y-component')
   stat = nf90_put_att(ncid,tauy_ocnid,name='units',values='n/m^2')
 
   stat = nf90_def_var(ncid,'taux_bot',NF90_FLOAT,[xdimid,ydimid,tdimid],taux_botid)
-  stat = nf90_put_att(ncid,taux_botid,name='description',&
-                      values='momentum flux from waves to ocean bottom, x-component')
+  call put_description(ncid,taux_botid,'momentum flux from waves to ocean bottom, x-component')
   stat = nf90_put_att(ncid,taux_botid,name='units',values='n/m^2')
 
   stat = nf90_def_var(ncid,'tauy_bot',NF90_FLOAT,[xdimid,ydimid,tdimid],tauy_botid)
-  stat = nf90_put_att(ncid,tauy_botid,name='description',&
-                      values='momentum flux from waves to ocean bottom, y-component')
+  call put_description(ncid,tauy_botid,'momentum flux from waves to ocean bottom, y-component')
   stat = nf90_put_att(ncid,tauy_botid,name='units',values='n/m^2')
 
   stat = nf90_def_var(ncid,'taux_snl',NF90_FLOAT,[xdimid,ydimid,tdimid],taux_snlid)
-  stat = nf90_put_att(ncid,taux_snlid,name='description',&
-                      values='momentum flux due to snl, x-component')
+  call put_description(ncid,taux_snlid,'momentum flux due to snl, x-component')
   stat = nf90_put_att(ncid,taux_snlid,name='units',values='n/m^2')
 
   stat = nf90_def_var(ncid,'tauy_snl',NF90_FLOAT,[xdimid,ydimid,tdimid],tauy_snlid)
-  stat = nf90_put_att(ncid,tauy_snlid,name='description',&
-                      values='momentum flux due to snl, y-component')
+  call put_description(ncid,tauy_snlid,'momentum flux due to snl, y-component')
   stat = nf90_put_att(ncid,tauy_snlid,name='units',values='n/m^2')
 
   stat = nf90_def_var(ncid,'tailatmx',NF90_FLOAT,[xdimid,ydimid,tdimid],tailatmxid)
-  stat = nf90_put_att(ncid,tailatmxid,name='description',&
-                      values='atmosphere tail stress part, x-component')
+  call put_description(ncid,tailatmxid,'atmosphere tail stress part, x-component')
   stat = nf90_put_att(ncid,tailatmxid,name='units',values='n/m^2')
 
   stat = nf90_def_var(ncid,'tailatmy',NF90_FLOAT,[xdimid,ydimid,tdimid],tailatmyid)
-  stat = nf90_put_att(ncid,tailatmyid,name='description',&
-                      values='atmosphere tail stress part, y-component')
+  call put_description(ncid,tailatmyid,'atmosphere tail stress part, y-component')
   stat = nf90_put_att(ncid,tailatmyid,name='units',values='n/m^2')
 
   stat = nf90_def_var(ncid,'tailocnx',NF90_FLOAT,[xdimid,ydimid,tdimid],tailocnxid)
-  stat = nf90_put_att(ncid,tailocnxid,name='description',&
-                      values='ocean tail stress part, x-component')
+  call put_description(ncid,tailocnxid,'ocean tail stress part, x-component')
   stat = nf90_put_att(ncid,tailocnxid,name='units',values='n/m^2')
 
   stat = nf90_def_var(ncid,'tailocny',NF90_FLOAT,[xdimid,ydimid,tdimid],tailocnyid)
-  stat = nf90_put_att(ncid,tailocnyid,name='description',&
-                      values='ocean tail stress part, y-component')
+  call put_description(ncid,tailocnyid,'ocean tail stress part, y-component')
   stat = nf90_put_att(ncid,tailocnyid,name='units',values='n/m^2')
 
   stat = nf90_def_var(ncid,'cd',NF90_FLOAT,[xdimid,ydimid,tdimid],cdid)
-  stat = nf90_put_att(ncid,cdid,name='description',values='drag coefficient of air')
+  call put_description(ncid,cdid,'drag coefficient of air')
   stat = nf90_put_att(ncid,cdid,name='units',values='non-dimensional')
 
   stat = nf90_def_var(ncid,'ust',NF90_FLOAT,[xdimid,ydimid,tdimid],ustid)
-  stat = nf90_put_att(ncid,ustid,name='description',values='friction velocity of air')
+  call put_description(ncid,ustid,'friction velocity of air')
   stat = nf90_put_att(ncid,ustid,name='units',values='m/s')
 
   stat = nf90_def_var(ncid,'swh',NF90_FLOAT,[xdimid,ydimid,tdimid],swhid)
-  stat = nf90_put_att(ncid,swhid,name='description',values='significant wave height')
+  call put_description(ncid,swhid,'significant wave height')
   stat = nf90_put_att(ncid,swhid,name='units',values='m')
 
   stat = nf90_def_var(ncid,'mss',NF90_FLOAT,[xdimid,ydimid,tdimid],mssid)
-  stat = nf90_put_att(ncid,mssid,name='description',values='mean-squared slope')
+  call put_description(ncid,mssid,'mean-squared slope')
   stat = nf90_put_att(ncid,mssid,name='units',values='non-dimensional')
 
   stat = nf90_def_var(ncid,'mwp',NF90_FLOAT,[xdimid,ydimid,tdimid],mwpid)
-  stat = nf90_put_att(ncid,mwpid,name='description',values='mean wave period')
+  call put_description(ncid,mwpid,'mean wave period')
   stat = nf90_put_att(ncid,mwpid,name='units',values='s')
 
   stat = nf90_def_var(ncid,'mwl',NF90_FLOAT,[xdimid,ydimid,tdimid],mwlid)
-  stat = nf90_put_att(ncid,mwlid,name='description',values='mean wavelength')
+  call put_description(ncid,mwlid,'mean wavelength')
   stat = nf90_put_att(ncid,mwlid,name='units',values='m')
 
   stat = nf90_def_var(ncid,'mwd',NF90_FLOAT,[xdimid,ydimid,tdimid],mwdid)
-  stat = nf90_put_att(ncid,mwdid,name='description',values='mean wave direction')
+  call put_description(ncid,mwdid,'mean wave direction')
   stat = nf90_put_att(ncid,mwdid,name='units',values='rad')
 
   stat = nf90_def_var(ncid,'dwp',NF90_FLOAT,[xdimid,ydimid,tdimid],dwpid)
-  stat = nf90_put_att(ncid,dwpid,name='description',values='dominant wave period')
+  call put_description(ncid,dwpid,'dominant wave period')
   stat = nf90_put_att(ncid,dwpid,name='units',values='s')
 
   stat = nf90_def_var(ncid,'dwl',NF90_FLOAT,[xdimid,ydimid,tdimid],dwlid)
-  stat = nf90_put_att(ncid,dwlid,name='description',values='dominant wavelength')
+  call put_description(ncid,dwlid,'dominant wavelength')
   stat = nf90_put_att(ncid,dwlid,name='units',values='m')
 
   stat = nf90_def_var(ncid,'dwd',NF90_FLOAT,[xdimid,ydimid,tdimid],dwdid)
-  stat = nf90_put_att(ncid,dwdid,name='description',values='dominant wave direction')
+  call put_description(ncid,dwdid,'dominant wave direction')
   stat = nf90_put_att(ncid,dwdid,name='units',values='rad')
 
   stat = nf90_def_var(ncid,'dcp0',NF90_FLOAT,[xdimid,ydimid,tdimid],dcp0id)
-  stat = nf90_put_att(ncid,dcp0id,name='description',values='dominant phase speed, intrinsic')
+  call put_description(ncid,dcp0id,'dominant phase speed, intrinsic')
   stat = nf90_put_att(ncid,dcp0id,name='units',values='m/s')
 
   stat = nf90_def_var(ncid,'dcg0',NF90_FLOAT,[xdimid,ydimid,tdimid],dcg0id)
-  stat = nf90_put_att(ncid,dcg0id,name='description',values='dominant group speed, intrinsic')
+  call put_description(ncid,dcg0id,'dominant group speed, intrinsic')
   stat = nf90_put_att(ncid,dcg0id,name='units',values='m/s')
 
   stat = nf90_def_var(ncid,'dcp',NF90_FLOAT,[xdimid,ydimid,tdimid],dcpid)
-  stat = nf90_put_att(ncid,dcpid,name='description',values='dominant phase speed')
+  call put_description(ncid,dcpid,'dominant phase speed')
   stat = nf90_put_att(ncid,dcpid,name='units',values='m/s')
 
   stat = nf90_def_var(ncid,'dcg',NF90_FLOAT,[xdimid,ydimid,tdimid],dcgid)
-  stat = nf90_put_att(ncid,dcgid,name='description',values='dominant group speed')
+  call put_description(ncid,dcgid,'dominant group speed')
   stat = nf90_put_att(ncid,dcgid,name='units',values='m/s')
 
   stat = nf90_def_var(ncid,'physics_time_step',NF90_FLOAT,[xdimid,ydimid,tdimid],physics_time_stepid)
-  stat = nf90_put_att(ncid,physics_time_stepid,name='description',values='Physics time step')
+  call put_description(ncid,physics_time_stepid,'Physics time step')
   stat = nf90_put_att(ncid,physics_time_stepid,name='units',values='s')
 
   stat = nf90_enddef(ncid)
@@ -578,6 +595,8 @@ end if
 
 if(nproc == 0)then
 
+  time_value(1) = seconds_since_reference(timestr, config % reftimestr)
+  stat = nf90_put_var(ncid,timeid,time_value,start=[1],count=[1])
   stat = nf90_put_var(ncid,freqid,spectrum % frequency,start=[1],count=[om])
   stat = nf90_put_var(ncid,thetaid,spectrum % direction,start=[1],count=[pm])
   stat = nf90_put_var(ncid,lonid,grid % lon,start=[1,1,1],count=[grid % mm,grid % nm,1])
@@ -779,6 +798,54 @@ end if
 end associate
 
 end subroutine output_grid_nc
+
+
+subroutine put_description(ncid, varid, description)
+  integer, intent(in) :: ncid
+  integer, intent(in) :: varid
+  character(*), intent(in) :: description
+  integer :: stat
+
+  stat = nf90_put_att(ncid, varid, name='description', values=description)
+  stat = nf90_put_att(ncid, varid, name='long_name', values=description)
+
+end subroutine put_description
+
+
+subroutine put_time_metadata(ncid, timeid, reftimestr)
+  integer, intent(in) :: ncid
+  integer, intent(in) :: timeid
+  character(*), intent(in) :: reftimestr
+  integer :: stat
+
+  call put_description(ncid, timeid, 'time')
+  stat = nf90_put_att(ncid, timeid, name='cartesian_axis', values='T')
+  stat = nf90_put_att(ncid, timeid, name='units', values='seconds since '//trim(reftimestr))
+  stat = nf90_put_att(ncid, timeid, name='time_origin', values=trim(reftimestr))
+
+end subroutine put_time_metadata
+
+
+real(real64) function seconds_since_reference(timestr, reftimestr) result(seconds)
+  character(*), intent(in) :: timestr
+  character(*), intent(in) :: reftimestr
+  type(datetime) :: output_time
+  type(datetime) :: reference_time
+
+  output_time = strptime(normalized_timestamp(timestr), '%Y-%m-%d %H:%M:%S', tz=0._real64)
+  reference_time = strptime(normalized_timestamp(reftimestr), '%Y-%m-%d %H:%M:%S', tz=0._real64)
+  seconds = anint((date2num(output_time) - date2num(reference_time)) * 86400._real64)
+
+end function seconds_since_reference
+
+
+character(19) function normalized_timestamp(timestr) result(normalized)
+  character(*), intent(in) :: timestr
+
+  normalized = timestr
+  if (normalized(11:11) == '_') normalized(11:11) = ' '
+
+end function normalized_timestamp
 
 
 subroutine gatherfield(field, field_mn, grid)
