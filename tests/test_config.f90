@@ -38,8 +38,8 @@ contains
       config % om == 37 .and. config % pm == 36 .and. &
       nearly_equal(config % fmin, 0.0313) .and. &
       nearly_equal(config % fmax, 2.0) .and. &
-      trim(config % starttimestr) == '2012-01-01 00:00:00' .and. &
-      trim(config % stoptimestr) == '2012-01-01 06:00:00' .and. &
+      trim(config % starttimestr) == '2026-01-01 00:00:00' .and. &
+      trim(config % stoptimestr) == '2026-01-01 06:00:00' .and. &
       trim(config % reftimestr) == '1970-01-01 00:00:00' .and. &
       nearly_equal(config % g, 9.80665) .and. &
       nearly_equal(config % delx, 10000.0) .and. &
