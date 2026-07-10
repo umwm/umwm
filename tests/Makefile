@@ -18,6 +18,9 @@ RANKINE_FORCING_STAMP := input/.rankine_forcing.stamp
 %.o: $(SRC_DIR)/%.f90
 	$(FC) $(CPPFLAGS) $(FCFLAGS) $(NETCDF_FFLAGS) -I. -I$(SRC_DIR) -c $<
 
+$(SRC_DIR)/datetime_module.f90:
+	$(MAKE) --directory=$(SRC_DIR) datetime_module.f90
+
 test: $(TESTS)
 	./test_dispersion
 	./test_spectrum
