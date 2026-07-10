@@ -11,41 +11,22 @@ module umwm_module
   ! time objects
   type(datetime) :: starttime, stoptime, currenttime
 
-  character(len=19) :: starttimestr_nml, stoptimestr_nml
-
-  ! domain dimensions
-  integer :: mm  ! domain size in x
-  integer :: nm  ! domain size in y
+  ! spectrum dimensions
   integer :: om  ! number of frequency/wavenumber bins
   integer :: pm  ! number of direction bins
-
-  integer :: im  ! unrolled domain length (sea-points only)
-  integer :: imm ! unrolled domain length (all, equals mm*nm)
-
-  integer :: istart,iend   ! tile exclusive range (no halo)
-  integer :: iistart,iiend ! tile computational range (exclusive+halo)
 
   integer :: nproc ! process rank
   integer :: mpisize  ! mpi pool mpisize
   integer :: ierr  ! mpi error return status
 
-  ! lengths of leftmost and rightmost columns
-  integer :: first_col_len, last_col_len
-
   ! stdout related variables
   integer :: iip, nproc_plot, xpl, ypl
-
-  ! time stepping
-  integer :: step, timestep
 
   ! .true. during first time step
   logical :: first, firstdtg
 
   ! main control switches
-  logical :: isglobal, restart
-
-  ! grid and bathymetry related switches
-  logical :: gridfromfile, topofromfile, filllakes, fillestuaries
+  logical :: restart
 
   ! output related switches
   integer :: outgrid, outspec, outrst
@@ -60,37 +41,20 @@ module umwm_module
   real :: delx,dely
   real :: dpt,dlnf,dmin,dtg,dts,dth,dthg
   real :: explim
-  real :: fmin,fmax,fprog
   real :: fieldscale1,fieldscale2
   real :: g,gustiness
   real :: inv_sds_power
   real :: kappa
-  real :: log10overz
-  real :: mindelx,mss_fac
-  real :: nu_air,nu_water
   real :: oneovdth
-  real :: rhoa0,rhow0
   real :: sbf_fac,sbp_fac,sds_fac,sds_power,sdt_fac,sfct,sin_diss1
   real :: sin_diss2,sin_fac,snl_fac,sumt
-  real :: temp0,twopisds_fac,twonu
+  real :: twopisds_fac
   real :: wspd0,wdir0,uc0,vc0,z
   real :: fice0,fice_lth,fice_uth
 
   integer, parameter :: allowedoutputtimes(10) = [-1, 0, 1, 2, 3, 4, 6, 8, 12, 24]
 
   ! 1-D allocatable arrays:
-
-  ! neighbor grid indices, aliased
-  integer,dimension(:),allocatable :: iw,ie,is,in
-
-  ! neighbor grid indices, true
-  integer,dimension(:),allocatable :: iiw,iie,iis,iin
-
-  ! exchange indices for periodic bc
-  integer,dimension(:),allocatable :: i_exchange_indices
-
-  ! indices m and n as functions of i
-  integer,dimension(:),allocatable :: mi,ni
 
   ! cut-off frequency index (maximum prognostic)
   integer,dimension(:),allocatable :: oc
@@ -103,40 +67,13 @@ module umwm_module
   real,dimension(:),allocatable :: dom
   real,dimension(:),allocatable :: f
 
-  ! wave ray directions with grid curvature correction:
-  real,dimension(:,:),allocatable :: cth_curv,sth_curv
-
-  integer,dimension(:,:),allocatable :: ii
-  integer,dimension(:,:),allocatable :: mask
-  integer,dimension(:,:),allocatable :: nproc_out
-
-  ! 2-dimensional, unrolled arrays:
-  real,dimension(:,:),allocatable :: ar_2d
-  real,dimension(:,:),allocatable :: curv
-  real,dimension(:,:),allocatable :: d_2d,dlon,dlat,dx_2d,dy_2d
-  real,dimension(:,:),allocatable :: gustu,gustv
-  real,dimension(:,:),allocatable :: lat,lon
-  real,dimension(:,:),allocatable :: x,y
-  real,dimension(:,:),allocatable :: rhoa_2d,rhow_2d
-  real,dimension(:,:),allocatable :: wspd_2d,wdir_2d
-  real,dimension(:,:),allocatable :: fice_2d,ficeb,ficef
-  real,dimension(:,:),allocatable :: uwb,vwb,uw,vw,uwf,vwf
-  real,dimension(:,:),allocatable :: ucb,uc_2d,ucf,vcb,vc_2d,vcf
-
-  real,dimension(:),allocatable :: ar,cd,d,dx,dy,dwd,dwl,dwp,fcutoff,mwf,pwf
-  real,dimension(:),allocatable :: dxn,dxs,dyw,dye
+  real,dimension(:),allocatable :: cd,dwd,dwl,dwp,fcutoff
   real,dimension(:),allocatable :: dcp0,dcp,dcg0,dcg
   real,dimension(:),allocatable :: ht,mss,mwd,mwl,mwp,shelt
-  real,dimension(:),allocatable :: oneovar,oneovdx,oneovdy
 
   real,dimension(:),allocatable :: momx,momy ! momentum in x- and y-direction
   real,dimension(:),allocatable :: cgmxx,cgmxy,cgmyy ! horizontal momentum fluxes
   real,dimension(:),allocatable :: physics_time_step
-
-  ! air and water density:
-  real,dimension(:),allocatable :: rhoab,rhoa,rhoaf
-  real,dimension(:),allocatable :: rhowb,rhow,rhowf
-  real,dimension(:),allocatable :: rhorat
 
   ! stability function
   real,dimension(:),allocatable :: psim
@@ -165,9 +102,7 @@ module umwm_module
   real,dimension(:),allocatable :: tailatmx,tailatmy
   real,dimension(:),allocatable :: tailocnx,tailocny
 
-  real,dimension(:),allocatable :: uc,vc,ustar
-  real,dimension(:),allocatable :: wspd,wdir
-  real,dimension(:),allocatable :: fice
+  real,dimension(:),allocatable :: ustar
 
   ! snl downshifting weights, used in snl routine:
   real,dimension(:,:),allocatable :: bf1_renorm,bf2_renorm

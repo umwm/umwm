@@ -4,7 +4,7 @@
 
 include mk/config.mk
 
-.PHONY: all umwm docs tools clean clean_all print-config
+.PHONY: all umwm docs tools test clean clean_all print-config
 .DEFAULT_GOAL := all
 
 all: umwm tools
@@ -18,6 +18,9 @@ docs:
 tools:
 	$(MAKE) --directory=tools/src
 
+test:
+	$(MAKE) --directory=tests test
+
 clean:
 	$(RM) umwm
 	$(RM) umwm-docs.pdf
@@ -26,8 +29,10 @@ clean:
 	$(RM) tools/wrf2umwmgrid
 	$(RM) tools/wrf2umwmin
 	$(MAKE) --directory=src clean
+	$(MAKE) --directory=tests clean
 	$(MAKE) --directory=tools/src clean
 
 clean_all:
 	$(MAKE) clean
 	$(MAKE) --directory=src clean_all
+	$(MAKE) --directory=tests clean_all

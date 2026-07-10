@@ -16,3 +16,4 @@ umwm.gridtopo
 umwmout_*.nc
 umwmin_*.nc
 umwmrst_*.nc
+tests/input/.rankine_forcing.stamp

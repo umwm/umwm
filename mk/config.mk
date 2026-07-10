@@ -12,6 +12,8 @@ else
   override CPPFLAGS += -DMPI
 endif
 
+override CPPFLAGS += -cpp
+
 ifeq ($(origin FC),default)
   FC := $(UMWM_DEFAULT_FC)
 else ifeq ($(origin FC),undefined)
@@ -28,7 +30,7 @@ LDFLAGS ?=
 LDLIBS ?=
 NF_CONFIG ?= nf-config
 
-UMWM_NO_NETCDF_GOALS := clean clean_all docs help
+UMWM_NO_NETCDF_GOALS := clean clean_all docs help test test_dispersion test_spectrum
 ifeq ($(strip $(MAKECMDGOALS)),)
   UMWM_NEED_NETCDF := yes
 else ifneq ($(filter-out $(UMWM_NO_NETCDF_GOALS),$(MAKECMDGOALS)),)

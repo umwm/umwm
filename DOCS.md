@@ -6,24 +6,33 @@ This file is a technical reference for the physics implemented in the University
 
 | Physics area | Main implementation | Purpose |
 | --- | --- | --- |
-| Model loop | `src/umwm_top.F90` | Calls source functions, source integration, advection, refraction, stress, Stokes drift, diagnostics, and output. |
-| Source functions | `src/umwm_source_functions.F90` | Wind input, wave breaking, nonlinear downshifting, turbulence, and sea-ice attenuation. |
-| Source integration and diagnostics | `src/umwm_physics.F90` | Exponential source update, diagnostic spectral tail, integrated wave diagnostics. |
-| Propagation and refraction | `src/umwm_advection.F90` | First-order upstream advection in geographic and directional space. |
-| Stress | `src/umwm_stress.F90` | Wind form/skin stress, ocean-top and ocean-bottom momentum fluxes, drag coefficient. |
-| Stokes drift | `src/umwm_stokes.F90` | Wave-induced Stokes drift and e-folding depth. |
-| Grid, dispersion, precomputed factors | `src/umwm_init.F90` | Spectral bins, wave kinematics, integration weights, dissipation constants, CFL limits. |
+| Model loop | `src/umwm_top.f90` | Calls source functions, source integration, advection, refraction, stress, Stokes drift, diagnostics, and output. |
+| Forcing state | `src/umwm_forcing.f90` | `forcing_type` owns mutable wind, current, density, sea-ice, remapped, and interpolation-scratch fields. |
+| Source functions | `src/umwm_source_functions.f90` | Wind input, wave breaking, nonlinear downshifting, turbulence, and sea-ice attenuation. |
+| Source integration and diagnostics | `src/umwm_physics.f90` | Exponential source update, diagnostic spectral tail, integrated wave diagnostics. |
+| Propagation and refraction | `src/umwm_advection.f90` | First-order upstream advection in geographic and directional space. |
+| Stress | `src/umwm_stress.f90` | Wind form/skin stress, ocean-top and ocean-bottom momentum fluxes, drag coefficient. |
+| Stokes drift | `src/umwm_stokes.f90` | Wave-induced Stokes drift and e-folding depth. |
+| Spectral grid | `src/umwm_spectrum.f90` | `spectrum_type`, frequency and direction coordinates, and spectral spacings. |
+| Dispersion | `src/umwm_dispersion.f90` | Capillary-gravity dispersion relation, wavenumber solve, angular frequency, and group speed. |
+| Initialization and precomputed factors | `src/umwm_init.f90` | Runtime allocation, legacy spectrum aliases, wave kinematics, integration weights, dissipation constants, CFL limits. |
+
+The top-level program constructs explicit `config`, `grid`, `spectrum`,
+and `forcing` objects. `config_type` remains the source of forcing
+switches and constants, while `forcing_type` owns the mutable runtime
+forcing snapshots and remapped fields.
 
 Within each global forcing/output time step `dtg`, UMWM repeatedly runs:
 
-1. Interpolate forcing fields.
-2. Compute `Sin`, `Sds`, `Snl`, `Sice`, plus turbulence and linear sink rates.
-3. Integrate source terms with a dynamic physics time step `dts`.
-4. Exchange MPI halos when enabled.
-5. Propagate wave variance geographically.
-6. Refract wave variance directionally.
-7. Compute atmospheric stress and drag.
-8. At output times, compute Stokes drift, diagnostics, ocean stress, spectra, grid output, and restart output.
+1. Advance file-backed forcing snapshots, when not ESMF-coupled.
+2. Interpolate `forcing` fields.
+3. Compute `Sin`, `Sds`, `Snl`, `Sice`, plus turbulence and linear sink rates.
+4. Integrate source terms with a dynamic physics time step `dts`.
+5. Exchange MPI halos when enabled.
+6. Propagate wave variance geographically.
+7. Refract wave variance directionally.
+8. Compute atmospheric stress and drag.
+9. At output times, compute Stokes drift, diagnostics, ocean stress, spectra, grid output, and restart output.
 
 ## State Variables and Conventions
 
@@ -38,6 +47,23 @@ state is discretized in:
 - time.
 
 The main spectrum array is `e(o,p,i)`.
+
+Forcing fields are represented by `type(forcing_type)` from
+`src/umwm_forcing.f90`. It stores native-grid snapshots for backward and
+forward forcing time levels, interpolated native-grid scratch fields,
+and remapped one-dimensional fields consumed by source functions,
+advection/refraction, stress, diagnostics, and output. File-backed
+updates remain disabled under `ESMF`, where coupled forcing is expected
+to be supplied externally.
+
+The spectral grid metadata is represented explicitly by
+`type(spectrum_type)` from `src/umwm_spectrum.f90`. The top-level program
+constructs one spectrum object after namelist input is read, then passes
+it through initialization, the model loop, diagnostics, restart I/O,
+spectrum/grid output, source functions, advection/refraction, stress,
+and Stokes drift. The legacy module variables `om`, `pm`, `f`, `th`,
+`dlnf`, `dth`, and `dom` remain initialized from this object for
+existing arrays and formulas.
 
 The model uses mathematical direction convention: $\phi=0$ points in the
 positive $x$ direction and positive angles rotate counter-clockwise.
@@ -71,6 +97,33 @@ $$
 f_o = \exp\left(\ln f_{\min} + (o-1)\Delta\ln f\right).
 $$
 
+This construction is implemented by `spectrum_type` using the `DOMAIN`
+namelist values `om`, `pm`, `fmin`, and `fmax`:
+
+| `spectrum_type` field | Meaning |
+| --- | --- |
+| `num_frequencies` | Number of frequency bins, initialized from `om`. |
+| `num_directions` | Number of direction bins, initialized from `pm`. |
+| `frequency_min`, `frequency_max` | Lowest and highest frequency bins, initialized from `fmin` and `fmax`. |
+| `frequency(:)` | Logarithmically spaced frequency coordinates. |
+| `direction(:)` | Uniformly spaced directional coordinates. |
+| `dlnf` | Log-frequency spacing. |
+| `dth` | Directional spacing. |
+
+Directions are uniformly spaced over a full circle:
+
+$$
+\Delta\phi = \frac{2\pi}{N_\phi},
+\qquad
+\phi_p =
+\left(p-\frac{N_\phi+1}{2}\right)\Delta\phi.
+$$
+
+During initialization, the legacy arrays `f(:)` and `th(:)` are assigned
+from `spectrum % frequency` and `spectrum % direction`. This preserves
+the existing numerical paths while making frequency and direction counts
+available through explicit state.
+
 The angular-frequency increment used to infer $dk$ is
 
 $$
@@ -88,7 +141,11 @@ $$
 $$
 
 where $d$ is water depth and $\sigma$ is water surface tension
-(`sfct`). The code solves a nondimensional form by Newton iteration.
+(`sfct`). The pure elemental function `wavenumber()` in
+`src/umwm_dispersion.f90` solves a nondimensional form by Newton
+iteration. The same module also provides `angular_frequency()` for the
+forward relation and `group_speed()` for the derivative used by the
+model.
 
 Intrinsic phase speed and group speed are
 
@@ -100,10 +157,14 @@ $$
 c_g =
 c\left[
 \frac{1}{2}
-+ \frac{kd}{\sinh(2kd)}
++ \frac{\min(kd,20)}{\sinh(2\min(kd,20))}
 + \frac{\sigma k^2}{\rho_w g + \sigma k^2}
 \right].
 $$
+
+The `min(kd,20)` cap is the implementation limit used in
+`group_speed()` to avoid hyperbolic overflow at large nondimensional
+depth.
 
 The spectral wavenumber increment is approximated from the group speed:
 
@@ -1268,6 +1329,31 @@ The current code writes the implementation arrays directly in spectrum
 point output. Thus `Sin`, `Sds`, `Sdt`, `Sdv`, and `Sbf` are rates that
 must be multiplied by `F` to obtain variance-spectrum tendencies, while
 `Snl` is already an absolute tendency.
+
+## Tests
+
+The focused unit tests live in `tests/` and are built by
+`tests/Makefile`. They can be run either from the top level
+
+```sh
+make test
+```
+
+or directly from the test directory
+
+```sh
+make --directory=tests test
+```
+
+The current focused tests are:
+
+| Test | Coverage |
+| --- | --- |
+| `test_dispersion` | Wavenumber/frequency round-trip accuracy and positive finite group speed for the capillary-gravity dispersion module. |
+| `test_spectrum` | Spectrum constructor metadata, endpoint frequencies, legacy log-space frequency equivalence, direction-grid equivalence, `dlnf`, and `dth`. |
+
+`make clean` at the top level recurses into `tests/` and removes
+test-local binaries, object files, and module files.
 
 ## References
 
