@@ -218,7 +218,7 @@ def write_hourly_files(args):
         hour_ds.to_netcdf(
             outfile,
             engine="netcdf4",
-            format="NETCDF3_64BIT_OFFSET",
+            format="NETCDF4",
             encoding=encoding,
             unlimited_dims=("time",),
         )
