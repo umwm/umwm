@@ -1,0 +1,60 @@
+name = "umwm"
+version = "0.1.0"
+license = "MIT"
+author = "UMWM contributors"
+maintainer = "Milan Curcic"
+description = "University of Miami Wave Model"
+homepage = "https://github.com/umwm/umwm"
+
+[build]
+auto-executables = false
+auto-examples = false
+auto-tests = false
+
+[dependencies]
+datetime = { git = "https://github.com/wavebitscientific/datetime-fortran.git", rev = "c49fcfcc54364db8235130149c4480b2bd0a72a0" }
+mpi = "*"
+netcdf = "*"
+
+[fortran]
+implicit-typing = true
+implicit-external = true
+source-form = "free"
+
+[preprocess.cpp]
+suffixes = ["f90"]
+directories = ["src", "tests"]
+macros = ["MPI"]
+
+[library]
+source-dir = "src"
+
+[[executable]]
+name = "umwm"
+source-dir = "src"
+main = "umwm.f90"
+
+[[test]]
+name = "test_dispersion"
+source-dir = "tests"
+main = "test_dispersion.f90"
+
+[[test]]
+name = "test_spectrum"
+source-dir = "tests"
+main = "test_spectrum.f90"
+
+[[test]]
+name = "test_config"
+source-dir = "tests"
+main = "test_config.f90"
+
+[[test]]
+name = "test_grid"
+source-dir = "tests"
+main = "test_grid.f90"
+
+[[test]]
+name = "test_forcing"
+source-dir = "tests"
+main = "test_forcing.f90"

@@ -1,6 +1,9 @@
 program test_spectrum
   use tuff, only: test, test_result
   use umwm_constants, only: rk, stderr, twopi
+#ifdef MPI
+  use umwm_env, only: env_init, env_stop
+#endif
   use umwm_spectrum, only: spectrum_type
 
   implicit none
@@ -12,6 +15,9 @@ program test_spectrum
 
   type(test_result) :: suite
 
+#ifdef MPI
+  call env_init()
+#endif
   suite = test('test_spectrum', [ &
     test(constructor_metadata), &
     test(endpoint_frequencies), &
@@ -20,6 +26,9 @@ program test_spectrum
     test(spacing_values) &
   ])
 
+#ifdef MPI
+  call env_stop()
+#endif
   if (.not. suite % ok) then
     error stop 1
   end if
