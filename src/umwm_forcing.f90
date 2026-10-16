@@ -196,9 +196,11 @@ contains
 
     if (config % winds) then
       call forcing_nc_check(nf90_inq_varid(ncid, 'uw', varid))
-      call forcing_nc_check(nf90_get_var(ncid, varid, self % uwf))
+      call forcing_nc_check(nf90_get_var(ncid, varid, self % uwf, &
+        start=[1, 1, 1], count=[config % mm, config % nm, 1]))
       call forcing_nc_check(nf90_inq_varid(ncid, 'vw', varid))
-      call forcing_nc_check(nf90_get_var(ncid, varid, self % vwf))
+      call forcing_nc_check(nf90_get_var(ncid, varid, self % vwf, &
+        start=[1, 1, 1], count=[config % mm, config % nm, 1]))
     else
       self % wspd_2d = config % wspd0
       self % wdir_2d = config % wdir0
@@ -208,9 +210,11 @@ contains
 
     if (config % currents) then
       call forcing_nc_check(nf90_inq_varid(ncid, 'uc', varid))
-      call forcing_nc_check(nf90_get_var(ncid, varid, self % ucf))
+      call forcing_nc_check(nf90_get_var(ncid, varid, self % ucf, &
+        start=[1, 1, 1], count=[config % mm, config % nm, 1]))
       call forcing_nc_check(nf90_inq_varid(ncid, 'vc', varid))
-      call forcing_nc_check(nf90_get_var(ncid, varid, self % vcf))
+      call forcing_nc_check(nf90_get_var(ncid, varid, self % vcf, &
+        start=[1, 1, 1], count=[config % mm, config % nm, 1]))
     else
       self % ucf = config % uc0
       self % vcf = config % vc0
@@ -220,7 +224,8 @@ contains
 
     if (config % seaice) then
       call forcing_nc_check(nf90_inq_varid(ncid, 'fice', varid))
-      call forcing_nc_check(nf90_get_var(ncid, varid, self % ficef))
+      call forcing_nc_check(nf90_get_var(ncid, varid, self % ficef, &
+        start=[1, 1, 1], count=[config % mm, config % nm, 1]))
     else
       self % fice_2d = config % fice0
       self % fice = config % fice0
@@ -233,7 +238,8 @@ contains
 
     if (config % air_density) then
       call forcing_nc_check(nf90_inq_varid(ncid, 'rhoa', varid))
-      call forcing_nc_check(nf90_get_var(ncid, varid, self % rhoa_2d))
+      call forcing_nc_check(nf90_get_var(ncid, varid, self % rhoa_2d, &
+        start=[1, 1, 1], count=[config % mm, config % nm, 1]))
     else
       self % rhoa_2d = config % rhoa0
       self % rhoa = config % rhoa0
@@ -241,7 +247,8 @@ contains
 
     if (config % water_density) then
       call forcing_nc_check(nf90_inq_varid(ncid, 'rhow', varid))
-      call forcing_nc_check(nf90_get_var(ncid, varid, self % rhow_2d))
+      call forcing_nc_check(nf90_get_var(ncid, varid, self % rhow_2d, &
+        start=[1, 1, 1], count=[config % mm, config % nm, 1]))
     else
       self % rhow_2d = config % rhow0
       self % rhow = config % rhow0

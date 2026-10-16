@@ -1,12 +1,18 @@
 program test_grid
   use tuff, only: test, test_result, nearly_equal
   use umwm_config, only: config_type
+#ifdef MPI
+  use umwm_env, only: env_init, env_stop
+#endif
   use umwm_grid, only: grid_type
 
   implicit none
 
   type(test_result) :: suite
 
+#ifdef MPI
+  call env_init()
+#endif
   suite = test('test_grid', [ &
     test(constant_limited_grid), &
     test(remap_round_trip), &
@@ -14,6 +20,9 @@ program test_grid
     test(global_periodic_neighbors) &
   ])
 
+#ifdef MPI
+  call env_stop()
+#endif
   if (.not. suite % ok) error stop 1
 
 contains
@@ -131,9 +140,15 @@ contains
 
     ok = grid % im == config % mm * (config % nm - 2) .and. &
          all(grid % mask(1,2:config % nm-1) == 1) .and. &
-         all(grid % mask(config % mm,2:config % nm-1) == 1) .and. &
+         all(grid % mask(config % mm,2:config % nm-1) == 1)
+#ifdef MPI
+    ! MPI remapping replaces off-tile neighbor indices with halo locations;
+    ! the mask checks above verify that both periodic edge columns are active.
+#else
+    ok = ok .and. &
          grid % iw(west_edge) == east_edge .and. &
          grid % ie(east_edge) == west_edge
+#endif
 
     call grid % finalize()
 

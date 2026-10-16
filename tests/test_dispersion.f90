@@ -2,6 +2,9 @@ program test_dispersion
   use tuff, only: test, test_result
   use umwm_constants, only: rk, stderr, twopi
   use umwm_dispersion, only: angular_frequency, group_speed, wavenumber
+#ifdef MPI
+  use umwm_env, only: env_init, env_stop
+#endif
 
   implicit none
 
@@ -17,11 +20,17 @@ program test_dispersion
 
   type(test_result) :: suite
 
+#ifdef MPI
+  call env_init()
+#endif
   suite = test('test_dispersion', [ &
     test(roundtrip_accuracy), &
     test(group_speed_is_finite_and_positive) &
   ])
 
+#ifdef MPI
+  call env_stop()
+#endif
   if (.not. suite % ok) then
     error stop 1
   end if

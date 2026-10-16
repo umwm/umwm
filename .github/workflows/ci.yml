@@ -5,39 +5,141 @@ on:
   pull_request:
 
 jobs:
-  build-and-test:
-    runs-on: ubuntu-latest
-
+  make-gnu:
+    runs-on: ubuntu-24.04
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.x"
           cache: pip
-
-      - name: Install system dependencies
+      - name: Install dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            curl \
-            gfortran \
-            libnetcdff-dev \
-            make \
-            netcdf-bin
-
-      - name: Install Python dependencies
-        run: |
+            curl gfortran libnetcdff-dev make netcdf-bin openmpi-bin libopenmpi-dev
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt
+      - name: Build and test
+        run: |
+          make MPI=yes FC=mpifort print-config
+          make MPI=yes FC=mpifort umwm
+          make FC=gfortran test
 
-      - name: Print build configuration
-        run: make print-config
+  make-intel:
+    runs-on: ubuntu-24.04
+    env:
+      NETCDF_PREFIX: ${{ github.workspace }}/.intel-netcdf
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+          cache: pip
+      - uses: fortran-lang/setup-fortran@v1
+        with:
+          compiler: intel
+          version: "2025.2"
+      - name: Install Intel MPI and build dependencies
+        run: |
+          wget -qO- https://apt.repos.intel.com/intel-gpg-keys/GPG-PUB-KEY-INTEL-SW-PRODUCTS.PUB \
+            | gpg --dearmor \
+            | sudo tee /usr/share/keyrings/oneapi-archive-keyring.gpg >/dev/null
+          echo "deb [signed-by=/usr/share/keyrings/oneapi-archive-keyring.gpg] https://apt.repos.intel.com/oneapi all main" \
+            | sudo tee /etc/apt/sources.list.d/oneAPI.list
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends cmake curl intel-oneapi-mpi-devel make
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+      - name: Cache Intel netCDF stack
+        id: cache-intel-netcdf
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.NETCDF_PREFIX }}
+          key: intel-netcdf-ifx-2025.2-zlib-1.3.2-hdf5-1.14.6-c-4.10.1-fortran-4.6.4
+      - name: Build Intel netCDF-4 stack
+        if: steps.cache-intel-netcdf.outputs.cache-hit != 'true'
+        run: .github/scripts/build-intel-netcdf.sh "$NETCDF_PREFIX"
+      - name: Build and test
+        run: |
+          source /opt/intel/oneapi/mpi/latest/env/vars.sh
+          export PATH="$NETCDF_PREFIX/bin:$PATH"
+          export LD_LIBRARY_PATH="$NETCDF_PREFIX/lib:${LD_LIBRARY_PATH:-}"
+          unset I_MPI_F90 I_MPI_f90
+          test "$(nc-config --has-nc4)" = yes
+          test "$(nf-config --has-nc4)" = yes
+          make MPI=yes FC=mpiifx FCFLAGS="-O3 -xHost -warn all" print-config
+          make MPI=yes FC=mpiifx FCFLAGS="-O3 -xHost -warn all" umwm
+          make FC=ifx FCFLAGS="-O3 -xHost -warn all" test
 
-      - name: Build UMWM
-        run: make umwm
+  fpm-gnu:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+          cache: pip
+      - uses: fortran-lang/setup-fpm@v7
+        with:
+          fpm-version: "v0.12.0"
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            gfortran libnetcdff-dev openmpi-bin libopenmpi-dev
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+      - name: Build and test
+        env:
+          MPIFC: mpifort
+          PYTHON: python
+        run: fpm test --compiler gfortran --runner ./tests/fpm-mpi-test-runner.sh
 
-      - name: Run tests
-        run: make test
+  fpm-intel:
+    needs: make-intel
+    runs-on: ubuntu-24.04
+    env:
+      NETCDF_PREFIX: ${{ github.workspace }}/.intel-netcdf
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+          cache: pip
+      - uses: fortran-lang/setup-fortran@v1
+        with:
+          compiler: intel
+          version: "2025.2"
+      - uses: fortran-lang/setup-fpm@v7
+        with:
+          fpm-version: "v0.12.0"
+      - name: Install Intel MPI
+        run: |
+          wget -qO- https://apt.repos.intel.com/intel-gpg-keys/GPG-PUB-KEY-INTEL-SW-PRODUCTS.PUB \
+            | gpg --dearmor \
+            | sudo tee /usr/share/keyrings/oneapi-archive-keyring.gpg >/dev/null
+          echo "deb [signed-by=/usr/share/keyrings/oneapi-archive-keyring.gpg] https://apt.repos.intel.com/oneapi all main" \
+            | sudo tee /etc/apt/sources.list.d/oneAPI.list
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends intel-oneapi-mpi-devel
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+      - name: Restore Intel netCDF stack
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.NETCDF_PREFIX }}
+          key: intel-netcdf-ifx-2025.2-zlib-1.3.2-hdf5-1.14.6-c-4.10.1-fortran-4.6.4
+          fail-on-cache-miss: true
+      - name: Build and test
+        run: |
+          source /opt/intel/oneapi/mpi/latest/env/vars.sh
+          export PATH="$NETCDF_PREFIX/bin:$PATH"
+          export LD_LIBRARY_PATH="$NETCDF_PREFIX/lib:${LD_LIBRARY_PATH:-}"
+          export PKG_CONFIG_PATH="$NETCDF_PREFIX/lib/pkgconfig"
+          unset I_MPI_F90 I_MPI_f90
+          export MPIFC=mpiifx
+          export PYTHON=python
+          test "$(nc-config --has-nc4)" = yes
+          test "$(nf-config --has-nc4)" = yes
+          fpm test --compiler ifx --runner ./tests/fpm-mpi-test-runner.sh

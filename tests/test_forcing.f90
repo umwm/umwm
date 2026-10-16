@@ -1,6 +1,9 @@
 program test_forcing
   use tuff, only: test, test_result, nearly_equal, all_nearly_equal
   use umwm_config, only: config_type
+#ifdef MPI
+  use umwm_env, only: env_init, env_stop
+#endif
   use umwm_forcing, only: forcing_type, min_wind_speed
   use umwm_grid, only: grid_type
   use umwm_module, only: sumt
@@ -9,6 +12,9 @@ program test_forcing
 
   type(test_result) :: suite
 
+#ifdef MPI
+  call env_init()
+#endif
   suite = test('test_forcing', [ &
     test(interpolation_snapshot), &
     test(wind_speed_floor), &
@@ -16,6 +22,9 @@ program test_forcing
     test(file_backed_rankine_forcing) &
   ])
 
+#ifdef MPI
+  call env_stop()
+#endif
   if (.not. suite % ok) error stop 1
 
 contains

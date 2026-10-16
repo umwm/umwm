@@ -155,7 +155,7 @@ contains
     logical, intent(inout) :: isglobal, restart
     integer, intent(inout) :: mm, nm, om, pm
     real, intent(inout) :: fmin, fmax, fprog, dtg
-    character(len=*), intent(inout) :: starttimestr, stoptimestr, reftimestr
+    character(len=19), intent(inout) :: starttimestr, stoptimestr, reftimestr
     integer, intent(out) :: stat
     character(len=*), intent(out) :: iomsg
 

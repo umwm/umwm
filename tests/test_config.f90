@@ -2,11 +2,17 @@ program test_config
   use iso_fortran_env, only: iostat_end
   use tuff, only: test, test_result, nearly_equal
   use umwm_config, only: config_type
+#ifdef MPI
+  use umwm_env, only: env_init, env_stop
+#endif
 
   implicit none
 
   type(test_result) :: suite
 
+#ifdef MPI
+  call env_init()
+#endif
   suite = test('test_config', [ &
     test(valid_config_read), &
     test(invalid_grid_size), &
@@ -20,6 +26,9 @@ program test_config
     test(unreadable_namelist) &
   ])
 
+#ifdef MPI
+  call env_stop()
+#endif
   if (.not. suite % ok) error stop 1
 
 contains

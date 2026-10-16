@@ -96,6 +96,37 @@ Run the test suite from the top-level directory:
 make test
 ```
 
+### Building with fpm
+
+[Fortran Package Manager (fpm)](https://fpm.fortran-lang.org/) 0.13 or newer
+can build the MPI-enabled model and run its test suite. The active compiler
+must have matching MPI and netCDF Fortran installations discoverable through
+their compiler wrappers and `pkg-config` files.
+
+With GNU Fortran, OpenMPI, and a system netCDF installation:
+
+```
+fpm build --compiler gfortran
+fpm test --compiler gfortran --runner ./tests/fpm-mpi-test-runner.sh
+```
+
+With Intel Fortran, Intel MPI, and a netCDF-Fortran installation built with
+`ifx`, first initialize oneAPI and expose that netCDF installation:
+
+```
+source ~/intel/oneapi/setvars.sh
+export PKG_CONFIG_PATH=/path/to/intel-netcdf/lib/pkgconfig:$PKG_CONFIG_PATH
+export LD_LIBRARY_PATH=/path/to/intel-netcdf/lib:$LD_LIBRARY_PATH
+fpm build --compiler ifx --build-dir build-ifx
+fpm test --compiler ifx --build-dir build-ifx \
+  --runner ./tests/fpm-mpi-test-runner.sh
+```
+
+The MPI test runner launches one process by default; set `FPM_TEST_PROCESSES`
+to override that count. It prepares the generated Rankine-vortex forcing
+fixture and runs tests from the `tests` directory, preserving the paths used
+by the Make suite.
+
 ### Running UMWM
 
 Running in serial mode:
