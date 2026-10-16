@@ -87,9 +87,9 @@ end subroutine initialize
 
 
 subroutine print_diagnostics(self)
-  use umwm_module, only: nproc
+  use umwm_env, only: nproc
 #ifdef MPI
-  use umwm_module, only: mpisize
+  use umwm_env, only: mpisize
 #endif
 
   class(grid_type), intent(in) :: self
@@ -222,7 +222,7 @@ end subroutine allocate_remapped
 subroutine define_grid(self, config)
 ! Defines grid spacing and grid cell areas.
   use netcdf
-  use umwm_module, only: nproc
+  use umwm_env, only: nproc
   use umwm_util, only: distance_haversine, raiseexception
 
   class(grid_type), intent(inout) :: self
@@ -538,14 +538,14 @@ end subroutine fill
 subroutine partition(self, config)
 ! Partitions the domain for parallel computation.
 #ifdef MPI
-  use umwm_module, only: ierr, mpisize, nproc
+  use umwm_env, only: mpisize, nproc
 #endif
 
   class(grid_type), intent(inout) :: self
   type(config_type), intent(in) :: config
 
 #ifdef MPI
-  integer :: nn
+  integer :: ierr, nn
 #ifdef ESMF
   integer :: i, m, n
 #endif
@@ -686,7 +686,7 @@ subroutine remap(self, config)
 ! Remaps two-dimensional arrays into one-dimensional arrays while leaving
 ! out land points, assigns neighboring points, and builds halo metadata.
 #ifdef MPI
-  use umwm_module, only: ierr, mpisize, nproc
+  use umwm_env, only: mpisize, nproc
 #endif
 
   class(grid_type), intent(inout) :: self
@@ -694,7 +694,7 @@ subroutine remap(self, config)
   integer :: i, m, n
 
 #ifdef MPI
-  integer :: nn
+  integer :: ierr, nn
   integer :: counter, itemp
   integer, dimension(:), allocatable :: n_exchange_indices
 #endif

@@ -1,226 +1,200 @@
 module umwm_source_functions
-  ! Module that provides wave source functions.
-  use umwm_config, only: config_type
-  use umwm_forcing, only: forcing_type, min_wind_speed
-  use umwm_grid, only: grid_type
-  use umwm_module, only: bf1_renorm, bf2_renorm, cg0, cothkd, cp0, cth, &
-                         cth2pp, dth, dummy, e, f, fcutoff, &
-                         fieldscale1, fieldscale2, fkovg, &
-                         k, k3dk, k4, kdk, logl2overz, &
-                         oc, psim, psiml2, sds, &
-                         sdt, shelt, sice, &
-                         snl, ssin, sth, th, twopi, twopisds_fac, &
-                         ustar
-  use umwm_constants, only: rk
-  use umwm_sheltering, only: sheltering_coare35, sheltering_reynolds
-  use umwm_spectrum, only: spectrum_type
+  ! Wave source functions of Donelan et al. (2012), evaluated for one
+  ! spectral column (all frequencies and directions of one grid cell).
+  ! The prognostic range of frequencies is 1:oc; higher bins are diagnostic.
+
+  use, intrinsic :: iso_fortran_env, only: real64
 
   implicit none
 
   private
-
-  public :: sin_d12, sds_d12, snl_d12, s_ice
+  public :: mss_moments, power, sin_d12, sds_coefficient, sds_d12, snl_d12, s_ice
 
 contains
 
-  subroutine sin_d12(config, spectrum, grid, forcing)
-    ! Wind input function based on Jeffreys's sheltering hypothesis
-    ! and described by Donelan et al. (2012).
-    type(config_type), intent(in) :: config
-    type(spectrum_type), intent(in) :: spectrum
-    type(grid_type), intent(in) :: grid
-    type(forcing_type), intent(in) :: forcing
-    integer :: i, o, p
-    real :: wspd_clamped(grid % istart:grid % iend)
+  pure subroutine sin_d12(nf, nd, no, oc, wind, cosd, cp, uc, vc, cth, sth, &
+                          shelt, sin_fac, fieldscale1, fieldscale2, scale, fkovg, ssin)
+    ! Wind input function based on Jeffreys's sheltering hypothesis,
+    ! evaluated for frequencies 1:no.
+    integer, intent(in) :: nf, nd, no, oc
+    real, intent(in) :: wind(nf)          ! wind speed at half-wavelength height [m/s]
+    real, intent(in) :: cosd(nd)          ! cosine of the wind-wave angle
+    real, intent(in) :: cp(nf)            ! intrinsic phase speed [m/s]
+    real, intent(in) :: uc, vc            ! ocean current [m/s]
+    real, intent(in) :: cth(nd), sth(nd)  ! wave direction cosines
+    real, intent(in) :: shelt             ! sheltering coefficient
+    real, intent(in) :: sin_fac, fieldscale1, fieldscale2
+    real, intent(in) :: scale             ! (1 - fice) * 2 pi * rhoa / rhow
+    real, intent(in) :: fkovg(nf)         ! f * k / g
+    real, intent(inout) :: ssin(nf,nd)
+    real :: lower(no) ! no negative input for the diagnostic tail
+    real :: s, overrun
+    integer :: o, p
 
-    associate(istart => grid % istart, iend => grid % iend)
+    do o = 1, no
+      lower(o) = merge(0., -huge(0.), o > oc)
+    end do
 
-    ! protection against low wind speed values
-    wspd_clamped = max(forcing % wspd(istart:iend), min_wind_speed)
-
-    ! cut-off frequency (4*pierson-moskowitz peak frequency)
-    fcutoff(istart:iend) = 0.53 * config % g / wspd_clamped
-
-    where (fcutoff > config % fprog) fcutoff = config % fprog
-
-    ! search for the cut-off frequency bin:
-    do i = istart, iend
-      do o = spectrum % num_frequencies - 2, 1, -1
-        oc(i) = o
-        if (fcutoff(i) > f(o)) exit
+    do p = 1, nd
+      overrun = merge(fieldscale2, 1., cosd(p) > 0)
+      do o = 1, no
+        s = wind(o) * cosd(p) - cp(o) - uc * cth(p) - vc * sth(p)
+        s = sin_fac * abs(s) * s
+        ! variable sheltering coefficient for following winds; damping of
+        ! opposing winds, further reduced for swell overrunning the wind
+        s = merge(s * shelt / sin_fac, s * fieldscale1 * overrun, s > 0)
+        ssin(o,p) = max(scale * s * fkovg(o), lower(o))
       end do
     end do
-
-    ! compute wind input at height of half wavelenght:
-    do concurrent (o = 1:spectrum % num_frequencies,p = 1:spectrum % num_directions, i = istart:iend)
-#ifdef ESMF
-      ssin(o,p,i) = (wspd_clamped(i) + 2.5 * ustar(i) * (logl2overz(o,i) + psim(i) - psiml2(o,i)))&
-#else
-      ssin(o,p,i) = (wspd_clamped(i) + 2.5 * ustar(i) * logl2overz(o,i))&
-#endif
-                  * cos(forcing % wdir(i) - th(p)) - cp0(o,i)&
-                  - forcing % uc(i) * cth(p) - forcing % vc(i) * sth(p)
-    end do
-
-    ssin = config % sin_fac * abs(ssin) * ssin
-
-    ! compute variable sheltering coefficient
-    shelt = sheltering_coare35(wspd_clamped)
-
-    ! apply variable sheltering coefficient
-    do concurrent(o = 1:spectrum % num_frequencies, p = 1:spectrum % num_directions, i = istart:iend, ssin(o,p,i) > 0)
-      ssin(o,p,i) = ssin(o,p,i) * shelt(i) / config % sin_fac
-    end do
-
-    ! adjust input for opposing winds
-    do concurrent (o = 1:spectrum % num_frequencies, p = 1:spectrum % num_directions, i = istart:iend, ssin(o,p,i) < 0)
-      ssin(o,p,i) = ssin(o,p,i) * fieldscale1
-    end do
-
-    ! further reduce for swell that overruns the wind
-    do concurrent (o = 1:spectrum % num_frequencies, p = 1:spectrum % num_directions, &
-                   i = istart:iend, ssin(o,p,i) < 0 .and. cos(forcing % wdir(i)-th(p)) > 0)
-      ssin(o,p,i) = ssin(o,p,i) * fieldscale2
-    end do
-
-    do concurrent (o = 1:spectrum % num_frequencies, p = 1:spectrum % num_directions, i = istart:iend)
-      ssin(o,p,i) = (1 - forcing % fice(i)) * twopi * forcing % rhorat(i) * ssin(o,p,i) * fkovg(o,i)
-    end do
-
-    ! prevent negative sin for diagnostic tail
-    do concurrent(i = istart:iend, p = 1:spectrum % num_directions)
-      do o = oc(i)+1, spectrum % num_frequencies
-        ssin(o,p,i) = max(ssin(o,p,i), 0._rk)
-      end do
-    end do
-
-    end associate
 
   end subroutine sin_d12
 
 
-  subroutine sds_d12(config, spectrum, grid)
-    ! Wave dissipation function described by Donelan et al. (2012).
-    type(config_type), intent(in) :: config
-    type(spectrum_type), intent(in) :: spectrum
-    type(grid_type), intent(in) :: grid
-    integer :: i, o, p
+  pure subroutine mss_moments(nf, nd, e, k3dk, cth2, sth2, dth, moments)
+    ! Direction-integrated moments of the mean-squared slope of all longer
+    ! waves, such that the slope projected onto direction th(p) is
+    ! sum(e(o',p') * k3dk(o') * cos(th(p') - th(p))**2 * dth, o' < o)
+    !   = moments(o,1) + cos(2 th(p)) * moments(o,2) + sin(2 th(p)) * moments(o,3),
+    ! because cos(x)**2 = (1 + cos(2x)) / 2.
+    integer, intent(in) :: nf, nd
+    real, intent(in) :: e(nf,nd), k3dk(nf)
+    real, intent(in) :: cth2(nd), sth2(nd) ! cos(2 th), sin(2 th)
+    real, intent(in) :: dth
+    real, intent(out) :: moments(nf,3)
+    real :: d0(nf), dc(nf), ds(nf)
+    integer :: o, p
 
-    associate(istart => grid % istart, iend => grid % iend)
-
-    dummy = 0
-
-    if (config % mss_fac > 0) then
-      do concurrent(p = 1:spectrum % num_directions, i = istart:iend)
-        do o = 2, spectrum % num_frequencies
-          dummy(o,p,i) = dummy(o-1,p,i) + sum(e(o-1,:,i) * cth2pp(:,p)) * k3dk(o-1,i)
-        end do
+    d0 = 0
+    dc = 0
+    ds = 0
+    do p = 1, nd
+      do o = 1, nf
+        d0(o) = d0(o) + e(o,p)
+        dc(o) = dc(o) + e(o,p) * cth2(p)
+        ds(o) = ds(o) + e(o,p) * sth2(p)
       end do
-    end if
-
-    dummy = (1 + config % mss_fac * dummy)**2
-
-    do concurrent(o = 1:spectrum % num_frequencies, p = 1:spectrum % num_directions, i = istart:iend)
-      sds(o,p,i) = twopisds_fac * f(o) * dummy(o,p,i) * (e(o,p,i) * k4(o,i))**config % sds_power
     end do
 
-    end associate
+    moments(1,:) = 0
+    do o = 2, nf
+      moments(o,1) = moments(o-1,1) + 0.5 * dth * d0(o-1) * k3dk(o-1)
+      moments(o,2) = moments(o-1,2) + 0.5 * dth * dc(o-1) * k3dk(o-1)
+      moments(o,3) = moments(o-1,3) + 0.5 * dth * ds(o-1) * k3dk(o-1)
+    end do
+
+  end subroutine mss_moments
+
+
+  pure subroutine sds_coefficient(nf, nd, o1, o2, f, cth2, sth2, mss_fac, twopisds_fac, &
+                                  moments, sds_coef)
+    ! Wave breaking dissipation coefficient for frequencies o1:o2,
+    ! enhanced by the mean-squared slope of longer waves if mss_fac > 0.
+    integer, intent(in) :: nf, nd, o1, o2
+    real, intent(in) :: f(nf), cth2(nd), sth2(nd), mss_fac, twopisds_fac, moments(nf,3)
+    real, intent(inout) :: sds_coef(nf,nd)
+    real :: fac
+    integer :: o, p
+    fac = max(mss_fac, 0.)
+    do p = 1, nd
+      do o = o1, o2
+        sds_coef(o,p) = twopisds_fac * f(o) * (1 + fac &
+          * (moments(o,1) + cth2(p) * moments(o,2) + sth2(p) * moments(o,3)))**2
+      end do
+    end do
+  end subroutine sds_coefficient
+
+
+  pure subroutine sds_d12(nf, nd, o1, o2, e, k4, f, cth2, sth2, mss_fac, twopisds_fac, &
+                          moments, sds_power, sds)
+    ! Wave breaking dissipation for frequencies o1:o2, proportional to a
+    ! power of the saturation spectrum. The adjustment for plunging breakers,
+    ! coth(0.2 kd), is not included and is applied where sds is used.
+    integer, intent(in) :: nf, nd, o1, o2
+    real, intent(in) :: e(nf,nd), k4(nf), f(nf), cth2(nd), sth2(nd)
+    real, intent(in) :: mss_fac, twopisds_fac, moments(nf,3), sds_power
+    real, intent(inout) :: sds(nf,nd)
+    real :: saturation(o1:o2,nd), sds_coef(nf,nd)
+    integer :: p
+
+    if (o2 < o1) return
+    do p = 1, nd
+      saturation(:,p) = e(o1:o2,p) * k4(o1:o2)
+    end do
+    call power(size(saturation), saturation, sds_power)
+    call sds_coefficient(nf, nd, o1, o2, f, cth2, sth2, mss_fac, twopisds_fac, moments, sds_coef)
+    do p = 1, nd
+      sds(o1:o2,p) = sds_coef(o1:o2,p) * saturation(:,p)
+    end do
 
   end subroutine sds_d12
 
 
-  subroutine s_ice(config, spectrum, grid, forcing)
-    ! Wave attenuation by sea ice, following Kohoun et al. (2014).
+  pure subroutine power(n, x, a)
+    ! Raises x to the positive power a in place, in double precision for
+    ! accuracy and speed. Inputs and results that would be subnormal in
+    ! single precision give zero.
+    integer, intent(in) :: n
+    real, intent(inout) :: x(n)
+    real, intent(in) :: a
+    real :: xmin
+    xmin = max(tiny(x)**(1 / a), tiny(x))
+    x = merge(real(exp(a * log(real(max(x, xmin), real64)))), 0., x > xmin)
+  end subroutine power
 
-    type(config_type), intent(in) :: config
-    type(spectrum_type), intent(in) :: spectrum
-    type(grid_type), intent(in) :: grid
-    type(forcing_type), intent(in) :: forcing
-    integer :: i, o, p
 
-    ! parameters from Kohout et al. 2014
+  pure subroutine snl_d12(nf, nd, oc, e, bf1_renorm, bf2_renorm, snl_fac, sds, snl)
+    ! Nonlinear downshifting: spread wave energy to the 2 next longer
+    ! wavenumbers exponentially decaying as distance from the donating
+    ! wavenumber, and remove the energy from the donating wavenumbers.
+    integer, intent(in) :: nf, nd, oc
+    real, intent(in) :: e(nf,nd), sds(nf,nd)
+    real, intent(in) :: bf1_renorm(nf), bf2_renorm(nf)
+    real, intent(in) :: snl_fac
+    real, intent(out) :: snl(nf,nd)
+    integer :: o, p
+
+    do p = 1, nd
+      do o = 1, oc
+        snl(o,p) = bf1_renorm(o) * sds(o+1,p) * e(o+1,p) &
+                 + bf2_renorm(o) * sds(o+2,p) * e(o+2,p) &
+                 - snl_fac * sds(o,p) * e(o,p)
+      end do
+      snl(oc+1:nf,p) = 0
+    end do
+
+  end subroutine snl_d12
+
+
+  pure subroutine s_ice(nf, nd, e, kdk, cg, dth, fice, fice_lth, sice)
+    ! Wave attenuation by sea ice, following Kohout et al. (2014).
+    integer, intent(in) :: nf, nd
+    real, intent(in) :: e(nf,nd), kdk(nf), cg(nf)
+    real, intent(in) :: dth, fice, fice_lth
+    real, intent(out) :: sice(nf)
+
     real, parameter :: H_th = 3.0       ! [m]
     real, parameter :: C1   = -5.35e-6  ! [m-1]
     real, parameter :: C2   = C1 * H_th ! []
 
-    real, dimension(spectrum % num_frequencies, spectrum % num_directions) :: spectrumbin
+    real :: swh
+    integer :: p
 
-    real :: ht_
+    sice = 0
+    if (fice <= fice_lth) return
 
-    associate(istart => grid % istart, iend => grid % iend)
-
-    sice = 0.0
-
-    do i = istart, iend
-
-      if (forcing % fice(i) > config % fice_lth) then
-
-        ht_ = 0.0
-
-        do p = 1, spectrum % num_directions
-          do o = 1, spectrum % num_frequencies
-            spectrumbin(o,p) = e(o,p,i) * kdk(o,i)
-
-            ht_ = ht_ + spectrumbin(o,p)
-          end do
-        end do
-
-        ht_ = 4 * sqrt(ht_ * dth) ! significant wave height
-
-        ! wave attenuation from sea ice in the two SWH regimes
-        if (ht_ < H_th) then
-          sice(:,i) = C1 * ht_
-        else
-          sice(:,i) = C2
-        end if
-
-        sice(:,i) = 2 * cg0(:,i) * sice(:,i)
-
-      end if
-
+    swh = 0
+    do p = 1, nd
+      swh = swh + sum(e(:,p) * kdk)
     end do
+    swh = 4 * sqrt(swh * dth)
 
-    end associate
+    ! wave attenuation from sea ice in the two SWH regimes
+    if (swh < H_th) then
+      sice = 2 * cg * (C1 * swh)
+    else
+      sice = 2 * cg * C2
+    end if
 
   end subroutine s_ice
-
-
-  subroutine snl_d12(config, spectrum, grid, forcing)
-
-    type(config_type), intent(in) :: config
-    type(spectrum_type), intent(in) :: spectrum
-    type(grid_type), intent(in) :: grid
-    type(forcing_type), intent(in) :: forcing
-    integer :: o, p, i
-
-    associate(istart => grid % istart, iend => grid % iend)
-
-    snl = 0
-
-    ! spread wave energy to 2 next longer wavenumbers exponentially decaying
-    ! as distance from donating wavenumber, and remove the energy from
-    ! donating wavenumbers:
-    do concurrent(i = istart:iend)
-      do concurrent(o = 1:oc(i), p = 1:spectrum % num_directions)
-        snl(o,p,i) = bf1_renorm(o,i) * sds(o+1,p,i) * e(o+1,p,i)&
-                   + bf2_renorm(o,i) * sds(o+2,p,i) * e(o+2,p,i)&
-                   - config % snl_fac * sds(o,p,i) * e(o,p,i)
-        !snl(o,p,i) = snl_fac * (kdk(o+1,i) * e(o+1,p,i) - kdk(o,i) * e(o,p,i)) / dwn(o,i) ! WIP dk-invariant Snl
-      end do
-    end do
-
-    ! account for plunging breakers
-    do concurrent(o = 1:spectrum % num_frequencies, p = 1:spectrum % num_directions, i = istart:iend)
-      sds(o,p,i) = sds(o,p,i) * cothkd(o,i)
-    end do
-
-    ! compute dissipation due to turbulence
-    do concurrent(o = 1:spectrum % num_frequencies, i = istart:iend)
-      sdt(o,i) = config % sdt_fac * sqrt(forcing % rhorat(i)) * ustar(i) * k(o,i)
-    end do
-
-    end associate
-
-  end subroutine snl_d12
 
 end module umwm_source_functions

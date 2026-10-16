@@ -1,225 +1,144 @@
 module umwm_advection
 
-  ! Subroutines for calculation of wave energy advection in geographical (x, y)
-  ! and directional (theta) space. 1st order upstream finite differences.
-
-#if defined(MPI)
-  use mpi
-#endif
-  use umwm_forcing, only: forcing_type
-  use umwm_grid, only: grid_type
-  use umwm_module, only: cg0, cp0, cth, dta, dtr, dts, dth, &
-                         e, ef, first, ierr, oc, &
-                         oneovdth, pl, &
-                         pr, rotl, rotr, sth
-  use umwm_config, only: config_type
-  use umwm_spectrum, only: spectrum_type
+  ! Wave energy advection in geographical (x, y) and directional (theta)
+  ! space for one spectral column. 1st order upstream finite differences.
 
   implicit none
 
-  logical :: zerocurrents
+  private
+  public :: max_rotation_rate, propagation, refraction
 
 contains
 
-  subroutine propagation(config, spectrum, grid, forcing)
+  pure subroutine propagation(nf, nd, oc, e, e_e, e_w, e_n, e_s, cg, cg_e, cg_w, cg_n, cg_s, &
+                              cth, sth, dxn, dxs, dye, dyw, currents, uc_e, uc_w, vc_n, vc_s, &
+                              dt_over_area, ef)
+    ! Advects the spectrum e of a cell with neighbors to the east, west,
+    ! north, and south (e_e, e_w, e_n, e_s) by the group velocity and,
+    ! if currents is .true., by the ocean currents; integrates into ef.
+    integer, intent(in) :: nf, nd, oc
+    real, intent(in) :: e(nf,nd), e_e(nf,nd), e_w(nf,nd), e_n(nf,nd), e_s(nf,nd)
+    real, intent(in) :: cg(nf), cg_e(nf), cg_w(nf), cg_n(nf), cg_s(nf) ! group speed
+    real, intent(in) :: cth(nd), sth(nd) ! ray directions adjusted for grid curvature
+    real, intent(in) :: dxn, dxs, dye, dyw ! cell edge lengths
+    logical, intent(in) :: currents
+    real, intent(in) :: uc_e, uc_w, vc_n, vc_s ! double current speed at cell edges
+    real, intent(in) :: dt_over_area ! 0.25 * dt / cell area
+    real, intent(inout) :: ef(nf,nd)
 
-    ! 1st order upstream finite difference advection in geographical space.
-
-    type(config_type), intent(in) :: config
-    type(spectrum_type), intent(in) :: spectrum
-    type(grid_type), intent(in) :: grid
-    type(forcing_type), intent(in) :: forcing
-    integer :: num_directions
-    integer :: o, p, i
-    real :: cge, cgw, cgn, cgs
+    integer :: o, p
+    real :: ae(nf), aw(nf), an(nf), as(nf)
+    real :: cxp, cxm, cyp, cym, flux
     real :: feup, fedn, fwup, fwdn, fnup, fndn, fsup, fsdn
 
-    real :: flux(spectrum % num_frequencies, spectrum % num_directions, grid % istart:grid % iend)
+    ! The double group velocity at the east cell edge is (cg + cg_e) * cth,
+    ! and so on. Group speed is positive, so the upstream direction is given
+    ! by the signs of cth and sth alone.
+    ae = (cg + cg_e) * dye
+    aw = (cg + cg_w) * dyw
+    an = (cg + cg_n) * dxn
+    as = (cg + cg_s) * dxs
 
-    num_directions = spectrum % num_directions
-    flux = 0
+    feup = (uc_e + abs(uc_e)) * dye
+    fedn = (uc_e - abs(uc_e)) * dye
+    fwup = (uc_w + abs(uc_w)) * dyw
+    fwdn = (uc_w - abs(uc_w)) * dyw
+    fnup = (vc_n + abs(vc_n)) * dxn
+    fndn = (vc_n - abs(vc_n)) * dxn
+    fsup = (vc_s + abs(vc_s)) * dxs
+    fsdn = (vc_s - abs(vc_s)) * dxs
 
-    associate(istart => grid % istart, iend => grid % iend, &
-              iistart => grid % iistart, iiend => grid % iiend, &
-              ie => grid % ie, iw => grid % iw, in => grid % in, is => grid % is, &
-              iie => grid % iie, iiw => grid % iiw, iin => grid % iin, iis => grid % iis, &
-              dxn => grid % dxn, dxs => grid % dxs, dye => grid % dye, dyw => grid % dyw, &
-              oneovar => grid % oneovar, cth_curv => grid % cth_curv, &
-              sth_curv => grid % sth_curv)
+    do p = 1, nd
 
-    do concurrent(i = istart:iend)
-      do concurrent(o = 1:oc(i), p = 1:num_directions)
+      cxp = cth(p) + abs(cth(p))
+      cxm = cth(p) - abs(cth(p))
+      cyp = sth(p) + abs(sth(p))
+      cym = sth(p) - abs(sth(p))
 
-        !  double group velocity at east, west, north, south cell edges
-        cge = cg0(o,i) * cth_curv(p,i) + cg0(o,ie(i)) * cth_curv(p,i)
-        cgw = cg0(o,i) * cth_curv(p,i) + cg0(o,iw(i)) * cth_curv(p,i)
-        cgs = cg0(o,i) * sth_curv(p,i) + cg0(o,is(i)) * sth_curv(p,i)
-        cgn = cg0(o,i) * sth_curv(p,i) + cg0(o,in(i)) * sth_curv(p,i)
+      do o = 1, oc
 
         ! advective energy flux in and out of all 4 directions
-        flux(o,p,i) = (cge + abs(cge)) * dye(i) * e(o,p,i)     & ! east, out
-                    + (cge - abs(cge)) * dye(i) * e(o,p,ie(i)) & ! east, in
-                    - (cgw + abs(cgw)) * dyw(i) * e(o,p,iw(i)) & ! west, in
-                    - (cgw - abs(cgw)) * dyw(i) * e(o,p,i)     & ! west, out
-                    + (cgn + abs(cgn)) * dxn(i) * e(o,p,i)     & ! north, out
-                    + (cgn - abs(cgn)) * dxn(i) * e(o,p,in(i)) & ! north, in
-                    - (cgs + abs(cgs)) * dxs(i) * e(o,p,is(i)) & ! south, in
-                    - (cgs - abs(cgs)) * dxs(i) * e(o,p,i)       ! south, out
+        flux = ae(o) * (cxp * e(o,p) + cxm * e_e(o,p)) & ! east, out and in
+             - aw(o) * (cxp * e_w(o,p) + cxm * e(o,p)) & ! west, in and out
+             + an(o) * (cyp * e(o,p) + cym * e_n(o,p)) & ! north, out and in
+             - as(o) * (cyp * e_s(o,p) + cym * e(o,p))   ! south, in and out
+
+        if (currents) &
+          flux = flux + (feup * e(o,p)   + fedn * e_e(o,p) &
+                      -  fwup * e_w(o,p) - fwdn * e(o,p)   &
+                      +  fnup * e(o,p)   + fndn * e_n(o,p) &
+                      -  fsup * e_s(o,p) - fsdn * e(o,p))
+
+        ef(o,p) = ef(o,p) - dt_over_area * flux
 
       end do
     end do
-
-    ! check if currents are non-zero:
-    if (.not. config % isglobal) then
-      zerocurrents = .not. (any(forcing % uc(iistart:iiend) /= 0)&
-                       .or. any(forcing % vc(iistart:iiend) /= 0))
-    else
-      zerocurrents = .not. (any(forcing % uc /= 0) .or. any(forcing % vc /= 0))
-    end if
-
-    if (.not. zerocurrents) then ! advect wave energy by currents
-
-      do concurrent(i = istart:iend)
-
-        ! x-direction
-        feup = (forcing % uc(i) + forcing % uc(iie(i)) + &
-                abs(forcing % uc(i) + forcing % uc(iie(i)))) * dye(i)
-        fedn = (forcing % uc(i) + forcing % uc(iie(i)) - &
-                abs(forcing % uc(i) + forcing % uc(iie(i)))) * dye(i)
-        fwup = (forcing % uc(i) + forcing % uc(iiw(i)) + &
-                abs(forcing % uc(i) + forcing % uc(iiw(i)))) * dyw(i)
-        fwdn = (forcing % uc(i) + forcing % uc(iiw(i)) - &
-                abs(forcing % uc(i) + forcing % uc(iiw(i)))) * dyw(i)
-
-        ! y-direction
-        fnup = (forcing % vc(i) + forcing % vc(iin(i)) + &
-                abs(forcing % vc(i) + forcing % vc(iin(i)))) * dxn(i)
-        fndn = (forcing % vc(i) + forcing % vc(iin(i)) - &
-                abs(forcing % vc(i) + forcing % vc(iin(i)))) * dxn(i)
-        fsup = (forcing % vc(i) + forcing % vc(iis(i)) + &
-                abs(forcing % vc(i) + forcing % vc(iis(i)))) * dxs(i)
-        fsdn = (forcing % vc(i) + forcing % vc(iis(i)) - &
-                abs(forcing % vc(i) + forcing % vc(iis(i)))) * dxs(i)
-
-        do concurrent(o = 1:oc(i), p = 1:num_directions)
-          flux(o,p,i) = flux(o,p,i)                                &
-                      + (feup * e(o,p,i)     + fedn * e(o,p,ie(i)) &
-                      -  fwup * e(o,p,iw(i)) - fwdn * e(o,p,i)     &
-                      +  fnup * e(o,p,i)     + fndn * e(o,p,in(i)) &
-                      -  fsup * e(o,p,is(i)) - fsdn * e(o,p,i))
-        end do
-
-      end do
-
-    end if ! .not. zerocurrents
-
-    ! integrate in time
-    do concurrent(i = istart:iend)
-      do concurrent(o = 1:oc(i), p = 1:num_directions)
-          ef(o,p,i) = ef(o,p,i) - 0.25 * dta * flux(o,p,i) * oneovar(i)
-
-          if (forcing % fice(i) > config % fice_uth) then
-            ef(o,p,i) = 0.0
-          end if  
-      end do
-    end do
-
-    end associate
 
   end subroutine propagation
 
 
-  subroutine refraction(config, spectrum, grid, forcing)
+  pure real function rotation_rate(dcp_dx, dcp_dy, curl, cth, sth) result(res)
+    ! Rate of rotation of wave rays [rad/s] due to bottom- and
+    ! current-induced refraction.
+    real, intent(in) :: dcp_dx, dcp_dy ! phase speed gradient, halved
+    real, intent(in) :: curl ! current vorticity, halved
+    real, intent(in) :: cth, sth
+    res = dcp_dx * sth - dcp_dy * cth + curl
+  end function rotation_rate
 
-    ! 1st order upstream finite difference advection in
-    ! directional space -- bottom- and current-induced refraction.
 
-    type(config_type), intent(in) :: config
-    type(spectrum_type), intent(in) :: spectrum
-    type(grid_type), intent(in) :: grid
-    type(forcing_type), intent(in) :: forcing
-    integer :: num_directions
-    integer :: i, o, p
-    logical :: compute_rotation_tendency
-    real :: sendbuffer
-    real, save :: dtr_temp
-
-    real :: flux(spectrum % num_frequencies, spectrum % num_directions, grid % istart:grid % iend)
-
-    num_directions = spectrum % num_directions
-
-    associate(istart => grid % istart, iend => grid % iend, &
-              ie => grid % ie, iw => grid % iw, in => grid % in, is => grid % is, &
-              iie => grid % iie, iiw => grid % iiw, iin => grid % iin, iis => grid % iis, &
-              oneovdx => grid % oneovdx, oneovdy => grid % oneovdy)
-
-#ifdef ESMF
-    ! always compute in coupled mode:
-    compute_rotation_tendency = .true.
-#else
-    ! compute if varrying currents or first step:
-    compute_rotation_tendency = config % currents .or. first
-#endif
-
-    if (compute_rotation_tendency) then
-
-      ! compute rotation
-      flux = 0
-      do concurrent(i = istart:iend)
-        do concurrent(o = 1:oc(i), p = 1:num_directions)
-          flux(o,p,i) = 0.5 * (((cp0(o,ie(i)) - cp0(o,iw(i))) * sth(p) &
-                               + forcing % vc(iie(i)) - forcing % vc(iiw(i))) * oneovdx(i) &
-                             - ((cp0(o,in(i)) - cp0(o,is(i))) * cth(p) &
-                               + forcing % uc(iin(i)) - forcing % uc(iis(i))) * oneovdy(i))
-        end do
-      end do
-
-      ! evaluate rotation at cell edges:
-      rotl = 0
-      rotr = 0
-      do concurrent(i = istart:iend)
-        do concurrent(o = 1:oc(i), p = 1:num_directions)
-          rotl(o,p,i) = 0.5 * (flux(o,p,i) + flux(o,pl(p),i))
-          rotr(o,p,i) = 0.5 * (flux(o,p,i) + flux(o,pr(p),i))
-        end do
-      end do
-
-      if (maxval(flux) <= tiny(sendbuffer)) then
-        dtr_temp = dts
-      else
-#ifdef MPI
-        sendbuffer = dth / maxval(flux)
-        call mpi_allreduce(sendbuffer, dtr_temp, 1, MPI_REAL, mpi_min, MPI_COMM_WORLD, ierr)
-#else
-        dtr_temp = dth / maxval(flux)
-#endif
-      end if
-
-    end if
-
-    dtr = min(dtr_temp, dts)
-
-    flux = 0
-    do concurrent(i = istart:iend)
-      do concurrent(o = 1:oc(i), p = 1:num_directions)
-
-        ! compute tendencies
-        flux(o,p,i) = 0.5 * ((rotl(o,p,i) + abs(rotl(o,p,i))) * e(o,p,i)    &
-                           + (rotl(o,p,i) - abs(rotl(o,p,i))) * e(o,pl(p),i)&
-                           - (rotr(o,p,i) + abs(rotr(o,p,i))) * e(o,pr(p),i)&
-                           - (rotr(o,p,i) - abs(rotr(o,p,i))) * e(o,p,i))   &
-                     * oneovdth
-        ! integrate
-        ef(o,p,i) = ef(o,p,i) - dtr * flux(o,p,i)
-        
-        if (forcing % fice(i) > config % fice_uth) then
-          ef(o,p,i) = 0.0
-        end if
-
+  pure real function max_rotation_rate(nf, nd, no, dcp_dx, dcp_dy, curl, cth, sth) result(res)
+    ! Largest anti-clockwise ray rotation rate over frequencies 1:no, or 0.
+    integer, intent(in) :: nf, nd, no
+    real, intent(in) :: dcp_dx(nf), dcp_dy(nf), curl
+    real, intent(in) :: cth(nd), sth(nd)
+    integer :: o, p
+    res = 0
+    do p = 1, nd
+      do o = 1, no
+        res = max(res, rotation_rate(dcp_dx(o), dcp_dy(o), curl, cth(p), sth(p)))
       end do
     end do
+  end function max_rotation_rate
 
-    end associate
+
+  pure subroutine refraction(nf, nd, no, e, dcp_dx, dcp_dy, curl, cth, sth, dtr, oneovdth, ef)
+    ! Advects the spectrum e of a cell in directional space for frequencies
+    ! 1:no and integrates the tendency into ef.
+    integer, intent(in) :: nf, nd, no
+    real, intent(in) :: e(nf,nd)
+    real, intent(in) :: dcp_dx(nf), dcp_dy(nf), curl
+    real, intent(in) :: cth(nd), sth(nd)
+    real, intent(in) :: dtr, oneovdth
+    real, intent(inout) :: ef(nf,nd)
+
+    real :: rot(no,0:nd+1) ! ray rotation rate, periodic in direction
+    real :: rotl, rotr, flux
+    integer :: o, p, pl, pr
+
+    do p = 1, nd
+      do o = 1, no
+        rot(o,p) = rotation_rate(dcp_dx(o), dcp_dy(o), curl, cth(p), sth(p))
+      end do
+    end do
+    rot(:,0) = rot(:,nd)
+    rot(:,nd+1) = rot(:,1)
+
+    do p = 1, nd
+      pl = modulo(p, nd) + 1     ! anti-clockwise neighbor
+      pr = modulo(p - 2, nd) + 1 ! clockwise neighbor
+      do o = 1, no
+        ! rotation at cell edges
+        rotl = 0.5 * (rot(o,p) + rot(o,p+1))
+        rotr = 0.5 * (rot(o,p) + rot(o,p-1))
+        flux = 0.5 * ((rotl + abs(rotl)) * e(o,p)  &
+                    + (rotl - abs(rotl)) * e(o,pl) &
+                    - (rotr + abs(rotr)) * e(o,pr) &
+                    - (rotr - abs(rotr)) * e(o,p)) &
+             * oneovdth
+        ef(o,p) = ef(o,p) - dtr * flux
+      end do
+    end do
 
   end subroutine refraction
 

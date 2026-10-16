@@ -1,6 +1,7 @@
 *.a
 *.o
 *.mod
+*.smod
 
 src/datetime_module.f90
 
@@ -17,5 +18,8 @@ umwmout_*.nc
 umwmin_*.nc
 umwmrst_*.nc
 tests/input/.rankine_forcing.stamp
+tests/output/
+tests/test_*
+!tests/test_*.f90
 build/
 .venv/

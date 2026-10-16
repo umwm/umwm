@@ -1,17 +1,16 @@
 module umwm_restart
   ! Provides read and write subroutines for UMWM restart files
   use, intrinsic :: iso_fortran_env, only: real64
+  use netcdf
+  use umwm_env, only: mpisize, nproc
   use umwm_grid, only: grid_type
   use umwm_io, only: put_time_metadata, seconds_since_reference
-  use umwm_module, only: e, f, ierr, k, mpisize, nproc, ustar
-  use netcdf
   use umwm_spectrum, only: spectrum_type
   use umwm_util, only: raiseexception
 
 #ifdef MPI
   use mpi
-  use umwm_mpi
-#endif 
+#endif
 
   implicit none
 
@@ -20,13 +19,18 @@ module umwm_restart
 
 contains
 
-  subroutine restart_read(timestr, spectrum, grid)
+  subroutine restart_read(timestr, spectrum, grid, e, ustar)
     character(19), intent(in) :: timestr
     type(spectrum_type), intent(in) :: spectrum
     type(grid_type), intent(in) :: grid
+    real, intent(inout) :: e(:,:,grid % istart:) ! (om,pm,istart:iend)
+    real, intent(inout) :: ustar(grid % istart:)
     character(19) :: timestrnew
     character(9999) :: filename
     integer :: stat, ncid, ustid, specid
+#ifdef MPI
+    integer :: ierr
+#endif
 
     if (nproc == 0) &
       write(*, '(a)')'umwm: restart_read: reading restart file for ' // timestr
@@ -64,13 +68,19 @@ contains
   end subroutine restart_read
 
 
-  subroutine restart_write(timestr, reftimestr, spectrum, grid)
+  subroutine restart_write(timestr, reftimestr, spectrum, grid, e, k, ustar)
     character(19), intent(in) :: timestr
     character(*), intent(in) :: reftimestr
     type(spectrum_type), intent(in) :: spectrum
     type(grid_type), intent(in) :: grid
-  
+    real, intent(in) :: e(:,:,grid % istart:) ! (om,pm,istart:iend)
+    real, intent(in) :: k(:,grid % istart:)   ! (om,istart:iend)
+    real, intent(in) :: ustar(grid % istart:)
+
     integer :: i, nn
+#ifdef MPI
+    integer :: ierr
+#endif
     integer :: stat, ncid, xdimid, fdimid, thdimid, tdimid
     integer :: kid, lonid, latid, freqid, thetaid, timeid, ustid, specid
     real :: lon_tmp(grid % im), lat_tmp(grid % im)
