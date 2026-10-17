@@ -98,6 +98,10 @@ Run the test suite from the top-level directory:
 make test
 ```
 
+The tests generate their forcing with Python (`requirements.txt`); set
+`PYTHON` to use a particular interpreter, for example `make test
+PYTHON="uv run python"` with the environment of the Python package.
+
 ### Building with fpm
 
 [Fortran Package Manager (fpm)](https://fpm.fortran-lang.org/) 0.13 or newer
@@ -152,10 +156,12 @@ the model state and the output available as NumPy arrays and xarray
 datasets, and provides the `umwm` command-line tool. The time integration
 runs in the compiled Fortran library, so there is no performance cost.
 Install it from the repository (it builds the library with the same
-Makefile configuration, for example `UMWM_MPI=yes pip install .` for MPI):
+Makefile configuration, for example `UMWM_MPI=yes pip install .` for MPI),
+or set up an environment with [uv](https://docs.astral.sh/uv/):
 
 ```
 pip install .
+uv sync && uv run umwm info
 ```
 
 ```python

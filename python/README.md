@@ -45,6 +45,40 @@ export UMWM_LIBRARY=/path/to/libumwm.so
 in `python/umwm/`. `umwm info` shows which library is in use and whether it
 was built with MPI.
 
+### With uv
+
+[uv](https://docs.astral.sh/uv/) manages the environment, the dependencies,
+and the build from the repository; `uv.lock` pins the dependencies.
+
+```
+uv sync                                   # .venv with umwm, its dependencies, pytest and matplotlib
+uv run umwm info
+uv run umwm init runs/case1
+uv run umwm run runs/case1
+uv run pytest                             # the Python test suite
+uv run python python/examples/rankine.py
+uv build                                  # sdist and wheel in dist/
+uv tool install .                         # the umwm command outside the project
+```
+
+`uv sync` builds the library like `pip install .` does and installs the
+package in editable mode. The build options are the same `UMWM_` variables,
+and uv rebuilds the library when they change, and when the Fortran sources
+or the build files change, so after editing a `.f90` file `uv sync` is all
+that is needed:
+
+```
+UMWM_MPI=yes UMWM_FC=mpifort uv sync      # MPI-enabled library
+uv run umwm run -n 4 runs/case1           # or: uv run mpiexec -n 4 umwm run runs/case1
+uv run mpiexec -n 2 python python/tests/mpi_smoke.py
+uv sync                                   # back to the serial library
+```
+
+The scripts in `tools/` and the Fortran test suite use Python too; with
+uv's environment, run them as `uv run python script.py` and
+`make test PYTHON="uv run python"` (or `PYTHON="uv run python" fpm test
+--runner ./tests/fpm-mpi-test-runner.sh`).
+
 ## Running the model
 
 A `Domain` wraps one model domain in a run directory with the layout the
@@ -306,6 +340,7 @@ configurations.
 ```
 python -m pytest python/tests                         # serial
 mpiexec -n 2 python python/tests/mpi_smoke.py         # with an MPI library
+uv run pytest                                         # with uv
 ```
 
 The tests include the idealized hurricane case of the Fortran test suite,

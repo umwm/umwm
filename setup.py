@@ -19,6 +19,11 @@ from pathlib import Path
 from setuptools import Extension, setup
 from setuptools.command.build_ext import build_ext
 
+try:
+    from setuptools.command.bdist_wheel import bdist_wheel
+except ImportError:  # setuptools < 70.1
+    from wheel.bdist_wheel import bdist_wheel
+
 ROOT = Path(__file__).resolve().parent
 LIBRARY = "libumwm.so"
 MAKE_VARIABLES = ("MPI", "FC", "FCFLAGS", "CPPFLAGS", "LDFLAGS", "LDLIBS", "NF_CONFIG",
@@ -57,7 +62,16 @@ class BuildSharedLibrary(build_ext):
         shutil.copy2(build_dir / LIBRARY, destination)
 
 
+class PlatformWheel(bdist_wheel):
+    """Tag the wheel as specific to the platform but not to the Python version:
+    the library is loaded with ctypes and does not use the Python ABI."""
+
+    def get_tag(self):
+        _, _, platform = super().get_tag()
+        return "py3", "none", platform
+
+
 setup(
     ext_modules=[Extension("umwm.libumwm", sources=[])],
-    cmdclass={"build_ext": BuildSharedLibrary},
+    cmdclass={"build_ext": BuildSharedLibrary, "bdist_wheel": PlatformWheel},
 )

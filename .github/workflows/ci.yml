@@ -103,6 +103,36 @@ jobs:
           umwm info
           mpiexec -n 2 --oversubscribe python python/tests/mpi_smoke.py "$PWD/build/mpi-smoke"
 
+  python-uv:
+    runs-on: ubuntu-24.04
+    env:
+      OMPI_ALLOW_RUN_AS_ROOT: 1
+      OMPI_ALLOW_RUN_AS_ROOT_CONFIRM: 1
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            curl gfortran libnetcdff-dev make netcdf-bin openmpi-bin libopenmpi-dev
+      - name: Sync the environment (builds the serial library) and test
+        run: |
+          uv sync --locked
+          uv run umwm info
+          uv run pytest -q
+          uv build
+      - name: Rebuild with MPI through the build options and test under mpiexec
+        env:
+          UMWM_MPI: "yes"
+          UMWM_FC: mpifort
+        run: |
+          uv sync --locked
+          uv run umwm info
+          uv run mpiexec -n 2 --oversubscribe python python/tests/mpi_smoke.py "$PWD/build/uv-mpi-smoke"
+      - name: Run the Fortran test suite with the environment's Python
+        run: make test PYTHON="uv run python"
+
   fpm-gnu:
     runs-on: ubuntu-24.04
     steps:

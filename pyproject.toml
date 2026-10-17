@@ -38,6 +38,34 @@ umwm = "umwm.cli:main"
 Homepage = "https://github.com/umwm/umwm"
 Documentation = "https://github.com/umwm/umwm/blob/main/python/README.md"
 
+[dependency-groups]
+# Installed by `uv sync` (and `uv run`) by default, for developing and testing.
+dev = ["pytest", "matplotlib"]
+
+[tool.uv]
+# The package build compiles the Fortran sources into the shared library, so
+# uv rebuilds it when they, the build files, or the build options change, not
+# only when pyproject.toml does.
+cache-keys = [
+    { file = "pyproject.toml" },
+    { file = "setup.py" },
+    { file = "MANIFEST.in" },
+    { file = "src/*.f90" },
+    { file = "src/Makefile" },
+    { file = "mk/config.mk" },
+    { env = "UMWM_MPI" },
+    { env = "UMWM_FC" },
+    { env = "UMWM_FCFLAGS" },
+    { env = "UMWM_CPPFLAGS" },
+    { env = "UMWM_LDFLAGS" },
+    { env = "UMWM_LDLIBS" },
+    { env = "UMWM_NF_CONFIG" },
+    { env = "UMWM_NETCDF" },
+    { env = "UMWM_NETCDF_FFLAGS" },
+    { env = "UMWM_NETCDF_FLIBS" },
+    { env = "UMWM_LIBRARY" },
+]
+
 [tool.setuptools]
 package-dir = {"" = "python"}
 packages = ["umwm"]
