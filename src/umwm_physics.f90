@@ -1,228 +1,78 @@
 module umwm_physics
+  ! Integration of the source functions for one spectral column.
 
-  use umwm_module, only: cg0, cgmxx, cgmxy, cgmyy, cothkd, cp0, cth, &
-                         dcg, dcg0, dcp, dcp0, dta, dtamin, dth, &
-                         dthg, dts, dummy, dwd, dwl, dwp, e, ef, &
-                         f, first, ht, ierr, inv_sds_power, invcp0, &
-                         k, k3dk, kdk, momx, momy, mss, mwd, mwl, &
-                         mwp, oc, oneoverk4, physics_time_step, &
-                         sbf, sds, sdt, sdv, sice, snl, &
-                         snl_arg, ssin, sth, sumt, th, twopi, &
-                         twopisds_fac
-  use umwm_config, only: config_type
-  use umwm_forcing, only: forcing_type
-  use umwm_grid, only: grid_type
-  use umwm_spectrum, only: spectrum_type
+  use umwm_source_functions, only: power
 
   implicit none
 
+  private
+  public :: max_source_rate, integrate_sources
+
 contains
 
-subroutine source(config, spectrum, grid)
+  pure real function max_source_rate(nf, nd, oc, ssin, sds, cothkd, snl_arg, sbf, sdt, sdv, sice) &
+    result(res)
+    ! Largest magnitude of the exponential growth/decay rate in the
+    ! prognostic range, which limits the source integration time step.
+    ! The breaking dissipation sds excludes the plunging breaker factor cothkd.
+    integer, intent(in) :: nf, nd, oc
+    real, intent(in) :: ssin(nf,nd), sds(nf,nd)
+    real, intent(in) :: cothkd(nf), snl_arg(nf), sbf(nf), sdt(nf), sdv(nf), sice(nf)
+    integer :: o, p
 
-#ifdef MPI
-use mpi
-#endif
-
-type(config_type), intent(in) :: config
-type(spectrum_type), intent(in) :: spectrum
-type(grid_type), intent(in) :: grid
-integer :: i,o,p
-
-#ifdef MPI
-real :: send_buff
-#endif
-
-!real,save :: explim_ramp
-
-associate(istart => grid % istart, iend => grid % iend)
-
-! calculate the exponential argument:
-ef = 0
-do concurrent(i = istart:iend, p = 1:spectrum % num_directions)
-  do o = 1,oc(i)
-    ef(o,p,i) = ssin(o,p,i)-sds(o,p,i)*snl_arg(o,i)&
-               -sbf(o,i)-sdt(o,i)-sdv(o,i)+sice(o,i)
-  end do
-end do
-
-!explim_ramp = explim
-
-! if first global step, apply ramp to explim
-!if(firstdtg)then
-!  explim_ramp = (0.01+0.99*sumt/dtg)*explim
-!end if
-
-! Compute maximum physics time step for diagnostics
-physics_time_step = config % explim / maxval(maxval(abs(ef), dim=1), dim=1)
-
-! compute the dynamic time step and update in-step model time:
-dts = min(minval(physics_time_step), dtamin, config % dtg - sumt)
-
-#ifdef MPI
-send_buff = dts
-call mpi_allreduce(send_buff,dts,1,MPI_REAL,mpi_min,MPI_COMM_WORLD,ierr)
-#endif
-
-! if first time step, set time step to zero and
-! integrate only the diagnostic part
-if (.not. config % restart .and. first) dts = 0
-
-dta = dts
-
-! increment time:
-sumt = sumt + dts
-
-! integrate source terms for the prognostic range (o <= ol)
-do concurrent(i = istart:iend, p = 1:spectrum % num_directions)
-  do o = 1,oc(i)
-    ef(o,p,i) = e(o,p,i)*exp(dts*(ssin(o,p,i)-sds(o,p,i)      &
-                                 -sbf(o,i)-sdt(o,i)-sdv(o,i)  &
-                                 +sice(o,i)))&
-               +dts*snl(o,p,i)
-  end do
-end do
-
-! integrate source terms for the diagnostic range (o > ol)
-do concurrent(i = istart:iend, p = 1:spectrum % num_directions)
-  do o = oc(i) + 1, spectrum % num_frequencies
-    if (ssin(o,p,i) - sdt(o,i) - sdv(o,i) + sice(o,i) >= 0) then
-      ef(o,p,i) = oneoverk4(o,i) * ((ssin(o,p,i) - sdt(o,i) - sdv(o,i) + sice(o,i)) &
-                / (twopisds_fac * f(o) * dummy(o,p,i) * cothkd(o,i)))**inv_sds_power
-    end if
-  end do
-end do
-
-e(:,:,istart:iend) = 0.5 * (e(:,:,istart:iend) + ef(:,:,istart:iend))
-
-end associate
-
-endsubroutine source
-
-
-subroutine diag(spectrum, grid, forcing)
-
-! TODO move to umwm_diagnostics.f90
-
-type(spectrum_type), intent(in) :: spectrum
-type(grid_type), intent(in) :: grid
-type(forcing_type), intent(in) :: forcing
-integer              :: o,p,i
-integer              :: opeak,ppeak
-integer,dimension(2) :: spectrum_peak_loc
-
-real                        :: mag,xcomp,ycomp
-real,dimension(grid % istart:grid % iend) :: m0,m2
-real,dimension(spectrum % num_frequencies, spectrum % num_directions) :: spectrumbin
-
-real :: ekdkovcp
-
-associate(istart => grid % istart, iend => grid % iend)
-
-m0 = 0
-m2 = 0
-
-do i=istart,iend
-  do p=1,spectrum % num_directions
-    do o=1,spectrum % num_frequencies
-      m0(i) = m0(i)+e(o,p,i)*kdk(o,i)
-      m2(i) = m2(i)+f(o)**2*e(o,p,i)*kdk(o,i)
+    res = 0
+    do p = 1, nd
+      do o = 1, oc
+        res = max(res, abs(ssin(o,p) - sds(o,p) * cothkd(o) * snl_arg(o) &
+                           - sbf(o) - sdt(o) - sdv(o) + sice(o)))
+      end do
     end do
-  end do
-end do
 
-mwp = sqrt(m0 / (m2 + tiny(m2))) ! mean wave period
+  end function max_source_rate
 
-momx = 0
-momy = 0
-cgmxx = 0
-cgmxy = 0
-cgmyy = 0
 
-do i=istart,iend
+  pure subroutine integrate_sources(nf, nd, oc, dts, e, ssin, sds, snl, sds_coef, &
+                                    sbf, sdt, sdv, sice, cothkd, oneoverk4, inv_sds_power, ef)
+    ! Integrates the source functions over dts with an exponential update in
+    ! the prognostic range (o <= oc), and sets the diagnostic range to the
+    ! equilibrium of wind input and dissipation. The breaking dissipation sds
+    ! and its coefficient sds_coef exclude the plunging breaker factor cothkd.
+    ! On return, ef is the updated spectrum and e is the mean of the old and
+    ! updated spectrum.
+    integer, intent(in) :: nf, nd, oc
+    real, intent(in) :: dts
+    real, intent(inout) :: e(nf,nd)
+    real, intent(in) :: ssin(nf,nd), sds(nf,nd), snl(nf,nd), sds_coef(nf,nd)
+    real, intent(in) :: sbf(nf), sdt(nf), sdv(nf), sice(nf), cothkd(nf), oneoverk4(nf)
+    real, intent(in) :: inv_sds_power
+    real, intent(out) :: ef(nf,nd)
+    real :: equilibrium(oc+1:nf,nd) ! diagnostic range in equilibrium of input and dissipation
+    real :: eforward
+    integer :: o, p
 
-  ! total wave momentum:
-  do p=1,spectrum % num_directions
-    do o=1,oc(i)
-
-      ekdkovcp = e(o,p,i)*kdk(o,i)*invcp0(o,i)
-
-      momx(i) = momx(i)+ekdkovcp*cth(p)
-      momy(i) = momy(i)+ekdkovcp*sth(p)
-
-      cgmxx(i) = cgmxx(i)+cg0(o,i)*ekdkovcp*cth(p)**2
-      cgmxy(i) = cgmxy(i)+cg0(o,i)*ekdkovcp*cth(p)*sth(p)
-      cgmyy(i) = cgmyy(i)+cg0(o,i)*ekdkovcp*sth(p)**2
-
+    do p = 1, nd
+      do o = 1, oc
+        eforward = e(o,p) * exp(dts * (ssin(o,p) - sds(o,p) * cothkd(o) &
+                                       - sbf(o) - sdt(o) - sdv(o) + sice(o))) &
+                 + dts * snl(o,p)
+        ef(o,p) = eforward
+        e(o,p) = 0.5 * (e(o,p) + eforward)
+      end do
+      do o = oc + 1, nf
+        equilibrium(o,p) = max(ssin(o,p) - sdt(o) - sdv(o) + sice(o), 0.) / (sds_coef(o,p) * cothkd(o))
+      end do
     end do
-  end do
 
-  momx(i)  = momx(i)*forcing % rhow(i)*dthg
-  momy(i)  = momy(i)*forcing % rhow(i)*dthg
-  cgmxx(i) = cgmxx(i)*forcing % rhow(i)*dthg
-  cgmxy(i) = cgmxy(i)*forcing % rhow(i)*dthg
-  cgmyy(i) = cgmyy(i)*forcing % rhow(i)*dthg
+    call power(size(equilibrium), equilibrium, inv_sds_power)
 
-  ! significant wave height:
-  ht(i) = 0.
-  do p=1,spectrum % num_directions
-    do o=1,spectrum % num_frequencies
-      ht(i) = ht(i)+e(o,p,i)*kdk(o,i)
+    do p = 1, nd
+      do o = oc + 1, nf
+        eforward = oneoverk4(o) * equilibrium(o,p)
+        ef(o,p) = eforward
+        e(o,p) = 0.5 * (e(o,p) + eforward)
+      end do
     end do
-  end do
-  ht(i) = 4*sqrt(ht(i)*dth)
 
-  ! mean wave direction:
-  xcomp = 0.
-  ycomp = 0.
-  do p=1,spectrum % num_directions
-    mag   = sum(e(:,p,i)*kdk(:,i),dim=1)
-    xcomp = xcomp+mag*cth(p)
-    ycomp = ycomp+mag*sth(p)
-  end do
-  mwd(i) = atan2(ycomp,xcomp)
-
-  ! wavenumber spectrum moments:
-  m0(i) = 0.
-  m2(i) = 0.
-  do p=1,spectrum % num_directions
-    do o=1,spectrum % num_frequencies
-      m0(i) = m0(i)+e(o,p,i)*kdk(o,i)
-      m2(i) = m2(i)+e(o,p,i)*k3dk(o,i)
-    end do
-  end do
-
-  ! mean-squared slope:
-  mss(i) = m2(i) * dth
-
-  mwl(i) = twopi * sqrt(m0(i) / (m2(i) + tiny(m2(i)))) ! mean wavelenght
-
-  do p=1,spectrum % num_directions
-    do o=1,spectrum % num_frequencies
-      spectrumbin(o,p) = e(o,p,i)*kdk(o,i)
-    end do
-  end do
-
-  spectrum_peak_loc = maxloc(spectrumbin)  ! indices of spectrum peak
-
-  opeak = spectrum_peak_loc(1)             ! frequency/wavenumber peak
-  ppeak = spectrum_peak_loc(2)             ! direction peak
-
-  dwd(i) = th(ppeak)                       ! dominant wave direction
-  dwl(i) = twopi/k(opeak,i)                ! dominant wave length
-  dwp(i) = 1./f(opeak)                     ! dominant wave period
-
-  dcp0(i) = cp0(opeak,i)                   ! dominant phase speed, intrinsic
-  dcg0(i) = cg0(opeak,i)                   ! dominant group speed, intrinsic
-
-  ! dominant phase and group speed:
-  dcp(i) = dcp0(i)+forcing % uc(i)*cth(ppeak)+forcing % vc(i)*sth(ppeak)
-  dcg(i) = dcg0(i)+forcing % uc(i)*cth(ppeak)+forcing % vc(i)*sth(ppeak)
-
-end do
-
-end associate
-
-end subroutine diag
+  end subroutine integrate_sources
 
 end module umwm_physics

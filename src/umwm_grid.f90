@@ -87,9 +87,9 @@ end subroutine initialize
 
 
 subroutine print_diagnostics(self)
-  use umwm_module, only: nproc
+  use umwm_env, only: nproc
 #ifdef MPI
-  use umwm_module, only: mpisize
+  use umwm_env, only: mpisize
 #endif
 
   class(grid_type), intent(in) :: self
@@ -222,7 +222,7 @@ end subroutine allocate_remapped
 subroutine define_grid(self, config)
 ! Defines grid spacing and grid cell areas.
   use netcdf
-  use umwm_module, only: nproc
+  use umwm_env, only: nproc
   use umwm_util, only: distance_haversine, raiseexception
 
   class(grid_type), intent(inout) :: self
@@ -538,14 +538,14 @@ end subroutine fill
 subroutine partition(self, config)
 ! Partitions the domain for parallel computation.
 #ifdef MPI
-  use umwm_module, only: ierr, mpisize, nproc
+  use umwm_env, only: mpisize, nproc
 #endif
 
   class(grid_type), intent(inout) :: self
   type(config_type), intent(in) :: config
 
 #ifdef MPI
-  integer :: nn
+  integer :: ierr, nn
 #ifdef ESMF
   integer :: i, m, n
 #endif
@@ -686,7 +686,7 @@ subroutine remap(self, config)
 ! Remaps two-dimensional arrays into one-dimensional arrays while leaving
 ! out land points, assigns neighboring points, and builds halo metadata.
 #ifdef MPI
-  use umwm_module, only: ierr, mpisize, nproc
+  use umwm_env, only: mpisize, nproc
 #endif
 
   class(grid_type), intent(inout) :: self
@@ -694,9 +694,10 @@ subroutine remap(self, config)
   integer :: i, m, n
 
 #ifdef MPI
-  integer :: nn
+  integer :: ierr, nn
   integer :: counter, itemp
   integer, dimension(:), allocatable :: n_exchange_indices
+  logical :: narrow
 #endif
 
   ! in serial mode this does not matter, but we must pick one:
@@ -828,7 +829,12 @@ subroutine remap(self, config)
   end do
 
 #ifdef MPI
-  if (nproc == 0) then ! root process
+  if (mpisize == 1) then ! one tile without halo, as in serial mode
+
+    self % iistart = self % istart
+    self % iiend = self % iend
+
+  else if (nproc == 0) then ! root process
 
     self % iistart = self % istart
     itemp = self % iend
@@ -890,7 +896,7 @@ subroutine remap(self, config)
 
   end if
 
-  if (config % isglobal) then
+  if (config % isglobal .and. mpisize > 1) then
 
     allocate(n_exchange_indices(0))
 
@@ -972,6 +978,17 @@ subroutine remap(self, config)
                      MPI_INTEGER, MPI_COMM_WORLD, ierr)
   call mpi_allgather(self % iiend, 1, MPI_INTEGER, self % iiend_all, 1, &
                      MPI_INTEGER, MPI_COMM_WORLD, ierr)
+
+  ! the halo of each tile must lie within its neighbor tiles, so that no
+  ! tile sends cells that it receives in the same exchange:
+  narrow = .false.
+  if (nproc < mpisize - 1) narrow = self % iistart_all(nproc+1) < self % istart
+  if (nproc > 0) narrow = narrow .or. self % iiend_all(nproc-1) > self % iend
+  if (config % isglobal .and. mpisize > 1 .and. (nproc == 0 .or. nproc == mpisize - 1)) &
+    narrow = narrow .or. any(self % i_exchange_indices < self % istart &
+                             .or. self % i_exchange_indices > self % iend)
+  if (narrow) error stop 'umwm: remap: error: a tile is narrower than the halo of ' &
+                         // 'its neighbors; use fewer processes'
 #endif
 
   ! treat land points for halo-adjacent arrays:

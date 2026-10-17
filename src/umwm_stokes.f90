@@ -1,129 +1,108 @@
 module umwm_stokes
+  ! Wave-induced Stokes drift.
+
+  use umwm_constants, only: eulerinv, twopi
 
   implicit none
 
-  integer :: lm
-  real, allocatable :: depth(:), ds(:)
-  real, allocatable :: us(:,:), vs(:,:), usmag(:,:)
-  real, allocatable :: util(:,:,:), arg(:,:,:)
+  private
+  public :: stokes_type
+
+  type :: stokes_type
+    integer :: lm = 0                     ! number of depth levels
+    real, allocatable :: depth(:)         ! depth levels (negative down) [m]
+    real, allocatable :: weight(:,:,:)    ! (om,lm,i) spectral weights of the drift
+    real, allocatable :: us(:,:), vs(:,:) ! (i,lm) drift velocity components [m/s]
+    real, allocatable :: ds(:)            ! e-folding depth [m]
+  contains
+    procedure :: initialize
+    procedure :: compute
+  end type stokes_type
+
 contains
 
-  subroutine stokes_drift(spectrum, config, grid, option)
-    ! Computes wave-induced Stokes drift
+  subroutine initialize(self, depths, f, k, dwn, d, dth, istart, iend)
+    ! Precomputes the depth-dependent spectral weights of the Stokes drift.
+    class(stokes_type), intent(inout) :: self
+    real, intent(in) :: depths(:)                ! positive depth levels [m]
+    real, intent(in) :: f(:)                     ! frequency [Hz]
+    integer, intent(in) :: istart, iend
+    real, intent(in) :: k(:,istart:)             ! wavenumber [rad/m]
+    real, intent(in) :: dwn(:,istart:)           ! wavenumber bin width [rad/m]
+    real, intent(in) :: d(istart:)               ! water depth [m]
+    real, intent(in) :: dth                      ! direction bin width [rad]
+    integer :: i, l, o
+    real :: arg, kd
 
-    use umwm_constants, only: eulerinv
-    use umwm_config, only: config_type
-    use umwm_grid, only: grid_type
-    use umwm_module, only: twopi, e, f, k, dwn, dth, cth, sth,nproc
-    use umwm_spectrum, only: spectrum_type
+    self % lm = size(depths)
+    self % depth = - depths
+    allocate(self % weight(size(f), self % lm, istart:iend))
+    allocate(self % us(istart:iend, self % lm), self % vs(istart:iend, self % lm))
+    allocate(self % ds(istart:iend))
 
-    type(spectrum_type), intent(in) :: spectrum
-    type(config_type), intent(in) :: config
-    type(grid_type), intent(in) :: grid
-    character(4), intent(in), optional :: option
-    integer :: i, l, o, p
-    real :: ust_efolding
-    real, allocatable :: kd(:,:)
-
-    if (present(option)) then
-      if (option == 'init') then
-
-        ! get size of depth array
-        lm = size(config % stokes_depths)
-        allocate(depth(lm))
-        depth = - config % stokes_depths
-
-        ! allocate stokes velocities and utility array
-        allocate(us(grid % istart:grid % iend,lm))
-        allocate(vs(grid % istart:grid % iend,lm))
-        allocate(usmag(grid % istart:grid % iend,lm))
-        allocate(ds(grid % istart:grid % iend))
-        allocate(util(spectrum % num_frequencies,grid % istart:grid % iend,lm))
-        allocate(arg(spectrum % num_frequencies,grid % istart:grid % iend,lm))
-        allocate(kd(spectrum % num_frequencies,grid % istart:grid % iend))
-
-        do concurrent (o=1:spectrum % num_frequencies, i=grid % istart:grid % iend)
-          kd(o,i) = k(o,i) * grid % d(i)
+    do i = istart, iend
+      do l = 1, self % lm
+        do o = 1, size(f)
+          arg = 2 * k(o,i) * (self % depth(l) + d(i))
+          kd = k(o,i) * d(i)
+          if (abs(arg) > 50 .or. kd > 50) then
+            ! hyperbolic trig. functions would overflow;
+            ! use deep water approximation instead
+            self % weight(o,l,i) = twopi * f(o) * 2 * k(o,i)**2 &
+                                 * exp(2 * k(o,i) * self % depth(l)) * dwn(o,i) * dth
+          else
+            ! first order approximation for arbitrary depth
+            self % weight(o,l,i) = twopi * f(o) * k(o,i)**2 &
+                                 * cosh(2 * k(o,i) * (self % depth(l) + d(i))) &
+                                 / sinh(kd)**2 * dwn(o,i) * dth
+          end if
         end do
-
-        ! compute exponent
-        do l = 1, lm
-          do i = grid % istart, grid % iend
-            do o = 1, spectrum % num_frequencies
-
-              arg(o,i,l) = 2 * k(o,i) * (depth(l) + grid % d(i))
-
-              if(abs(arg(o,i,l)) > 50 .or. kd(o,i) > 50) then
-                ! hyperbolic trig. functions would overflow;
-                ! use deep water approximation instead
-                util(o,i,l) = twopi * f(o) * 2 * k(o,i)**2 &
-                            * exp(2 * k(o,i) * depth(l)) * dwn(o,i) * dth
-              else
-                ! first order approximation for arbitrary depth
-                util(o,i,l) = twopi * f(o) * k(o,i)**2 &
-                            * cosh(2 * k(o,i) * (depth(l) + grid % d(i)))&
-                            / sinh(kd(o,i))**2 * dwn(o,i) * dth
-              end if
-
-            end do
-          
-            if (abs(depth(l)) > grid % d(i)) util(:,i,l) = 0
-
-          end do
-        end do
-
-        deallocate(arg, kd)
-
-        if (nproc == 0) write(*, fmt=101) 'umwm: stokes_drift: initialized'
-
-      end if ! option == 'init'
-    end if ! present(option)
-    
-    us = 0
-    vs = 0
-    ds = 0
-
-    ! stokes velocities
-    do l = 1, lm
-      do i = grid % istart, grid % iend
-        do p = 1, spectrum % num_directions
-          do o = 1, spectrum % num_frequencies
-            us(i,l) = us(i,l) + util(o,i,l) * e(o,p,i) * cth(p)
-            vs(i,l) = vs(i,l) + util(o,i,l) * e(o,p,i) * sth(p)
-          end do
-        end do
+        if (abs(self % depth(l)) > d(i)) self % weight(:,l,i) = 0
       end do
     end do
 
-    ! Stokes drift magnitude
-    usmag = sqrt(us**2 + vs**2)
+  end subroutine initialize
 
-    ! Stokes e-folding depth
-    do i = grid % istart, grid % iend
 
-      if (usmag(i,1) == 0) then
-        ds(i) = 0
-        cycle
-      end if
+  subroutine compute(self, e, cth, sth)
+    ! Computes Stokes drift velocities and e-folding depth from the spectrum.
+    class(stokes_type), intent(inout) :: self
+    real, intent(in) :: e(:,:,lbound(self % us, 1):) ! (om,pm,i)
+    real, intent(in) :: cth(:), sth(:)
+    real :: ex(size(e, 1)), ey(size(e, 1)), usmag(self % lm), ust_efolding
+    integer :: i, l, p
 
-      ust_efolding = usmag(i,1) * eulerinv
+    do i = lbound(self % us, 1), ubound(self % us, 1)
 
-      depth_loop: do l = 2, lm
-        if(usmag(i,l) < ust_efolding)then
-          ds(i) = (abs(usmag(i,l-1) - ust_efolding) * depth(l)  &
-                 + abs(usmag(i,l) - ust_efolding) * depth(l-1)) &
-                 / (usmag(i,l-1) - usmag(i,l))
+      ! direction-integrated spectrum, projected on x and y
+      ex = 0
+      ey = 0
+      do p = 1, size(e, 2)
+        ex = ex + e(:,p,i) * cth(p)
+        ey = ey + e(:,p,i) * sth(p)
+      end do
 
-          exit depth_loop
+      do l = 1, self % lm
+        self % us(i,l) = sum(self % weight(:,l,i) * ex)
+        self % vs(i,l) = sum(self % weight(:,l,i) * ey)
+      end do
+      usmag = sqrt(self % us(i,:)**2 + self % vs(i,:)**2)
+
+      ! Stokes e-folding depth
+      self % ds(i) = 0
+      if (usmag(1) == 0) cycle
+      ust_efolding = usmag(1) * eulerinv
+      do l = 2, self % lm
+        if (usmag(l) < ust_efolding) then
+          self % ds(i) = - (abs(usmag(l-1) - ust_efolding) * self % depth(l)  &
+                          + abs(usmag(l) - ust_efolding) * self % depth(l-1)) &
+                          / (usmag(l-1) - usmag(l))
+          exit
         end if
-      end do depth_loop
+      end do
 
     end do
 
-    ds = -ds
-
-    101 format(a)
-
-  end subroutine stokes_drift
+  end subroutine compute
 
 end module umwm_stokes

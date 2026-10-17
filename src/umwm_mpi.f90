@@ -1,208 +1,94 @@
 module umwm_mpi
-  ! Subroutines to exchange data between processors in parallel mode.
+  ! Data exchange between processes in parallel mode.
 
 #ifdef MPI
 
   use mpi
-  use umwm_config, only: config_type
+  use umwm_env, only: mpisize, nproc
   use umwm_grid, only: grid_type
-  use umwm_module, only: e, ierr, mpisize, nproc, om, pm
-  use umwm_spectrum, only: spectrum_type
 
   implicit none
 
-  integer :: status(MPI_STATUS_SIZE)
-
-  interface gather_array
-    module procedure :: gather_array_1d
-    module procedure :: gather_array_2d
-    module procedure :: gather_array_3d
-  end interface gather_array
+  private
+  public :: exchange_halo, gather_array
 
 contains
 
-  subroutine exchange_halo(config, spectrum, grid)
-    ! Exchange halo points between processes.
-    ! This version valid only for 1-cell halo width.
-
-    type(config_type), intent(in) :: config
-    type(spectrum_type), intent(in) :: spectrum
+  subroutine exchange_halo(field, n, grid, isglobal)
+    ! Exchange the halo of field(n, iistart-1:iiend), one grid row or column
+    ! wide, with the neighboring tiles, and across the east-west seam if the
+    ! domain is global.
+    integer, intent(in) :: n
     type(grid_type), intent(in) :: grid
-    integer :: sendcount, recvcount
-    integer :: sendtag, recvtag
-    integer :: src, dest
+    real, intent(inout) :: field(n, grid % iistart-1:grid % iiend)
+    logical, intent(in) :: isglobal
 
-    if (nproc < mpisize - 1) then ! communicate with process above
+    real, allocatable :: seam(:,:)
+    integer :: requests(4), nreq, ierr, last, seam_tag
 
-      sendcount = spectrum % num_frequencies * spectrum % num_directions &
-                * (grid % iend - grid % iistart_all(nproc + 1) + 1)
-      dest = nproc + 1
-      sendtag = nproc
-      recvcount = spectrum % num_frequencies * spectrum % num_directions &
-                * (grid % iiend - grid % iend)
-      src = nproc + 1
-      recvtag = src
+    last = mpisize - 1
+    seam_tag = mpisize ! seam messages use tags mpisize + rank
+    nreq = 0
 
-      call mpi_sendrecv(e(:,:,grid % iistart_all(nproc+1):grid % iend), sendcount,&
-                        MPI_REAL, dest, sendtag,                 &
-                        e(:,:,grid % iend+1:grid % iiend), recvcount,          &
-                        MPI_REAL, src, recvtag,                  &
-                        MPI_COMM_WORLD, status, ierr)
-
+    if (nproc < last) then ! tile above
+      associate(lb => grid % iistart_all(nproc + 1))
+        call irecv(field(:, grid % iend+1:grid % iiend), nproc + 1, nproc + 1)
+        call isend(field(:, lb:grid % iend), nproc + 1, nproc)
+      end associate
     end if
 
-    if (nproc > 0) then ! communicate with process below
-
-      sendcount = spectrum % num_frequencies * spectrum % num_directions &
-                * (grid % iiend_all(nproc - 1) - grid % istart + 1)
-      dest = nproc-1
-      sendtag = nproc
-      recvcount = spectrum % num_frequencies * spectrum % num_directions &
-                * (grid % istart - grid % iistart)
-      src  = nproc - 1
-      recvtag = src
-
-      call mpi_sendrecv(e(:,:,grid % istart:grid % iiend_all(nproc-1)), sendcount,&
-                        MPI_REAL, dest, sendtag,                 &
-                        e(:,:,grid % iistart:grid % istart-1), recvcount,      &
-                        MPI_REAL, src, recvtag,                  &
-                        MPI_COMM_WORLD, status, ierr)
+    if (nproc > 0) then ! tile below
+      associate(ub => grid % iiend_all(nproc - 1))
+        call irecv(field(:, grid % iistart:grid % istart-1), nproc - 1, nproc - 1)
+        call isend(field(:, grid % istart:ub), nproc - 1, nproc)
+      end associate
     end if
 
-    if (config % isglobal) then ! if periodic domain
-
+    if (isglobal .and. mpisize > 1 .and. (nproc == 0 .or. nproc == last)) then ! periodic seam
+      seam = field(:, grid % i_exchange_indices)
       if (nproc == 0) then
-
-        sendcount = spectrum % num_frequencies * spectrum % num_directions &
-                  * grid % first_col_len
-        dest = mpisize - 1
-        sendtag = nproc
-        recvcount = spectrum % num_frequencies * spectrum % num_directions &
-                  * grid % last_col_len
-        src  = mpisize - 1
-        recvtag = src
-
-        call mpi_sendrecv(e(:,:,grid % i_exchange_indices), sendcount,&
-                          MPI_REAL, dest, sendtag,             &
-                          e(:,:,grid % iistart:grid % istart-1), recvcount,  &
-                          MPI_REAL, src, recvtag,              &
-                          MPI_COMM_WORLD, status, ierr)
-
+        call irecv(field(:, grid % iistart:grid % istart-1), last, seam_tag + last)
+        call isend(seam, last, seam_tag)
       end if
-
-      if (nproc == mpisize - 1) then
-
-        sendcount = spectrum % num_frequencies * spectrum % num_directions &
-                  * grid % last_col_len
-        dest = 0
-        sendtag = nproc
-        recvcount = spectrum % num_frequencies * spectrum % num_directions &
-                  * grid % first_col_len
-        src = 0
-        recvtag = src
-
-        call mpi_sendrecv(e(:,:,grid % i_exchange_indices), sendcount,&
-                          MPI_REAL, dest, sendtag,             &
-                          e(:,:,grid % iend+1:grid % iiend), recvcount,      &
-                          MPI_REAL, src, recvtag,              &
-                          MPI_COMM_WORLD, status, ierr)
-
+      if (nproc == last) then
+        call irecv(field(:, grid % iend+1:grid % iiend), 0, seam_tag)
+        call isend(seam, 0, seam_tag + last)
       end if
-
     end if
+
+    call mpi_waitall(nreq, requests, MPI_STATUSES_IGNORE, ierr)
+
+  contains
+
+    subroutine irecv(buf, src, tag)
+      real, intent(inout), contiguous :: buf(:,:)
+      integer, intent(in) :: src, tag
+      nreq = nreq + 1
+      call mpi_irecv(buf, size(buf), MPI_REAL, src, tag, MPI_COMM_WORLD, requests(nreq), ierr)
+    end subroutine irecv
+
+    subroutine isend(buf, dest, tag)
+      real, intent(in), contiguous :: buf(:,:)
+      integer, intent(in) :: dest, tag
+      nreq = nreq + 1
+      call mpi_isend(buf, size(buf), MPI_REAL, dest, tag, MPI_COMM_WORLD, requests(nreq), ierr)
+    end subroutine isend
 
   end subroutine exchange_halo
 
 
-  subroutine gather_array_1d(srcarray, tgtarray, grid)
-    ! Gathers an array of shape (im) to root processor.
-    ! Non-blocking implementation.
-
+  subroutine gather_array(field, field_all, grid)
+    ! Gathers a tile field into field_all(1:im) on the root process.
     type(grid_type), intent(in) :: grid
-    real, intent(in) :: srcarray(grid % istart:grid % iend)
-    real, intent(out) :: tgtarray(grid % im)
+    real, intent(in) :: field(grid % istart:grid % iend)
+    real, intent(inout) :: field_all(grid % im)
+    integer :: ierr
 
-    integer :: nn, requests(mpisize - 1), statuses(MPI_STATUS_SIZE, mpisize - 1)
+    call mpi_gatherv(field, grid % ilen, MPI_REAL, &
+                     field_all, grid % ilen_all, grid % istart_all - 1, MPI_REAL, &
+                     0, MPI_COMM_WORLD, ierr)
 
-    if (nproc == 0) then
-      tgtarray(grid % istart:grid % iend) = srcarray(grid % istart:grid % iend)
-      do nn = 1, mpisize - 1
-        call mpi_irecv(tgtarray(grid % istart_all(nn):grid % iend_all(nn)), grid % ilen_all(nn),&
-                       MPI_REAL, nn, nn, MPI_COMM_WORLD, requests(nn), ierr)
-      end do
-    end if
-
-    call mpi_barrier(MPI_COMM_WORLD,ierr)
-
-    if (nproc == 0) then
-      call mpi_waitall(mpisize - 1, requests, statuses, ierr)
-    else
-      call mpi_isend(srcarray(grid % istart:grid % iend), grid % ilen,&
-                     MPI_REAL, 0, nproc, MPI_COMM_WORLD, requests(nproc), ierr)
-    end if
-
-  end subroutine gather_array_1d
-
-
-  subroutine gather_array_2d(srcarray, tgtarray, grid)
-    ! Gathers an array of shape (om,im) to root processor.
-    ! Non-blocking implementation.
-
-    type(grid_type), intent(in) :: grid
-    real, intent(in)  :: srcarray(om,grid % istart:grid % iend)
-    real, intent(out) :: tgtarray(om,grid % im)
-
-    integer :: nn, requests(mpisize - 1), statuses(MPI_STATUS_SIZE, mpisize - 1)
-
-    if (nproc == 0) then
-      tgtarray(:,grid % istart:grid % iend) = srcarray(:,grid % istart:grid % iend)
-      do nn = 1, mpisize - 1
-        call mpi_irecv(tgtarray(:,grid % istart_all(nn):grid % iend_all(nn)), om * grid % ilen_all(nn),&
-                       MPI_REAL, nn, nn, MPI_COMM_WORLD, requests(nn), ierr)
-      end do
-    end if
-
-    call mpi_barrier(MPI_COMM_WORLD, ierr)
-
-    if (nproc == 0) then
-      call mpi_waitall(mpisize - 1, requests, statuses, ierr)
-    else
-      call mpi_isend(srcarray(:,grid % istart:grid % iend), om * grid % ilen,&
-                     MPI_REAL, 0, nproc, MPI_COMM_WORLD, requests(nproc), ierr)
-    end if
-
-  end subroutine gather_array_2d
-
-
-  subroutine gather_array_3d(srcarray, tgtarray, grid)
-    ! Gathers an array of shape (om,pm,im) to root processor.
-    ! Non-blocking implementation.
-
-    type(grid_type), intent(in) :: grid
-    real, intent(in)  :: srcarray(om,pm,grid % istart:grid % iend)
-    real, intent(out) :: tgtarray(om,pm,grid % im)
-
-    integer :: nn, requests(mpisize - 1), statuses(MPI_STATUS_SIZE, mpisize - 1)
-
-    if (nproc == 0) then
-      tgtarray(:,:,grid % istart:grid % iend) = srcarray(:,:,grid % istart:grid % iend)
-      do nn = 1, mpisize - 1
-        call mpi_irecv(tgtarray(:,:,grid % istart_all(nn):grid % iend_all(nn)), &
-                       om * pm * grid % ilen_all(nn),&
-                       MPI_REAL, nn, nn, MPI_COMM_WORLD, requests(nn), ierr)
-      end do
-    end if
-
-    call mpi_barrier(MPI_COMM_WORLD, ierr)
-
-    if (nproc == 0) then
-      call mpi_waitall(mpisize - 1, requests, statuses, ierr)
-    else
-      call mpi_isend(srcarray(:,:,grid % istart:grid % iend), om * pm * grid % ilen,&
-        MPI_REAL, 0, nproc, MPI_COMM_WORLD, requests(nproc), ierr)
-    end if
-
-  end subroutine gather_array_3d
+  end subroutine gather_array
 
 #endif
 
