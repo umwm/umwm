@@ -342,11 +342,18 @@ contains
     call exchange_halo(cg0, om, grid, config % isglobal)
 #endif
 
-    ! land points for cp and cg (needed for advection/refraction):
+    ! land points for cp and cg (needed for advection/refraction), the
+    ! smallest over all sea points:
     do o = 1, om
       cp0(o,grid % iistart-1) = minval(cp0(o,is:ie))
       cg0(o,grid % iistart-1) = minval(cg0(o,is:ie))
     end do
+#ifdef MPI
+    call mpi_allreduce(MPI_IN_PLACE, cp0(:,grid % iistart-1), om, MPI_REAL, MPI_MIN, &
+                       MPI_COMM_WORLD, ierr)
+    call mpi_allreduce(MPI_IN_PLACE, cg0(:,grid % iistart-1), om, MPI_REAL, MPI_MIN, &
+                       MPI_COMM_WORLD, ierr)
+#endif
 
     ! phase speed gradients for the bottom-induced refraction:
     do i = is, ie
@@ -432,7 +439,7 @@ contains
 #ifdef MPI
     if (nproc > 0) self % halo_source(is:min(grid % iiend_all(nproc-1), ie)) = .true.
     if (nproc < mpisize - 1) self % halo_source(max(grid % iistart_all(nproc+1), is):ie) = .true.
-    if (self % config % isglobal .and. (nproc == 0 .or. nproc == mpisize - 1)) &
+    if (self % config % isglobal .and. mpisize > 1 .and. (nproc == 0 .or. nproc == mpisize - 1)) &
       self % halo_source(grid % i_exchange_indices) = .true.
 #endif
 

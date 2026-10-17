@@ -575,7 +575,8 @@ contains
           if (any(coord_input == ['xy', 'XY'])) then
 
             read(unit, *, iostat=stat) m(npts+1), n(npts+1), id(npts+1)
-            if (stat /= 0) exit
+            if (is_iostat_end(stat)) exit
+            if (stat /= 0) stop 'umwm: output_nc: error: cannot read a point in namelists/spectrum.nml'
 
             if (m(npts+1) < 2 .or. m(npts+1) > self % config % mm - 1 .or. &
                 n(npts+1) < 2 .or. n(npts+1) > self % config % nm - 1) &
@@ -585,7 +586,8 @@ contains
           else if (any(coord_input == ['ll', 'LL'])) then
 
             read(unit, *, iostat=stat) lon, lat, id(npts+1)
-            if (stat /= 0) exit
+            if (is_iostat_end(stat)) exit
+            if (stat /= 0) stop 'umwm: output_nc: error: cannot read a point in namelists/spectrum.nml'
             xy = minloc((lon - self % grid % lon)**2 + (lat - self % grid % lat)**2)
             m(npts+1) = xy(1)
             n(npts+1) = xy(2)

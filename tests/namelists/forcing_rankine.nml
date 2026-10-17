@@ -61,12 +61,12 @@
   fice_uth      = 0.75
 /
 &OUTPUT
-  outgrid       = 0
-  outspec       = 0
+  outgrid       = 1
+  outspec       = 1
   outrst        = 0
   xpl           = 11
   ypl           = 6
-  stokes        = .false.
+  stokes        = .true.
 /
 &STOKES
   depths        = 0.1

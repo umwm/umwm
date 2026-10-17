@@ -12,7 +12,7 @@ This file is a technical reference for the physics implemented in the University
 | Source functions | `src/umwm_source_functions.f90` | Wind input, wave breaking, nonlinear downshifting, turbulence, and sea-ice attenuation. |
 | Source integration | `src/umwm_physics.f90` | Exponential source update, diagnostic spectral tail, physics time step limit. |
 | Propagation and refraction | `src/umwm_advection.f90` | First-order upstream advection in geographic and directional space. |
-| Stress | `src/umwm_stress.f90` | Form/skin drag, drag coefficient, stress tail, and spectral stress integrals; atmospheric stress is evaluated each time step and ocean-top and ocean-bottom momentum fluxes at output times. |
+| Stress | `src/umwm_stress.f90` | Form/skin drag, drag coefficient, stress tail, and spectral stress integrals. The domain evaluates the atmospheric stress each time step, and the ocean-top and ocean-bottom momentum fluxes (`ocean_stress` in `src/umwm_domain_output.f90`) at gridded output times, or each time step when coupled with ESMF. |
 | Stokes drift | `src/umwm_stokes.f90` | `stokes_type` with wave-induced Stokes drift and e-folding depth. |
 | Spectral grid | `src/umwm_spectrum.f90` | `spectrum_type`, frequency and direction coordinates, and spectral spacings. |
 | Dispersion | `src/umwm_dispersion.f90` | Capillary-gravity dispersion relation, wavenumber solve, angular frequency, and group speed. |
@@ -46,13 +46,16 @@ Within each global forcing/output time step `dtg`, UMWM repeatedly runs:
 8. Refract wave variance directionally.
 9. Compute atmospheric stress and drag.
 10. At output times, compute Stokes drift, diagnostics, ocean stress, spectra, grid output, and restart output.
+    When coupled with ESMF, ocean stress is computed each time step.
 
 Steps 5 and 7 to 9 are pipelined over grid cells: a cell is propagated a
 fixed number of cells after its integration, at least the largest
 distance to a neighbor cell in the tile, so that the spectra of its
 neighbors are integrated and still in cache. Under MPI, the cells in the
 halo of neighboring tiles are integrated first, and the halo is exchanged
-before the pipeline starts.
+before the pipeline starts. The halo is one grid row or column wide, and
+the model stops at startup if a tile is narrower than the halo of its
+neighbors.
 
 ## State Variables and Conventions
 
@@ -77,13 +80,13 @@ updates remain disabled under `ESMF`, where coupled forcing is expected
 to be supplied externally.
 
 The spectral grid metadata is represented explicitly by
-`type(spectrum_type)` from `src/umwm_spectrum.f90`. The top-level program
-constructs one spectrum object after namelist input is read, then passes
-it through initialization, the model loop, diagnostics, restart I/O,
-spectrum/grid output, source functions, advection/refraction, stress,
-and Stokes drift. The domain keeps default-real copies of the frequency
-and direction coordinates, `f(:)` and `th(:)`, with their cosines and
-sines, for the model arrays and formulas.
+`type(spectrum_type)` from `src/umwm_spectrum.f90`. `domain % initialize`
+constructs one spectrum object after namelist input is read, and the
+domain uses it for the spectral dimensions and spacings, the direction
+projection of the grid, restart I/O, and spectrum and grid output. The
+domain keeps default-real copies of the frequency and direction
+coordinates, `f(:)` and `th(:)`, with their cosines and sines, for the
+model arrays and formulas.
 
 The model uses mathematical direction convention: $\phi=0$ points in the
 positive $x$ direction and positive angles rotate counter-clockwise.
@@ -851,7 +854,8 @@ added only when the current fields are nonzero.
 
 Open boundary conditions are applied next to land and at regional domain
 edges unless boundary input is supplied. Global domains use periodic
-east-west boundary conditions.
+east-west boundary conditions. Land cells take, at each frequency, the
+smallest phase and group speed over all sea cells.
 
 ## Refraction
 
@@ -1393,7 +1397,7 @@ The current focused tests are:
 | `test_dispersion` | Wavenumber/frequency round-trip accuracy and positive finite group speed for the capillary-gravity dispersion module. |
 | `test_spectrum` | Spectrum constructor metadata, endpoint frequencies, legacy log-space frequency equivalence, direction-grid equivalence, `dlnf`, and `dth`. |
 | `test_source_functions` | Mean-squared slope moments against the direct sum over directions, the vectorized power function against the intrinsic, and the wind input against a step-by-step evaluation. |
-| `test_domain` | One-hour integration of the idealized hurricane case by `domain_type`, compared with the mean and maximum of output fields from UMWM before the domain refactor. |
+| `test_domain` | One-hour integration of the idealized hurricane case by `domain_type` with gridded and spectrum output and Stokes drift, compared with the mean and maximum of output fields, ocean stress, and Stokes drift from UMWM before the domain refactor. |
 
 `make clean` at the top level recurses into `tests/` and removes
 test-local binaries, object files, and module files.

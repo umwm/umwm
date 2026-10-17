@@ -97,7 +97,7 @@ contains
     ! sin_d12 matches a step-by-step evaluation of the wind input function.
     type(test_result) :: res
     real :: wind(nf), cosd(nd), cp(nf), cth(nd), sth(nd), fkovg(nf), th(nd)
-    real :: ssin(nf,nd), s, reference
+    real :: ssin(nf,nd), s, reference, terms
     real, parameter :: uc = 0.3, vc = -0.2, shelt = 0.09, sin_fac = 0.11
     real, parameter :: fieldscale1 = 0.1 / 0.11, fieldscale2 = 0.001 / 0.1, scale = 0.007
     integer, parameter :: oc = 25
@@ -119,13 +119,16 @@ contains
     do p = 1, nd
       do o = 1, nf
         s = wind(o) * cosd(p) - cp(o) - uc * cth(p) - vc * sth(p)
+        ! the relative wind s cancels where the wind matches the phase speed, so
+        ! rounding error is relative to the magnitude of its terms, not to s
+        terms = abs(wind(o) * cosd(p)) + cp(o) + abs(uc * cth(p)) + abs(vc * sth(p))
         s = sin_fac * abs(s) * s
         if (s > 0) s = s * shelt / sin_fac
         if (s < 0) s = s * fieldscale1
         if (s < 0 .and. cosd(p) > 0) s = s * fieldscale2
         reference = scale * s * fkovg(o)
         if (o > oc) reference = max(reference, 0.)
-        ok = ok .and. abs(ssin(o,p) - reference) <= 1e-6 * max(abs(reference), 1e-30)
+        ok = ok .and. abs(ssin(o,p) - reference) <= 1e-6 * (abs(reference) + scale * sin_fac * terms**2 * fkovg(o))
       end do
     end do
 

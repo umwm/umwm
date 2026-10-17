@@ -15,15 +15,16 @@ module umwm_mpi
 contains
 
   subroutine exchange_halo(field, n, grid, isglobal)
-    ! Exchange the 1-cell wide halo of field(n, iistart-1:iiend) with the
-    ! neighboring tiles, and across the east-west seam if the domain is global.
+    ! Exchange the halo of field(n, iistart-1:iiend), one grid row or column
+    ! wide, with the neighboring tiles, and across the east-west seam if the
+    ! domain is global.
     integer, intent(in) :: n
     type(grid_type), intent(in) :: grid
     real, intent(inout) :: field(n, grid % iistart-1:grid % iiend)
     logical, intent(in) :: isglobal
 
     real, allocatable :: seam(:,:)
-    integer :: requests(6), nreq, ierr, last, seam_tag
+    integer :: requests(4), nreq, ierr, last, seam_tag
 
     last = mpisize - 1
     seam_tag = mpisize ! seam messages use tags mpisize + rank
@@ -43,7 +44,7 @@ contains
       end associate
     end if
 
-    if (isglobal .and. (nproc == 0 .or. nproc == last)) then ! periodic seam
+    if (isglobal .and. mpisize > 1 .and. (nproc == 0 .or. nproc == last)) then ! periodic seam
       seam = field(:, grid % i_exchange_indices)
       if (nproc == 0) then
         call irecv(field(:, grid % iistart:grid % istart-1), last, seam_tag + last)
