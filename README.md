@@ -84,6 +84,8 @@ make NETCDF_FFLAGS="-I/path/include" NETCDF_FLIBS="-L/path/lib -lnetcdff -lnetcd
 ```
 
 Use `make print-config` to see the resolved compiler and NetCDF settings.
+`make shared` builds the shared library `src/shared/libumwm.so` with the C
+API used by the Python package.
 Executable `umwm` will be built in the top-level directory and auxiliary tool
 executables will be built in `tools/`.
 PDF documentation can be built separately with `make docs`.
@@ -142,6 +144,41 @@ mpiexec -n 16 ./umwm
 ```
 
 You can read the full technical reference doc [here](DOCS.md).
+
+### Python interface
+
+The `umwm` Python package configures and runs the model from Python, with
+the model state and the output available as NumPy arrays and xarray
+datasets, and provides the `umwm` command-line tool. The time integration
+runs in the compiled Fortran library, so there is no performance cost.
+Install it from the repository (it builds the library with the same
+Makefile configuration, for example `UMWM_MPI=yes pip install .` for MPI):
+
+```
+pip install .
+```
+
+```python
+import umwm
+
+config = umwm.Config()                        # the defaults of namelists/main.nml
+config.domain.stoptimestr = "2026-01-01 12:00:00"
+config.forcing_constant.wspd0 = 15.0
+
+with umwm.Domain(config, workdir="runs/case1") as domain:
+    domain.run()
+    swh = domain.grid_field("swh")            # NumPy array (ny, nx)
+    output = domain.output()                  # xarray.Dataset of the output files
+```
+
+```
+umwm init runs/case1 -s domain.stoptimestr="2026-01-01 12:00:00"
+umwm run -w runs/case1
+umwm output runs/case1 --stats
+```
+
+See [python/README.md](python/README.md) for the documentation of the
+package and the command-line tool.
 
 ## Papers
 

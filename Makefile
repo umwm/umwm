@@ -4,13 +4,16 @@
 
 include mk/config.mk
 
-.PHONY: all umwm docs tools test clean clean_all print-config
+.PHONY: all umwm shared docs tools test clean clean_all print-config
 .DEFAULT_GOAL := all
 
 all: umwm tools
 
 umwm:
 	$(MAKE) --directory=src
+
+shared:
+	$(MAKE) --directory=src shared
 
 docs:
 	pandoc DOCS.md -o umwm-docs.pdf
@@ -28,6 +31,7 @@ clean:
 	$(RM) tools/umwm_topogen
 	$(RM) tools/wrf2umwmgrid
 	$(RM) tools/wrf2umwmin
+	$(RM) python/umwm/libumwm.so
 	$(MAKE) --directory=src clean
 	$(MAKE) --directory=tests clean
 	$(MAKE) --directory=tools/src clean

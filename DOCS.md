@@ -18,12 +18,24 @@ This file is a technical reference for the physics implemented in the University
 | Dispersion | `src/umwm_dispersion.f90` | Capillary-gravity dispersion relation, wavenumber solve, angular frequency, and group speed. |
 | Initialization and precomputed factors | `src/umwm_domain.f90` | Runtime allocation, spectral coordinates, wave kinematics, integration weights, dissipation constants, CFL limits. |
 | Parallel environment and halo exchange | `src/umwm_env.f90`, `src/umwm_mpi.f90` | Process rank and count; halo exchange and gathering of tile fields. |
+| C API | `src/umwm_capi.f90` | `bind(c)` procedures for foreign-language callers: the domain lifecycle through an opaque handle, and access to the domain fields by name as pointers into the model memory. Used by the Python package in `python/`. |
 
 The main program instantiates one `domain_type` from `src/umwm_domain.f90`
-and calls its `initialize`, `run`, and `finalize` procedures. The domain
-is constructed from `config_type`, `spectrum_type`, `grid_type`,
+and calls its `initialize`, `run`, and `finalize` procedures. `run` loops
+over `advance`, which integrates one global time step `dtg`: the forcing
+update, the inner loop of source time steps, and the output due at the
+new time; `advance` and `finished` are public so that a driver, such as
+the Python package, can step the model and inspect it between steps. The
+domain is constructed from `config_type`, `spectrum_type`, `grid_type`,
 `forcing_type`, and `stokes_type` components, and owns the wave spectrum
 and all fields derived from it; there is no global model state.
+
+The Python package in `python/` (see `python/README.md`) drives the model
+through the C API of `src/umwm_capi.f90`, compiled into the shared library
+`libumwm.so` by `make shared`: a Python `Domain` holds a `domain_type`
+through an opaque handle, and the fields of the domain are exposed as
+NumPy arrays viewing the Fortran memory, so the time integration runs
+entirely in Fortran.
 `config_type` remains the source of forcing switches and constants, while
 `forcing_type` owns the mutable runtime forcing snapshots and remapped
 fields.
@@ -1398,6 +1410,11 @@ The current focused tests are:
 | `test_spectrum` | Spectrum constructor metadata, endpoint frequencies, legacy log-space frequency equivalence, direction-grid equivalence, `dlnf`, and `dth`. |
 | `test_source_functions` | Mean-squared slope moments against the direct sum over directions, the vectorized power function against the intrinsic, and the wind input against a step-by-step evaluation. |
 | `test_domain` | One-hour integration of the idealized hurricane case by `domain_type` with gridded and spectrum output and Stokes drift, compared with the mean and maximum of output fields, ocean stress, and Stokes drift from UMWM before the domain refactor. |
+
+The Python package has its own test suite in `python/tests`, run with
+`python -m pytest python/tests`, which includes the same idealized
+hurricane case driven from Python and compared with the same reference
+values, and `python/tests/mpi_smoke.py` for a library built with MPI.
 
 `make clean` at the top level recurses into `tests/` and removes
 test-local binaries, object files, and module files.

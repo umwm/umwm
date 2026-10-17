@@ -72,6 +72,37 @@ jobs:
           make MPI=yes FC=mpiifx FCFLAGS="-O3 -xHost -warn all" umwm
           make FC=ifx FCFLAGS="-O3 -xHost -warn all" test
 
+  python-gnu:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+          cache: pip
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            curl gfortran libnetcdff-dev make netcdf-bin openmpi-bin libopenmpi-dev
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt pytest
+      - name: Install the Python package (serial library)
+        run: python -m pip install .
+      - name: Test the Python package
+        run: |
+          umwm info
+          python -m pytest -v python/tests
+      - name: Build the MPI library and test the Python interface under MPI
+        env:
+          OMPI_ALLOW_RUN_AS_ROOT: 1
+          OMPI_ALLOW_RUN_AS_ROOT_CONFIRM: 1
+        run: |
+          make shared MPI=yes FC=mpifort SHARED_DIR="$PWD/build/mpi-shared"
+          export UMWM_LIBRARY="$PWD/build/mpi-shared/libumwm.so"
+          umwm info
+          mpiexec -n 2 --oversubscribe python python/tests/mpi_smoke.py "$PWD/build/mpi-smoke"
+
   fpm-gnu:
     runs-on: ubuntu-24.04
     steps:

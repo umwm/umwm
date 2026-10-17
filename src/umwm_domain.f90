@@ -41,6 +41,9 @@ module umwm_domain
     type(forcing_type) :: forcing
     type(stokes_type) :: stokes
 
+    ! model time
+    type(datetime) :: current_time, stop_time
+
     ! time stepping
     logical :: first = .true. ! .true. during the first time step
     real :: sumt = 0          ! time integrated in the current global time step [s]
@@ -110,6 +113,10 @@ module umwm_domain
 
     procedure :: initialize
     procedure :: run
+    procedure :: advance
+    procedure :: finished
+    procedure :: diagnostics
+    procedure :: ocean_stress
     procedure :: finalize
     procedure, private :: allocate_fields
     procedure, private :: initialize_physics
@@ -121,8 +128,6 @@ module umwm_domain
     procedure, private :: advect_column
     procedure, private :: update_rotation
     procedure, private :: wind_stress
-    procedure, private :: diagnostics
-    procedure, private :: ocean_stress
     procedure, private :: output_grid_nc
     procedure, private :: output_spectrum_nc
 
@@ -152,16 +157,27 @@ module umwm_domain
 
 contains
 
-  subroutine initialize(self, path)
+  subroutine initialize(self, path, stat)
     ! Reads the configuration from the namelist file at path, and
     ! constructs the grids, forcing, and the initial wave state.
+    ! If stat is present, it is set to 0 on success and to 1 if the
+    ! configuration is invalid, in which case the domain is left
+    ! uninitialized; otherwise an invalid configuration stops the program.
     class(domain_type), intent(inout) :: self
     character(*), intent(in) :: path
+    integer, intent(out), optional :: stat
 
     self % config = config_type(path)
-    if (.not. self % config % validate(rank=nproc)) error stop 1
+    if (.not. self % config % validate(stop_on_error=.not. present(stat), rank=nproc)) then
+      if (present(stat)) stat = 1
+      return
+    end if
+    if (present(stat)) stat = 0
 
     associate(config => self % config, grid => self % grid)
+
+    self % current_time = strptime(config % starttimestr, '%Y-%m-%d %H:%M:%S')
+    self % stop_time = strptime(config % stoptimestr, '%Y-%m-%d %H:%M:%S')
 
     self % spectrum = spectrum_type(config % om, config % pm, &
       real(config % fmin, rk), real(config % fmax, rk))
@@ -456,10 +472,29 @@ contains
 
 
   subroutine run(self)
-    ! Integrates the model from the start to the stop time.
+    ! Integrates the model from the current time to the stop time.
     class(domain_type), intent(inout) :: self
 
-    type(datetime) :: current_time, stop_time
+    do while (.not. self % finished())
+      call self % advance()
+    end do
+
+  end subroutine run
+
+
+  pure logical function finished(self)
+    ! Whether the model has reached the stop time.
+    class(domain_type), intent(in) :: self
+    finished = .not. (self % current_time < self % stop_time)
+  end function finished
+
+
+  subroutine advance(self)
+    ! Integrates the model over one global time step: updates the forcing,
+    ! integrates the source time steps, and writes gridded, spectrum, and
+    ! restart output at their output times.
+    class(domain_type), intent(inout) :: self
+
     character(19) :: timestr
     logical :: fullhour
 #ifdef MPI
@@ -467,10 +502,9 @@ contains
 #endif
 
     associate(config => self % config, grid => self % grid, forcing => self % forcing, &
+              current_time => self % current_time, &
               is => self % grid % istart, ie => self % grid % iend)
 
-    current_time = strptime(config % starttimestr, '%Y-%m-%d %H:%M:%S')
-    stop_time = strptime(config % stoptimestr, '%Y-%m-%d %H:%M:%S')
     timestr = trim(current_time % strftime('%Y-%m-%d_%H:%M:%S'))
 
     ! read wave spectrum field from a restart file if necessary:
@@ -478,114 +512,110 @@ contains
       call restart_read(config % starttimestr, self % spectrum, grid, &
                         self % e(:,:,is:ie), self % ustar)
 
-    do while (current_time < stop_time) ! outer time loop
+    ! report current and next checkpoint time:
+    if (nproc == 0) write(*,fmt='(a)') 'umwm: solver: current time is:     ' // timestr
 
-      ! report current and next checkpoint time:
-      if (nproc == 0) write(*,fmt='(a)') 'umwm: solver: current time is:     ' // timestr
+    current_time = current_time + timedelta(seconds=nint(config % dtg))
+    timestr = trim(current_time % strftime('%Y-%m-%d_%H:%M:%S'))
 
-      current_time = current_time + timedelta(seconds=nint(config % dtg))
-      timestr = trim(current_time % strftime('%Y-%m-%d_%H:%M:%S'))
+    if (nproc == 0) write(*,fmt='(a)') 'umwm: solver: integrating to time: ' // timestr
 
-      if (nproc == 0) write(*,fmt='(a)') 'umwm: solver: integrating to time: ' // timestr
-
-      ! read atmosphere and ocean input fields from file.
-      ! in case of esmf coupling, fields are assumed to be updated
-      ! externally, and this call is not used.
+    ! read atmosphere and ocean input fields from file.
+    ! in case of esmf coupling, fields are assumed to be updated
+    ! externally, and this call is not used.
 #ifndef ESMF
-      call forcing % update(config, timestr, grid)
+    call forcing % update(config, timestr, grid)
 #endif
 
-      ! inner time loop: global time step
-      self % sumt = 0
-      do while (self % sumt < config % dtg)
+    ! inner time loop: global time step
+    self % sumt = 0
+    do while (self % sumt < config % dtg)
 
 #ifndef ESMF
-        call forcing % interpolate(config, grid, self % sumt) ! interpolate force fields in time
+      call forcing % interpolate(config, grid, self % sumt) ! interpolate force fields in time
 #else
-        call forcing % apply_wind_speed_floor()
+      call forcing % apply_wind_speed_floor()
 #endif
 
-        call self % step()
+      call self % step()
 
-        if (self % first) then
+      if (self % first) then
 
-          ! diagnostic calculations before output
-          call self % diagnostics()
+        ! diagnostic calculations before output
+        call self % diagnostics()
 
-          if (config % outgrid > 0) call self % output_grid_nc(config % starttimestr)
-          if (config % outspec > 0) call self % output_spectrum_nc(config % starttimestr)
+        if (config % outgrid > 0) call self % output_grid_nc(config % starttimestr)
+        if (config % outspec > 0) call self % output_spectrum_nc(config % starttimestr)
 
 #ifdef MPI
-          call mpi_barrier(MPI_COMM_WORLD, ierr)
+        call mpi_barrier(MPI_COMM_WORLD, ierr)
 #endif
 
-          if (nproc == 0) then
-            ! diagnostic output header on screen
-            write(*,fmt='(a)') 'dtg frac   tstep [s]  wspd [m/s] wdir [rad]   ' &
-                               // 'swh [m]    mwp [s]    cd*10^3   fprog [hz]'
-          end if
-
-          self % first = .false.
-
+        if (nproc == 0) then
+          ! diagnostic output header on screen
+          write(*,fmt='(a)') 'dtg frac   tstep [s]  wspd [m/s] wdir [rad]   ' &
+                             // 'swh [m]    mwp [s]    cd*10^3   fprog [hz]'
         end if
 
-        ! diagnostic output on screen
-        if (nproc == self % nproc_plot) then
-          associate(i => self % iip)
-            write(*,fmt=100) self % sumt / config % dtg, self % dts, forcing % wspd(i), &
-                             forcing % wdir(i), sigwaveheight(self, i), &
-                             meanwaveperiod(self, i), self % cd(i) * 1e3, self % f(self % oc(i))
-          end associate
-        end if
+        self % first = .false.
 
-      end do ! end while(sumt<dtg) loop
+      end if
 
-      if (config % stokes) call self % stokes % compute(self % e(:,:,is:ie), self % cth, self % sth)
+      ! diagnostic output on screen
+      if (nproc == self % nproc_plot) then
+        associate(i => self % iip)
+          write(*,fmt=100) self % sumt / config % dtg, self % dts, forcing % wspd(i), &
+                           forcing % wdir(i), sigwaveheight(self, i), &
+                           meanwaveperiod(self, i), self % cd(i) * 1e3, self % f(self % oc(i))
+        end associate
+      end if
 
-      call self % diagnostics() ! model diagnostics for output
+    end do ! end while(sumt<dtg) loop
 
-      fullhour = current_time % getminute() == 0 .and. current_time % getsecond() == 0
+    if (config % stokes) call self % stokes % compute(self % e(:,:,is:ie), self % cth, self % sth)
 
-      ! gridded output
-      if (config % outgrid > 0) then
-        if (mod(current_time % gethour(), config % outgrid) == 0 .and. fullhour) then
-#ifndef ESMF
-          call self % ocean_stress()
-#endif
-          call self % output_grid_nc(timestr)
-        end if
-      else if (config % outgrid == -1) then
+    call self % diagnostics() ! model diagnostics for output
+
+    fullhour = current_time % getminute() == 0 .and. current_time % getsecond() == 0
+
+    ! gridded output
+    if (config % outgrid > 0) then
+      if (mod(current_time % gethour(), config % outgrid) == 0 .and. fullhour) then
 #ifndef ESMF
         call self % ocean_stress()
 #endif
         call self % output_grid_nc(timestr)
       end if
+    else if (config % outgrid == -1) then
+#ifndef ESMF
+      call self % ocean_stress()
+#endif
+      call self % output_grid_nc(timestr)
+    end if
 
-      ! spectrum output
-      if (config % outspec > 0) then
-        if (mod(current_time % gethour(), config % outspec) == 0 .and. fullhour) &
-          call self % output_spectrum_nc(timestr)
-      else if (config % outspec == -1) then
+    ! spectrum output
+    if (config % outspec > 0) then
+      if (mod(current_time % gethour(), config % outspec) == 0 .and. fullhour) &
         call self % output_spectrum_nc(timestr)
-      end if
+    else if (config % outspec == -1) then
+      call self % output_spectrum_nc(timestr)
+    end if
 
-      ! restart output
-      if (config % outrst > 0) then
-        if (mod(current_time % gethour(), config % outrst) == 0 .and. fullhour) &
-          call restart_write(timestr, config % reftimestr, self % spectrum, grid, &
-                             self % e(:,:,is:ie), self % k, self % ustar)
-      else if (config % outrst == -1) then
+    ! restart output
+    if (config % outrst > 0) then
+      if (mod(current_time % gethour(), config % outrst) == 0 .and. fullhour) &
         call restart_write(timestr, config % reftimestr, self % spectrum, grid, &
                            self % e(:,:,is:ie), self % k, self % ustar)
-      end if
-
-    end do ! end outer loop
+    else if (config % outrst == -1) then
+      call restart_write(timestr, config % reftimestr, self % spectrum, grid, &
+                         self % e(:,:,is:ie), self % k, self % ustar)
+    end if
 
     end associate
 
 100 format(2x, f4.2, 2x, f8.3, 6(1x, f9.6))
 
-  end subroutine run
+  end subroutine advance
 
 
   subroutine finalize(self)

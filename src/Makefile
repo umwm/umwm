@@ -1,6 +1,18 @@
 # University of Miami Wave Model Makefile
 
-include ../mk/config.mk
+# This Makefile may be run from another directory with -f, as the shared
+# target does, so the build configuration is located relative to it.
+UMWM_SRC_MAKEFILE := $(abspath $(lastword $(MAKEFILE_LIST)))
+UMWM_SRC_DIR := $(dir $(UMWM_SRC_MAKEFILE))
+
+include $(UMWM_SRC_DIR)../mk/config.mk
+
+# Directory of the sources when building out of tree, as the shared target
+# does; only the sources are searched there, not the objects.
+SRC_VPATH ?=
+ifneq ($(strip $(SRC_VPATH)),)
+vpath %.f90 $(SRC_VPATH)
+endif
 
 .SUFFIXES:
 
@@ -10,6 +22,7 @@ include ../mk/config.mk
 # Object list
 OBJS = datetime_module.o \
        umwm_advection.o \
+       umwm_capi.o \
        umwm_config.o \
        umwm_constants.o \
        umwm_diagnostics.o \
@@ -30,7 +43,7 @@ OBJS = datetime_module.o \
        umwm_stokes.o \
        umwm_stress.o
 
-.PHONY: all test clean clean_all print-config
+.PHONY: all shared test clean clean_all print-config
 .DEFAULT_GOAL := all
 
 all: umwm
@@ -41,11 +54,28 @@ umwm: umwm.o $(OBJS)
 	cp $@ ../.
 	$(AR) rcs libumwm.a $(OBJS)
 
+# Shared library with the C API, used by the Python package. The objects
+# are compiled with -fPIC in SHARED_DIR, apart from those of the executable,
+# and the library is linked with the run path of the netCDF libraries.
+SHARED_DIR ?= shared
+SHARED_LIB ?= libumwm.so
+comma := ,
+SHARED_RPATH := $(patsubst -L%,-Wl$(comma)-rpath$(comma)%,$(filter -L%,$(NETCDF_FLIBS)))
+
+shared:
+	mkdir -p $(SHARED_DIR)
+	$(MAKE) --directory=$(SHARED_DIR) -f $(UMWM_SRC_MAKEFILE) SRC_VPATH=$(UMWM_SRC_DIR) \
+	  FCFLAGS="$(FCFLAGS) -fPIC" $(SHARED_LIB)
+
+$(SHARED_LIB): $(OBJS)
+	$(FC) -shared $(FCFLAGS) $(LDFLAGS) -o $@ $^ $(NETCDF_FLIBS) $(SHARED_RPATH) $(LDLIBS)
+
 # Object            Source              Dependencies
 umwm.o:             umwm.f90            umwm_domain.o umwm_env.o
 datetime_module.o:  datetime_module.f90
 umwm_domain.o:      umwm_domain.f90     datetime_module.o umwm_advection.o umwm_config.o umwm_constants.o umwm_dispersion.o umwm_env.o umwm_forcing.o umwm_grid.o umwm_io.o umwm_mpi.o umwm_physics.o umwm_restart.o umwm_sheltering.o umwm_source_functions.o umwm_spectrum.o umwm_stokes.o umwm_stress.o umwm_util.o
 umwm_domain_output.o: umwm_domain_output.f90 umwm_domain.o umwm_io.o
+umwm_capi.o:        umwm_capi.f90       umwm_domain.o umwm_env.o umwm_io.o
 umwm_constants.o:   umwm_constants.f90
 umwm_config.o:      umwm_config.f90     umwm_constants.o
 umwm_env.o:         umwm_env.f90
@@ -72,7 +102,8 @@ datetime_module.f90:
 	curl -O https://raw.githubusercontent.com/wavebitscientific/datetime-fortran/master/src/datetime_module.f90
 
 clean:
-	$(RM) umwm *.o *.mod *.smod libumwm.a
+	$(RM) umwm *.o *.mod *.smod libumwm.a $(SHARED_LIB)
+	$(RM) -r $(SHARED_DIR)
 
 clean_all:
 	$(MAKE) clean
