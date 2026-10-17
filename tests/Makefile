@@ -37,13 +37,13 @@ test: $(TESTS)
 	./test_source_functions
 	./test_domain
 
-test_dispersion: test_dispersion.f90 tuff.o umwm_constants.o umwm_dispersion.o
+test_dispersion: test_dispersion.f90 tuff.o umwm_constants.o umwm_dispersion.o umwm_env.o
 	$(FC) $(CPPFLAGS) $(FCFLAGS) -I. -I$(SRC_DIR) -o $@ $^ $(LDLIBS)
 
-test_spectrum: test_spectrum.f90 tuff.o umwm_constants.o umwm_spectrum.o
+test_spectrum: test_spectrum.f90 tuff.o umwm_constants.o umwm_spectrum.o umwm_env.o
 	$(FC) $(CPPFLAGS) $(FCFLAGS) -I. -I$(SRC_DIR) -o $@ $^ $(LDLIBS)
 
-test_config: test_config.f90 tuff.o umwm_constants.o umwm_config.o
+test_config: test_config.f90 tuff.o umwm_constants.o umwm_config.o umwm_env.o
 	$(FC) $(CPPFLAGS) $(FCFLAGS) -I. -I$(SRC_DIR) -o $@ $^ $(LDLIBS)
 
 test_grid: test_grid.f90 tuff.o umwm_constants.o umwm_config.o umwm_spectrum.o umwm_env.o umwm_util.o umwm_grid.o
@@ -52,7 +52,7 @@ test_grid: test_grid.f90 tuff.o umwm_constants.o umwm_config.o umwm_spectrum.o u
 test_forcing: test_forcing.f90 tuff.o umwm_constants.o umwm_config.o umwm_spectrum.o umwm_env.o umwm_util.o umwm_grid.o umwm_forcing.o
 	$(FC) $(CPPFLAGS) $(FCFLAGS) -I. -I$(SRC_DIR) -o $@ $^ $(NETCDF_FLIBS) $(LDLIBS)
 
-test_source_functions: test_source_functions.f90 tuff.o umwm_constants.o umwm_source_functions.o
+test_source_functions: test_source_functions.f90 tuff.o umwm_constants.o umwm_source_functions.o umwm_env.o
 	$(FC) $(CPPFLAGS) $(FCFLAGS) -I. -I$(SRC_DIR) -o $@ $^ $(LDLIBS)
 
 test_domain: test_domain.f90 tuff.o $(MODEL_OBJS)

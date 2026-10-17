@@ -128,8 +128,8 @@ module umwm_domain
     procedure, private :: advect_column
     procedure, private :: update_rotation
     procedure, private :: wind_stress
-    procedure, private :: output_grid_nc
-    procedure, private :: output_spectrum_nc
+    procedure :: output_grid_nc
+    procedure :: output_spectrum_nc
 
   end type domain_type
 

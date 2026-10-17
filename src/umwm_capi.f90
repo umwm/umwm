@@ -16,12 +16,14 @@ module umwm_capi
                              ieee_support_underflow_control
   use iso_c_binding, only: c_char, c_double, c_f_pointer, c_float, c_int, c_loc, &
                            c_null_char, c_null_ptr, c_ptr
+  use iso_fortran_env, only: error_unit, output_unit
 #ifdef MPI
   use mpi
 #endif
   use umwm_domain, only: domain_type
   use umwm_env, only: env_init, env_stop, mpisize, nproc
   use umwm_io, only: gather_field
+  use umwm_restart, only: restart_write
 
   implicit none
 
@@ -72,6 +74,14 @@ contains
     ! Finalizes the parallel environment.
     call env_stop()
   end subroutine umwm_env_stop
+
+
+  subroutine umwm_env_flush() bind(c, name='umwm_env_flush')
+    ! Flushes the standard output and error units of the Fortran runtime,
+    ! for callers that redirect them.
+    flush(output_unit)
+    flush(error_unit)
+  end subroutine umwm_env_flush
 
 
   subroutine umwm_env_barrier() bind(c, name='umwm_env_barrier')
@@ -194,6 +204,39 @@ contains
     call c_f_pointer(handle, domain)
     call domain % ocean_stress()
   end subroutine umwm_domain_ocean_stress
+
+
+  subroutine umwm_domain_write_output(handle) bind(c, name='umwm_domain_write_output')
+    ! Writes the gridded output at the current model time, after updating
+    ! the ocean stress as the model does before gridded output. Collective.
+    type(c_ptr), value :: handle
+    type(domain_type), pointer :: domain
+    call c_f_pointer(handle, domain)
+    call domain % ocean_stress()
+    call domain % output_grid_nc(time_string(domain))
+  end subroutine umwm_domain_write_output
+
+
+  subroutine umwm_domain_write_spectrum(handle) bind(c, name='umwm_domain_write_spectrum')
+    ! Writes the spectrum output at the configured points at the current
+    ! model time, as a record appended to the spectrum output files.
+    type(c_ptr), value :: handle
+    type(domain_type), pointer :: domain
+    call c_f_pointer(handle, domain)
+    call domain % output_spectrum_nc(time_string(domain))
+  end subroutine umwm_domain_write_spectrum
+
+
+  subroutine umwm_domain_write_restart(handle) bind(c, name='umwm_domain_write_restart')
+    ! Writes a restart file at the current model time. Collective.
+    type(c_ptr), value :: handle
+    type(domain_type), pointer :: domain
+    call c_f_pointer(handle, domain)
+    associate(grid => domain % grid)
+    call restart_write(time_string(domain), domain % config % reftimestr, domain % spectrum, grid, &
+                       domain % e(:,:,grid % istart:grid % iend), domain % k, domain % ustar)
+    end associate
+  end subroutine umwm_domain_write_restart
 
 
   subroutine umwm_domain_finalize(handle) bind(c, name='umwm_domain_finalize')
@@ -636,6 +679,14 @@ contains
     end associate
 
   end function umwm_domain_gather
+
+
+  function time_string(domain) result(timestr)
+    ! The current model time in the form of the output file names.
+    type(domain_type), intent(in) :: domain
+    character(19) :: timestr
+    timestr = domain % current_time % strftime('%Y-%m-%d_%H:%M:%S')
+  end function time_string
 
 
   function fortran_string(cstring) result(string)

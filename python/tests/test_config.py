@@ -141,3 +141,42 @@ def test_parse_value():
 def test_package_exports():
     assert umwm.Config is Config
     assert isinstance(umwm.__version__, str)
+
+
+def test_describe_and_diff(repo_root):
+    config = Config()
+    text = config.describe()
+    assert text.startswith("&DOMAIN")
+    assert "Gravitational acceleration [m/s^2]" in text
+    assert "&STOKES" in config.describe("stokes") and "&DOMAIN" not in config.describe("stokes")
+    with pytest.raises(ConfigError):
+        config.describe("nope")
+    other = Config.from_namelist(repo_root / "tests" / "namelists" / "forcing_rankine.nml")
+    differences = config.diff(other)
+    assert differences["domain.stoptimestr"] == ("2026-01-01 06:00:00", "2026-01-01 01:00:00")
+    assert differences["forcing.winds"] == (False, True)
+    assert "spectrum_points" in differences
+    assert config.diff(config.copy()) == {}
+
+
+def test_from_namelist_directory(tmp_path):
+    workdir = tmp_path / "case"
+    config = Config()
+    config.domain.mm = 33
+    config.write(workdir / "namelists" / "main.nml")
+    assert Config.from_namelist(workdir).domain.mm == 33
+    with pytest.raises(FileNotFoundError):
+        Config.from_namelist(tmp_path)
+
+
+@pytest.mark.parametrize("change, ok", [
+    ({"output.xpl": 1}, False), ({"output.xpl": 21}, False), ({"output.ypl": 1}, False),
+    ({"output.xpl": 2}, True), ({"output.xpl": 1, "domain.isglobal": True}, True),
+])
+def test_screen_point_must_be_interior(change, ok):
+    config = Config().update(change)
+    if ok:
+        config.validate()
+    else:
+        with pytest.raises(ConfigError, match="interior"):
+            config.validate()

@@ -173,7 +173,7 @@ with umwm.Domain(config, workdir="runs/case1") as domain:
 
 ```
 umwm init runs/case1 -s domain.stoptimestr="2026-01-01 12:00:00"
-umwm run -w runs/case1
+umwm run runs/case1
 umwm output runs/case1 --stats
 ```
 

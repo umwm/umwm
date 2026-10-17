@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "umwm"
-version = "0.1.0"
+dynamic = ["version"]
 description = "University of Miami Wave Model: Python interface and command-line tool"
 readme = "python/README.md"
 license = {text = "MIT"}
@@ -29,6 +29,7 @@ dependencies = [
 [project.optional-dependencies]
 test = ["pytest"]
 lazy = ["dask"]
+plot = ["matplotlib"]
 
 [project.scripts]
 umwm = "umwm.cli:main"
@@ -41,6 +42,12 @@ Documentation = "https://github.com/umwm/umwm/blob/main/python/README.md"
 package-dir = {"" = "python"}
 packages = ["umwm"]
 include-package-data = false
+
+[tool.setuptools.dynamic]
+version = {attr = "umwm.__version__"}
+
+[tool.setuptools.package-data]
+umwm = ["py.typed"]
 
 [tool.pytest.ini_options]
 testpaths = ["python/tests"]

@@ -90,3 +90,65 @@ def test_info(library, capsys):
     assert main(["info"]) == 0
     out = capsys.readouterr().out
     assert "library:" in out and "mpi:" in out
+
+
+def test_relaunch_arguments():
+    from umwm.cli import relaunch_arguments
+
+    assert relaunch_arguments(["run", "-n", "4", "case", "-s", "domain.mm=5"]) == ["run", "case", "-s", "domain.mm=5"]
+    assert relaunch_arguments(["run", "--processes=2", "-n8", "case"]) == ["run", "case"]
+    assert relaunch_arguments(["run", "--processes", "3"]) == ["run"]
+
+
+def test_run_processes_without_mpi_library(library, tmp_path, capsys, monkeypatch):
+    if library.mpi:
+        pytest.skip("the library is built with MPI")
+    for name in ("OMPI_COMM_WORLD_SIZE", "PMI_SIZE", "PMIX_RANK"):
+        monkeypatch.delenv(name, raising=False)
+    assert main(["run", "-n", "2", str(tmp_path), "--defaults"]) == 1
+    assert "built without MPI" in capsys.readouterr().err
+
+
+def test_run_directory_target_log_and_clean(library, tmp_path, capsys):
+    workdir = tmp_path / "case"
+    assert main(["init", str(workdir), "-s", "domain.stoptimestr=2026-01-01 01:00:00", "-s", "output.stokes=.false."]) == 0
+    log = tmp_path / "run.log"
+    assert main(["run", str(workdir), "--log", str(log)]) == 0
+    out = capsys.readouterr().out
+    assert "run finished" in out and "umwm: solver" not in out
+    assert "umwm: solver: integrating to time" in log.read_text()
+    assert main(["run", str(workdir), "--check"]) == 0
+    assert "UMWM domain in" in capsys.readouterr().out
+    assert main(["clean", str(workdir), "--keep-restart"]) == 0
+    assert "removed 3 file(s)" in capsys.readouterr().out
+    assert umwm.output_files(workdir) == []
+    assert main(["clean", str(tmp_path / "nothing")]) == 1
+
+
+def test_config_describe_and_diff(tmp_path, capsys):
+    assert main(["config", "--describe", "physics"]) == 0
+    out = capsys.readouterr().out
+    assert out.startswith("&PHYSICS") and "Von Karman constant" in out
+    other = tmp_path / "other.nml"
+    assert main(["config", "-o", str(other), "-s", "domain.mm=99"]) == 0
+    capsys.readouterr()
+    assert main(["config", "--diff", str(other)]) == 0
+    out = capsys.readouterr().out
+    assert "domain.mm" in out and "99" in out
+    assert main(["config", str(other), "--diff", str(other)]) == 0
+    assert "do not differ" in capsys.readouterr().out
+
+
+def test_output_plot(library, tmp_path, capsys):
+    pytest.importorskip("matplotlib")
+    import matplotlib
+
+    matplotlib.use("Agg")
+    workdir = tmp_path / "case"
+    assert main(["init", str(workdir), "-s", "domain.stoptimestr=2026-01-01 01:00:00"]) == 0
+    assert main(["run", str(workdir), "--quiet"]) == 0
+    image = tmp_path / "swh.png"
+    assert main(["output", str(workdir), "--plot", "swh", "--save", str(image)]) == 0
+    assert image.is_file() and image.stat().st_size > 1000
+    assert main(["output", str(workdir), "--plot", "u_stokes", "--level", "2", "--time", "0", "--save", str(image)]) == 0
+    assert main(["output", str(workdir), "--plot", "nope", "--save", str(image)]) == 1

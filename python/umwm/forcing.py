@@ -16,7 +16,8 @@ import xarray as xr
 
 from .config import format_time, parse_time
 
-__all__ = ["forcing_filename", "write_forcing", "write_grid", "rankine_vortex", "write_rankine_forcing"]
+__all__ = ["forcing_filename", "write_forcing", "write_forcing_dataset", "write_grid", "rankine_vortex",
+           "write_rankine_forcing"]
 
 FORCING_VARIABLES = {
     "uw": ("wind x-component", "m s-1"),
@@ -92,6 +93,48 @@ def write_forcing(path, time, *, uw=None, vw=None, uc=None, vc=None, rhoa=None, 
     encoding = {name: {"dtype": "float32"} for name in dataset.data_vars}
     dataset.to_netcdf(path, engine="netcdf4", format="NETCDF4", encoding=encoding, unlimited_dims=("time",))
     return path
+
+
+def _to_datetime(value) -> datetime:
+    """A datetime from a numpy datetime64, a cftime object, a string, or a datetime."""
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, np.datetime64):
+        return np.datetime64(value, "s").astype(datetime)
+    if hasattr(value, "strftime"):
+        return parse_time(value.strftime("%Y-%m-%d %H:%M:%S"))
+    return parse_time(str(value))
+
+
+def write_forcing_dataset(path, dataset, *, rename=None) -> list[Path]:
+    """Write one forcing file per time of an xarray dataset into the directory ``path``.
+
+    The dataset holds the forcing variables (``uw``, ``vw``, ``uc``, ``vc``,
+    ``rhoa``, ``rhow``, ``fice``; others are ignored) with dimensions
+    ``(time, y, x)``, and optionally ``lon`` and ``lat``. ``rename`` maps the
+    names in the dataset to these, for example ``{"u10": "uw", "v10": "vw"}``.
+    Returns the paths of the files written, in time order.
+    """
+    rename = {old: new for old, new in dict(rename or {}).items() if old in dataset}
+    dataset = dataset.rename(rename) if rename else dataset
+    if "time" not in dataset.dims:
+        raise ValueError("the dataset needs a time dimension")
+    names = [name for name in FORCING_VARIABLES if name in dataset]
+    if not names:
+        raise ValueError("the dataset has none of the forcing variables " + ", ".join(FORCING_VARIABLES))
+    if {"y", "x"} <= set(dataset.dims):
+        dataset = dataset.transpose(..., "y", "x")
+    static = {}
+    for coordinate in ("lon", "lat"):
+        if coordinate in dataset:
+            values = dataset[coordinate]
+            static[coordinate] = (values.isel(time=0) if "time" in values.dims else values).values
+    paths = []
+    for index in range(dataset.sizes["time"]):
+        time = _to_datetime(dataset["time"].values[index])
+        fields = {name: dataset[name].isel(time=index).values for name in names}
+        paths.append(write_forcing(path, time, **fields, **static))
+    return paths
 
 
 def write_grid(path, lon, lat, depth=None, *, attrs=None) -> Path:

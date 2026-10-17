@@ -4,6 +4,6 @@ include src/Makefile
 recursive-include src *.f90
 include namelists/*.nml
 include python/README.md
-recursive-include python/umwm *.py
+recursive-include python/umwm *.py py.typed
 recursive-include python/tests *.py
 recursive-include python/examples *.py

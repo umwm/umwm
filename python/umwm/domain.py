@@ -24,8 +24,9 @@ import xarray as xr
 from . import fields as _fields
 from . import output as _output
 from ._library import library
-from .config import Config, ConfigError, parse_time
-from .forcing import forcing_filename, write_forcing, write_grid
+from ._redirect import redirect_stdout_fd
+from .config import Config, ConfigError, namelist_path, parse_time
+from .forcing import FORCING_VARIABLES, forcing_filename, write_forcing, write_grid
 
 __all__ = ["Domain", "run"]
 
@@ -38,8 +39,10 @@ class Domain:
     Parameters
     ----------
     config
-        A :class:`~umwm.Config`, the path of a ``main.nml`` namelist file,
-        or ``None`` for the default configuration.
+        A :class:`~umwm.Config`, the path of a ``main.nml`` namelist file, a
+        run directory (whose ``namelists/main.nml`` is read, and which
+        becomes the ``workdir`` unless one is given), or ``None`` for the
+        default configuration.
     workdir
         The run directory; the current directory by default. It is created
         with the ``namelists``, ``input``, ``output`` and ``restart``
@@ -47,6 +50,13 @@ class Domain:
     input_dir
         An existing directory with the input files (forcing and grid files),
         linked as ``workdir/input`` if that does not exist yet.
+    log
+        A file to which the output of the model (and anything else written
+        to the standard output while the model runs) is appended instead of
+        the terminal; in parallel runs, the processes other than the root
+        write to files named with their rank.
+    quiet
+        Discard the output of the model (unless ``log`` is given).
 
     The model is set up by :meth:`initialize`, which writes the namelists
     and reads the inputs, and integrated by :meth:`run` or :meth:`advance`;
@@ -59,7 +69,7 @@ class Domain:
     ...     output = domain.output()
     """
 
-    def __init__(self, config=None, workdir=None, *, input_dir=None):
+    def __init__(self, config=None, workdir=None, *, input_dir=None, log=None, quiet=False):
         self._lib = library()
         self._handle = None
         self._source_namelist = None
@@ -69,7 +79,10 @@ class Domain:
         elif isinstance(config, Config):
             self.config = config
         else:
-            self._source_namelist = Path(config).resolve()
+            source = Path(config)
+            if source.is_dir() and workdir is None:
+                workdir = source
+            self._source_namelist = namelist_path(source).resolve()
             self.config = Config.from_namelist(self._source_namelist)
 
         self.workdir = Path(workdir or Path.cwd()).resolve()
@@ -78,6 +91,14 @@ class Domain:
         self.input_dir = self.workdir / "input"
         self.output_dir = self.workdir / "output"
         self.restart_dir = self.workdir / "restart"
+
+        self.quiet = bool(quiet)
+        self.log = None
+        if log is not None:
+            path = Path(log)
+            if self.rank > 0:
+                path = path.with_name(f"{path.stem}.rank{self.rank}{path.suffix}")
+            self.log = path
 
         if self.rank == 0:
             for directory in (self.namelist_dir, self.output_dir, self.restart_dir):
@@ -128,6 +149,15 @@ class Domain:
             yield
         finally:
             os.chdir(previous)
+
+    @contextlib.contextmanager
+    def _model_output(self):
+        """Send the output of the model to the log file, or discard it when quiet."""
+        if self.log is None and not self.quiet:
+            yield
+        else:
+            with redirect_stdout_fd(self.log, flush=self._lib.flush):
+                yield
 
     # ---- setup --------------------------------------------------------------
 
@@ -181,6 +211,21 @@ class Domain:
         except Exception:
             return False
 
+    def _required_forcing_variables(self) -> list[str]:
+        forcing = self.config.forcing
+        names = []
+        if forcing.winds:
+            names += ["uw", "vw"]
+        if forcing.currents:
+            names += ["uc", "vc"]
+        if forcing.seaice:
+            names.append("fice")
+        if forcing.air_density:
+            names.append("rhoa")
+        if forcing.water_density:
+            names.append("rhow")
+        return names
+
     def missing_inputs(self) -> list[Path]:
         """The input files the configuration requires that do not exist."""
         config = self.config
@@ -203,13 +248,57 @@ class Domain:
                 missing.append(path)
         return missing
 
+    def input_problems(self) -> list[str]:
+        """Problems with the input files the configuration requires: files that
+        are missing, and files without the required variables or with a
+        shape that does not match the grid (``mm`` by ``nm``)."""
+        from netCDF4 import Dataset
+
+        config = self.config
+        mm, nm = config.domain.mm, config.domain.nm
+        problems = [f"missing {path}" for path in self.missing_inputs()]
+
+        def check(path: Path, variables: list[str], minimum_rank: int) -> None:
+            if not path.is_file():
+                return
+            try:
+                with Dataset(path) as dataset:
+                    for name in variables:
+                        if name not in dataset.variables:
+                            problems.append(f"{path}: variable {name!r} not found")
+                            continue
+                        shape = tuple(dataset.variables[name].shape)
+                        if len(shape) < minimum_rank or shape[-2:] != (nm, mm):
+                            expected = "(..., " if minimum_rank > 2 else "("
+                            problems.append(f"{path}: variable {name!r} has shape {shape}, expected "
+                                            f"{expected}{nm}, {mm}) for nm = {nm} and mm = {mm}")
+            except OSError as error:
+                problems.append(f"{path}: cannot be read ({error})")
+
+        gridtopo = self.input_dir / "umwm.gridtopo"
+        if config.grid.topofromfile:
+            check(gridtopo, ["lon", "lat", "z"] if config.grid.gridfromfile else ["z"], 2)
+        elif config.grid.gridfromfile:
+            check(gridtopo if gridtopo.is_file() else self.input_dir / "umwm.grid", ["lon", "lat"], 2)
+        variables = self._required_forcing_variables()
+        if variables:
+            for time in config.step_times(include_start=True):
+                check(self.input_dir / forcing_filename(time), variables, 3)
+        return problems
+
     def check_inputs(self) -> None:
-        """Raise ``FileNotFoundError`` listing the required input files that do not exist."""
-        missing = self.missing_inputs()
-        if missing:
-            listing = "\n  ".join(str(path) for path in missing[:10])
-            more = f"\n  ... and {len(missing) - 10} more" if len(missing) > 10 else ""
+        """Raise ``FileNotFoundError`` if required input files are missing, or
+        ``ValueError`` if they lack the required variables or have the wrong
+        shape; see :meth:`input_problems`."""
+        problems = self.input_problems()
+        if not problems:
+            return
+        listing = "\n  ".join(problems[:10])
+        more = f"\n  ... and {len(problems) - 10} more" if len(problems) > 10 else ""
+        if all(problem.startswith("missing ") for problem in problems):
+            listing = "\n  ".join(problem[len("missing "):] for problem in problems[:10])
             raise FileNotFoundError(f"missing input files:\n  {listing}{more}")
+        raise ValueError(f"input file problems:\n  {listing}{more}")
 
     def initialize(self) -> "Domain":
         """Validate the configuration, check the inputs, write the namelists,
@@ -221,7 +310,7 @@ class Domain:
         self.check_inputs()
         self.write_namelists()
         namelist = os.path.relpath(self.namelist_path, self.workdir)
-        with self._in_workdir():
+        with self._in_workdir(), self._model_output():
             handle = self._lib.domain_new()
             stat = self._lib.domain_initialize(handle, namelist)
             if stat != 0:
@@ -250,7 +339,7 @@ class Domain:
         due at the new time. Returns the new model time."""
         if self._handle is None:
             self.initialize()
-        with self._in_workdir():
+        with self._in_workdir(), self._model_output():
             self._lib.domain_advance(self._handle)
         return self.time
 
@@ -267,7 +356,7 @@ class Domain:
         if self._handle is None:
             self.initialize()
         if until is None:
-            with self._in_workdir():
+            with self._in_workdir(), self._model_output():
                 self._lib.domain_run(self._handle)
             return self
         until = until if isinstance(until, datetime) else parse_time(until)
@@ -284,6 +373,34 @@ class Domain:
         components, which the model otherwise evaluates at gridded output times."""
         self._lib.domain_ocean_stress(self._require_handle())
 
+    # ---- output on demand ---------------------------------------------------
+
+    def write_output(self) -> Path:
+        """Write the gridded output file for the current model time, as the
+        model does at its gridded output times (updating the ocean stress
+        first), and return its path. Collective in parallel runs."""
+        handle = self._require_handle()
+        with self._in_workdir(), self._model_output():
+            self._lib.domain_write_output(handle)
+        return self.output_dir / f"umwmout_{self.time:%Y-%m-%d_%H:%M:%S}.nc"
+
+    def write_spectrum_output(self) -> dict[str, list[Path]]:
+        """Append the spectra at the configured points at the current model
+        time to the spectrum output files, and return the files by point name."""
+        handle = self._require_handle()
+        with self._in_workdir(), self._model_output():
+            self._lib.domain_write_spectrum(handle)
+        return _output.spectrum_output_files(self.output_dir)
+
+    def write_restart(self) -> Path:
+        """Write a restart file for the current model time and return its
+        path. A later run restarts from it with ``config.domain.restart``
+        set and the start time set to this time. Collective in parallel runs."""
+        handle = self._require_handle()
+        with self._in_workdir(), self._model_output():
+            self._lib.domain_write_restart(handle)
+        return self.restart_dir / f"umwmrst_{self.time:%Y-%m-%d_%H:%M:%S}.nc"
+
     # ---- teardown -----------------------------------------------------------
 
     def finalize(self) -> None:
@@ -294,6 +411,24 @@ class Domain:
             self._lib.domain_delete(handle)
 
     close = finalize
+
+    def clean(self, output: bool = True, restart: bool = True) -> list[Path]:
+        """Remove the files the model wrote to the output and restart
+        directories (and nothing else), and return their paths."""
+        removed = []
+        if self.rank == 0:
+            patterns = []
+            if output:
+                patterns += [(self.output_dir, "umwmout_*.nc"), (self.output_dir, "umwmspc_*.nc"),
+                             (self.output_dir, "umwmout.grid")]
+            if restart:
+                patterns.append((self.restart_dir, "umwmrst_*.nc"))
+            for directory, pattern in patterns:
+                for path in sorted(directory.glob(pattern)):
+                    path.unlink()
+                    removed.append(path)
+        self.barrier()
+        return removed
 
     def __enter__(self) -> "Domain":
         return self
@@ -310,6 +445,53 @@ class Domain:
     def __repr__(self) -> str:
         state = f"time={self.time:%Y-%m-%d %H:%M:%S}" if self.initialized else "not initialized"
         return f"Domain(workdir={str(self.workdir)!r}, {state})"
+
+    def summary(self) -> str:
+        """A short description of the domain: grid, spectrum, time span,
+        forcing sources, output, and processes."""
+        config = self.config
+        domain, grid, forcing, constant, output = (
+            config.domain, config.grid, config.forcing, config.forcing_constant, config.output)
+        lines = [f"UMWM domain in {self.workdir}"]
+        cells = f"{domain.mm} x {domain.nm} grid points"
+        if self.initialized:
+            sizes = self.sizes
+            cells += f", {sizes['im']} sea cells and {sizes['imm'] - sizes['im']} land"
+        geometry = "geometry from input/umwm.grid" if grid.gridfromfile else f"{grid.delx:g} x {grid.dely:g} m spacing"
+        depth = "bathymetry from input/umwm.gridtopo" if grid.topofromfile else f"{grid.dpt:g} m depth"
+        lines.append(f"  grid: {cells}, {geometry}, {depth}" + (", global" if domain.isglobal else ""))
+        lines.append(f"  spectrum: {domain.om} frequencies from {domain.fmin:g} to {domain.fmax:g} Hz "
+                     f"(prognostic to {domain.fprog:g} Hz), {domain.pm} directions")
+        time = f"  time: {domain.starttimestr} to {domain.stoptimestr}, global step {domain.dtg:g} s"
+        if self.initialized:
+            time += f", now at {self.time:%Y-%m-%d %H:%M:%S}"
+        if domain.restart:
+            time += ", from a restart file"
+        lines.append(time)
+        sources = [name.replace("_", " ") for name in ("winds", "currents", "air_density", "water_density", "seaice")
+                   if getattr(forcing, name)]
+        constants = []
+        if not forcing.winds:
+            constants.append(f"wind {constant.wspd0:g} m/s at {constant.wdir0:g} rad")
+        if not forcing.currents:
+            constants.append(f"current ({constant.uc0:g}, {constant.vc0:g}) m/s")
+        if not forcing.air_density:
+            constants.append(f"air density {constant.rhoa0:g} kg/m^3")
+        if not forcing.water_density:
+            constants.append(f"water density {constant.rhow0:g} kg/m^3")
+        if not forcing.seaice:
+            constants.append(f"sea ice fraction {constant.fice0:g}")
+        lines.append("  forcing: " + ("from input files: " + ", ".join(sources) + "; " if sources else "")
+                     + "constant " + ", ".join(constants))
+
+        def interval(value):
+            return "off" if value == 0 else "every global step" if value == -1 else f"every {value} h"
+
+        lines.append(f"  output: gridded {interval(output.outgrid)}, spectrum {interval(output.outspec)} at "
+                     f"{len(config.spectrum_points)} point(s), restart {interval(output.outrst)}, Stokes drift "
+                     + (f"at {len(config.stokes.depths)} depths" if output.stokes else "off"))
+        lines.append(f"  processes: {self.size}, library {'with' if self.mpi else 'without'} MPI")
+        return "\n".join(lines)
 
     # ---- fields -------------------------------------------------------------
 
@@ -437,6 +619,12 @@ class Domain:
             data_vars["d_stokes"] = (("time", "y", "x"), self.grid_field("d_stokes")[np.newaxis], _fields.attrs("d_stokes"))
         return xr.Dataset(data_vars, coords=coords, attrs={"title": "UMWM model state", "workdir": str(self.workdir)})
 
+    def _spectral_coords(self) -> dict:
+        return {
+            "frequency": ("frequency", self.field("frequency"), _fields.attrs("frequency")),
+            "direction": ("direction", self.field("direction"), _fields.attrs("direction")),
+        }
+
     def spectrum(self, name: str = "F") -> xr.DataArray:
         """The wave spectrum ``F`` (or a spectral source term: ``Sin``, ``Sds``,
         ``Snl``) on the grid as a data array with dimensions
@@ -451,10 +639,7 @@ class Domain:
         if values.ndim != 3:
             raise ValueError(f"{name!r} is not a spectral field over the cells")
         sizes = self.sizes
-        coords = {
-            "frequency": ("frequency", self.field("frequency"), _fields.attrs("frequency")),
-            "direction": ("direction", self.field("direction"), _fields.attrs("direction")),
-        }
+        coords = self._spectral_coords()
         columns = values.T  # (cell, direction, frequency), C-order view
         if self.size == 1:
             first = lbounds[2]
@@ -469,6 +654,34 @@ class Domain:
         coords["cell"] = ("cell", cells, {"long_name": "cell index (Fortran, 1-based)"})
         return xr.DataArray(np.array(columns), dims=("cell", "direction", "frequency"), coords=coords,
                             name=name, attrs=_fields.attrs(name))
+
+    def spectrum_at(self, ix: int, iy: int, name: str = "F") -> xr.DataArray:
+        """The spectrum ``F`` (or a spectral source term) at one grid point as
+        a data array ``(direction, frequency)``, without building the whole
+        grid. ``ix`` and ``iy`` are 0-based array indices (namelist spectrum
+        points are 1-based). In parallel runs the point must belong to the
+        cells of this process.
+        """
+        handle = self._require_handle()
+        sizes = self.sizes
+        if not (0 <= ix < sizes["mm"] and 0 <= iy < sizes["nm"]):
+            raise IndexError(f"grid point ({ix}, {iy}) is outside the {sizes['mm']} x {sizes['nm']} grid")
+        cell = int(self._lib.domain_field(handle, "ii")[0][ix, iy])
+        if cell > sizes["im"]:
+            raise ValueError(f"grid point ({ix}, {iy}) is land")
+        values, lbounds = self._lib.domain_field(handle, name)
+        if values.ndim != 3:
+            raise ValueError(f"{name!r} is not a spectral field over the cells")
+        first, last = lbounds[2], lbounds[2] + values.shape[2] - 1
+        if not first <= cell <= last:
+            raise ValueError(f"grid point ({ix}, {iy}) belongs to another process")
+        coords = self._spectral_coords()
+        coords["x"] = ix
+        coords["y"] = iy
+        for coordinate in ("lon", "lat"):
+            coords[coordinate] = ((), float(self._lib.domain_field(handle, coordinate)[0][ix, iy]), _fields.attrs(coordinate))
+        return xr.DataArray(np.array(values[:, :, cell - first].T), dims=("direction", "frequency"),
+                            coords=coords, name=name, attrs=_fields.attrs(name))
 
     # ---- files --------------------------------------------------------------
 
@@ -511,6 +724,19 @@ class Domain:
             path = self.input_dir / ("umwm.grid" if depth is None else "umwm.gridtopo")
         self.barrier()
         return path
+
+    # ---- plotting -----------------------------------------------------------
+
+    def plot(self, name: str = "swh", level: int = 0, **kwargs):
+        """Draw a field of the current state on the grid with matplotlib; see
+        :func:`umwm.plotting.plot_field`. Returns the matplotlib axes."""
+        from .plotting import plot_field
+
+        data = self.grid_field(name, level)
+        dataset = xr.Dataset({name: (("y", "x"), data, _fields.attrs(name))}, coords=self._grid_coords(),
+                             attrs={"time": f"{self.time:%Y-%m-%d %H:%M:%S}"})
+        grid = self.grid() if (self.output_dir / "umwmout.grid").is_file() else None
+        return plot_field(dataset, name, grid=grid, **kwargs)
 
 
 def run(config=None, workdir=None, **kwargs) -> Domain:

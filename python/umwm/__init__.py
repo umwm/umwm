@@ -32,7 +32,8 @@ from .config import (
 )
 from .domain import Domain, run
 from .fields import FIELDS
-from .forcing import forcing_filename, write_forcing, write_grid, write_rankine_forcing
+from .forcing import forcing_filename, write_forcing, write_forcing_dataset, write_grid, write_rankine_forcing
+from .plotting import plot_field
 from .output import (
     open_grid,
     open_output,
@@ -49,7 +50,8 @@ __all__ = [
     "Config", "ConfigError", "Domain", "run", "SpectrumPoint",
     "DomainConfig", "PhysicsConfig", "GridConfig", "ForcingConfig", "ForcingConstantConfig",
     "OutputConfig", "StokesConfig", "FIELDS",
-    "write_forcing", "write_grid", "write_rankine_forcing", "forcing_filename",
+    "write_forcing", "write_forcing_dataset", "write_grid", "write_rankine_forcing", "forcing_filename",
+    "plot_field",
     "open_output", "open_spectrum_output", "open_restart", "open_grid",
     "output_files", "restart_files", "spectrum_output_files",
     "library", "find_library", "LibraryNotFoundError", "rank", "size", "mpi", "barrier", "flush_denormals",

@@ -70,9 +70,17 @@ with umwm.Domain(config, workdir="runs/case1") as domain:
 ```
 
 `umwm.run(config, workdir)` does the same and returns the domain. A
-configuration can also be a path to an existing `main.nml`; a file the
-configuration was read from is left untouched unless the configuration is
-changed, so its comments are preserved.
+configuration can also be a path to an existing `main.nml`, or a run
+directory (`umwm.Domain("runs/case1")` reads its `namelists/main.nml` and
+runs there); a file the configuration was read from is left untouched
+unless the configuration is changed, so its comments are preserved.
+
+The model prints its progress to the standard output, through the Fortran
+runtime, so Python's `sys.stdout` redirection does not catch it (and in a
+Jupyter kernel it goes to the kernel's terminal). `Domain(..., log="run.log")`
+appends it to a file instead, and `Domain(..., quiet=True)` discards it;
+in parallel runs the processes other than the root log to files named with
+their rank. `domain.summary()` describes the run in a few lines.
 
 The model advances in global time steps (`domain.dtg` seconds, the forcing
 and output interval), each an inner loop of dynamic source time steps in
@@ -88,22 +96,34 @@ domain.finalize()
 ```
 
 `Domain.initialize` validates the configuration (`Config.validate`, the
-checks of the model's own validation) and checks that the input files the
-configuration needs exist (`Domain.missing_inputs`), raising `ConfigError`
-or `FileNotFoundError` before the model starts; the model's own stop on an
-invalid configuration is turned into a `ConfigError` as well.
+checks of the model's own validation) and checks the input files the
+configuration needs: that they exist (`Domain.missing_inputs`), and that
+they hold the required variables with the shape of the grid
+(`Domain.input_problems`), raising `ConfigError`, `FileNotFoundError` or
+`ValueError` before the model starts; the model's own stop on an invalid
+configuration is turned into a `ConfigError` as well.
+
+Output is written at the configured intervals, and on demand at the
+current model time: `domain.write_output()` (gridded), `domain.write_spectrum_output()`
+and `domain.write_restart()`, so a run can be saved at any global time
+step; `domain.clean()` removes the files the model wrote to the output and
+restart directories.
 
 ### Input files
 
 Forcing is read, per global time step, from `input/umwmin_<time>.nc` when
 `config.forcing.winds` (wind components `uw`, `vw`), `currents` (`uc`,
 `vc`), `air_density` (`rhoa`), `water_density` (`rhow`) or `seaice` (`fice`)
-is set. `write_forcing` writes such a file from arrays of shape `(ny, nx)`:
+is set. `write_forcing` writes such a file from arrays of shape `(ny, nx)`,
+and `write_forcing_dataset` one file per time of an xarray dataset with
+dimensions `(time, y, x)`, for example from a reanalysis interpolated to the
+model grid:
 
 ```python
 for time in config.step_times():
     domain.write_forcing(time, uw=uw, vw=vw)          # into domain.input_dir
 umwm.write_forcing("runs/case1/input", time, uw=uw, vw=vw, lon=lon, lat=lat)
+umwm.write_forcing_dataset("runs/case1/input", winds, rename={"u10": "uw", "v10": "vw"})
 ```
 
 With `config.grid.gridfromfile` the longitudes and latitudes are read from
@@ -143,7 +163,11 @@ exist (`swh`, `mwp`, `cd`, `ust`, `taux_form`, `u_stokes`, `F`, `Sin`,
   updates them first.
 - `domain.spectrum(name="F")` is an `xarray.DataArray` of the spectrum (or a
   spectral source term) on the grid, dimensions
-  `(y, x, direction, frequency)`.
+  `(y, x, direction, frequency)`; `domain.spectrum_at(ix, iy)` is the
+  spectrum at one grid point (0-based indices), `(direction, frequency)`.
+- `domain.plot(name)` draws a field on the grid with matplotlib
+  (`pip install umwm[plot]`); `umwm.plot_field(dataset, name)` does the same
+  for an output dataset.
 - `domain.remap(values)` remaps any array indexed by cell to the grid.
 - `domain.sizes` holds the grid and spectrum sizes, `domain.shape` the grid
   shape `(ny, nx)`, `domain.time` the model time, `domain.finished` whether
@@ -217,6 +241,10 @@ namelist variable names, and the defaults of `namelists/main.nml`.
 | `config.output` | `OutputConfig` | `outgrid`, `outspec`, `outrst`, `xpl`, `ypl`, `stokes` |
 | `config.stokes` | `StokesConfig` | `depths` |
 
+`config.describe()` lists the variables with their descriptions and units,
+and `config.diff(other)` the variables that differ between two
+configurations.
+
 `config.spectrum_points` lists `SpectrumPoint`s for the spectrum output
 (`SpectrumPoint("name", x=16, y=6)` by 1-based grid indices, or
 `SpectrumPoint("name", lon=-80.5, lat=25.0)`), written to `spectrum.nml`;
@@ -242,10 +270,11 @@ the namelist syntax the model uses (groups, scalars, lists, comments).
 
 ```
 umwm init [WORKDIR] [-s GROUP.NAME=VALUE ...] [--from NAMELIST] [-f]
-umwm config [NAMELIST] [-s GROUP.NAME=VALUE ...] [-o FILE] [--json] [--check]
-umwm run [NAMELIST] [-w WORKDIR] [-i INPUT_DIR] [-s GROUP.NAME=VALUE ...] [--until TIME] [--check]
+umwm config [NAMELIST] [-s GROUP.NAME=VALUE ...] [-o FILE] [--json] [--check] [--describe [GROUP]] [--diff NAMELIST]
+umwm run [NAMELIST|WORKDIR] [-w WORKDIR] [-i INPUT_DIR] [-s GROUP.NAME=VALUE ...] [-n N] [--until TIME] [--log FILE] [-q] [--check]
 umwm forcing rankine [-w WORKDIR] [--hours N] [--nx N --ny N --dx M --dy M] [--vmax V --rmw R ...]
-umwm output [SOURCE] [-v VAR ...] [--stats] [--spectrum]
+umwm output [SOURCE] [-v VAR ...] [--stats] [--spectrum] [--plot VAR [--time T] [--level L] [--save FILE]]
+umwm clean [WORKDIR] [--keep-output] [--keep-restart]
 umwm info
 ```
 
@@ -255,15 +284,22 @@ them, generate or copy the input files, run, and look at the output.
 ```
 umwm init runs/case1 -s domain.stoptimestr="2026-01-01 12:00:00" -s forcing.winds=.true.
 umwm forcing rankine -w runs/case1 --hours 12 --nx 21 --ny 11
-umwm run -w runs/case1 -s forcing.currents=.true.
+umwm run runs/case1 -s forcing.currents=.true. --log runs/case1/run.log
 umwm output runs/case1 --stats -v swh mwp cd
+umwm output runs/case1 --plot swh --save swh.png
+umwm clean runs/case1
 ```
 
-`umwm run` reads `WORKDIR/namelists/main.nml` like the `umwm` executable
-reads `namelists/main.nml` in the current directory; `-s` overrides are
+`umwm run` reads `namelists/main.nml` of the run directory (the current
+directory by default) like the `umwm` executable does; `-s` overrides are
 written back to the namelist so that the run is reproducible. `--check`
-validates the configuration and the input files without running. Under
-`mpiexec`, `umwm run` runs the model in parallel.
+validates the configuration and the input files without running and prints
+a summary of the run; `--log` and `--quiet` send the output of the model to
+a file or discard it. Under `mpiexec`, `umwm run` runs the model in
+parallel, and `umwm run -n 4` launches `mpiexec -n 4` itself (the launcher
+command can be set with `UMWM_MPIEXEC`). `umwm config --describe` documents
+the namelist variables, and `umwm config A --diff B` compares two
+configurations.
 
 ## Tests
 

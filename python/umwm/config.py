@@ -34,6 +34,7 @@ __all__ = [
     "SpectrumPoint",
     "TIME_FORMAT",
     "parse_value",
+    "namelist_path",
 ]
 
 TIME_FORMAT = "%Y-%m-%d %H:%M:%S"
@@ -227,11 +228,12 @@ class Config:
     def from_namelist(cls, path, spectrum_points=None, exclude_points=None) -> "Config":
         """Read the configuration from a ``main.nml`` file.
 
-        ``spectrum_points`` and ``exclude_points`` are optional paths to a
-        ``spectrum.nml`` and an ``exclude.nml`` file; by default, files of
-        those names next to the main namelist are read if they exist.
+        ``path`` may also be a run directory, whose ``namelists/main.nml``
+        is read. ``spectrum_points`` and ``exclude_points`` are optional paths
+        to a ``spectrum.nml`` and an ``exclude.nml`` file; by default, files
+        of those names next to the main namelist are read if they exist.
         """
-        path = Path(path)
+        path = namelist_path(path)
         config = cls.from_namelist_text(path.read_text(encoding="utf-8"))
         if spectrum_points is None and (path.parent / "spectrum.nml").is_file():
             spectrum_points = path.parent / "spectrum.nml"
@@ -332,6 +334,37 @@ class Config:
             for item in fields(group):
                 yield f"{group_name}.{item.name}", getattr(group, item.name)
 
+    def diff(self, other: "Config") -> dict[str, tuple[Any, Any]]:
+        """The variables that differ from ``other``, as a mapping of dotted
+        keys (and ``spectrum_points``, ``exclude_points``) to ``(this, other)``."""
+        differences = {}
+        for (key, value), (_, other_value) in zip(self.items(), other.items()):
+            if value != other_value:
+                differences[key] = (value, other_value)
+        for name in ("spectrum_points", "exclude_points"):
+            if getattr(self, name) != getattr(other, name):
+                differences[name] = (getattr(self, name), getattr(other, name))
+        return differences
+
+    def describe(self, group: str | None = None) -> str:
+        """The variables with their values, descriptions and units, as text;
+        optionally only those of one namelist ``group``."""
+        lines = []
+        for group_name in GROUPS:
+            if group is not None and group_name != group.lower():
+                continue
+            lines.append(f"&{group_name.upper()}")
+            for item in fields(getattr(self, group_name)):
+                value = namelist.format_value(getattr(getattr(self, group_name), item.name))
+                if len(value) > 40:
+                    value = value[:37] + "..."
+                description = item.metadata.get("description", "")
+                units = item.metadata.get("units")
+                lines.append(f"  {item.name:<14} = {value:<40} {description}" + (f" [{units}]" if units else ""))
+        if group is not None and not lines:
+            raise ConfigError(f"unknown namelist group {group!r}; expected one of {', '.join(GROUPS)}")
+        return "\n".join(lines)
+
     # ---- derived quantities -------------------------------------------------
 
     @property
@@ -427,8 +460,10 @@ class Config:
         for name in ("outgrid", "outspec", "outrst"):
             if getattr(output, name) not in OUTPUT_INTERVALS:
                 errors.append(f"{name} must be one of {', '.join(map(str, OUTPUT_INTERVALS))}")
-        if not (1 <= output.xpl <= domain.mm and 1 <= output.ypl <= domain.nm):
-            errors.append("xpl and ypl must be inside the grid")
+        x_interior = (1 <= output.xpl <= domain.mm) if domain.isglobal else (2 <= output.xpl <= domain.mm - 1)
+        if not (x_interior and 2 <= output.ypl <= domain.nm - 1):
+            errors.append("xpl and ypl must be interior grid points (the boundary rows, and the "
+                          "boundary columns of a regional domain, are land)")
         if not any(depth > 0 for depth in self.stokes.depths):
             errors.append("at least one positive Stokes depth is required")
         if self.spectrum_points:
@@ -564,6 +599,20 @@ def _convert(value: Any, kind: Any, key: str) -> Any:
     except (TypeError, ValueError) as error:
         raise ConfigError(f"invalid value {value!r} for {key} (expected {kind})") from error
     raise ConfigError(f"unsupported type {kind} for {key}")
+
+
+def namelist_path(path) -> Path:
+    """The ``main.nml`` file of ``path``: the file itself, or the
+    ``namelists/main.nml`` (or ``main.nml``) of a directory."""
+    path = Path(path)
+    if path.is_dir():
+        for candidate in (path / "namelists" / "main.nml", path / "main.nml"):
+            if candidate.is_file():
+                return candidate
+        raise FileNotFoundError(f"no namelists/main.nml in {path}")
+    if not path.is_file():
+        raise FileNotFoundError(f"namelist file not found: {path}")
+    return path
 
 
 def read_spectrum_points(path) -> list[SpectrumPoint]:

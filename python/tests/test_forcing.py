@@ -78,3 +78,29 @@ def test_write_rankine_forcing(tmp_path):
         assert dataset.sizes == {"time": 1, "y": 7, "x": 11}
         assert dataset.attrs["vortex_center_x_m"] == 20e3
         assert set(dataset.data_vars) == {"lon", "lat", "uw", "vw", "uc", "vc", "rhoa", "rhow"}
+
+
+def test_write_forcing_dataset(tmp_path):
+    times = np.array(["2026-01-01T00:00:00", "2026-01-01T01:00:00"], dtype="datetime64[s]")
+    ny, nx = 4, 6
+    u10 = np.arange(2 * ny * nx, dtype=np.float32).reshape(2, ny, nx)
+    dataset = xr.Dataset(
+        {"u10": (("time", "y", "x"), u10), "v10": (("time", "y", "x"), -u10), "rhoa": (("time", "y", "x"), np.full_like(u10, 1.2)),
+         "lon": (("y", "x"), np.zeros((ny, nx))), "lat": (("y", "x"), np.ones((ny, nx))), "extra": (("time",), [1, 2])},
+        coords={"time": times},
+    )
+    paths = umwm.write_forcing_dataset(tmp_path, dataset, rename={"u10": "uw", "v10": "vw"})
+    assert [path.name for path in paths] == ["umwmin_2026-01-01_00:00:00.nc", "umwmin_2026-01-01_01:00:00.nc"]
+    with xr.open_dataset(paths[1]) as written:
+        np.testing.assert_array_equal(written.uw.values[0], u10[1])
+        np.testing.assert_array_equal(written.vw.values[0], -u10[1])
+        assert set(written.data_vars) == {"lon", "lat", "uw", "vw", "rhoa"}
+    # dimensions in (x, y) order are transposed
+    transposed = dataset.transpose("time", "x", "y")
+    assert umwm.write_forcing_dataset(tmp_path / "t", transposed, rename={"u10": "uw", "v10": "vw"})
+    with xr.open_dataset(tmp_path / "t" / "umwmin_2026-01-01_00:00:00.nc") as written:
+        assert written.uw.dims == ("time", "y", "x")
+    with pytest.raises(ValueError, match="time dimension"):
+        umwm.write_forcing_dataset(tmp_path, dataset.isel(time=0))
+    with pytest.raises(ValueError, match="none of the forcing variables"):
+        umwm.write_forcing_dataset(tmp_path, dataset[["extra"]])

@@ -87,6 +87,8 @@ class Library:
         lib.umwm_env_stop.restype = None
         lib.umwm_env_barrier.argtypes = []
         lib.umwm_env_barrier.restype = None
+        lib.umwm_env_flush.argtypes = []
+        lib.umwm_env_flush.restype = None
         lib.umwm_env_flush_denormals.argtypes = [c_int]
         lib.umwm_env_flush_denormals.restype = None
         lib.umwm_env_denormals_flushed.argtypes = []
@@ -99,7 +101,8 @@ class Library:
         lib.umwm_domain_initialize.argtypes = [c_void_p, c_char_p]
         lib.umwm_domain_initialize.restype = c_int
         for name in ("umwm_domain_advance", "umwm_domain_run", "umwm_domain_diagnostics",
-                     "umwm_domain_ocean_stress", "umwm_domain_finalize", "umwm_domain_delete"):
+                     "umwm_domain_ocean_stress", "umwm_domain_write_output", "umwm_domain_write_spectrum",
+                     "umwm_domain_write_restart", "umwm_domain_finalize", "umwm_domain_delete"):
             getattr(lib, name).argtypes = [c_void_p]
             getattr(lib, name).restype = None
         lib.umwm_domain_finished.argtypes = [c_void_p]
@@ -155,6 +158,10 @@ class Library:
         self.env_init()
         self._lib.umwm_env_barrier()
 
+    def flush(self) -> None:
+        """Flush the standard output and error of the Fortran runtime."""
+        self._lib.umwm_env_flush()
+
     def flush_denormals(self, enable: bool = True) -> None:
         """Enable or disable flushing denormal floating-point results to zero
         in this process.
@@ -203,6 +210,18 @@ class Library:
 
     def domain_ocean_stress(self, handle: int) -> None:
         self._lib.umwm_domain_ocean_stress(handle)
+
+    def domain_write_output(self, handle: int) -> None:
+        sys.stdout.flush()
+        self._lib.umwm_domain_write_output(handle)
+
+    def domain_write_spectrum(self, handle: int) -> None:
+        sys.stdout.flush()
+        self._lib.umwm_domain_write_spectrum(handle)
+
+    def domain_write_restart(self, handle: int) -> None:
+        sys.stdout.flush()
+        self._lib.umwm_domain_write_restart(handle)
 
     def domain_finalize(self, handle: int) -> None:
         self._lib.umwm_domain_finalize(handle)

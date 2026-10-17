@@ -196,3 +196,120 @@ def test_run_function(library, tmp_path):
         assert "u_stokes" not in domain.state()
     finally:
         domain.finalize()
+
+
+def test_log_and_quiet(library, short_config, tmp_path, capfd):
+    log = tmp_path / "logs" / "run.log"
+    with umwm.Domain(short_config, tmp_path / "run", log=log) as domain:
+        domain.run(until="2026-01-01 01:00:00")
+        print("python message")
+    captured = capfd.readouterr()
+    assert "python message" in captured.out
+    assert "umwm: solver" not in captured.out
+    text = log.read_text()
+    assert "umwm: solver: integrating to time: 2026-01-01_01:00:00" in text
+    assert "umwm: output_nc" in text
+    with umwm.Domain(short_config, tmp_path / "quiet", quiet=True) as domain:
+        domain.run(until="2026-01-01 01:00:00")
+    assert "umwm:" not in capfd.readouterr().out
+    assert not (tmp_path / "quiet" / "run.log").exists()
+
+
+def test_write_output_restart_and_spectrum_on_demand(library, short_config, tmp_path):
+    config = short_config.copy()
+    config.output.outgrid = 0
+    config.output.outrst = 0
+    config.output.outspec = 0
+    with umwm.Domain(config, tmp_path / "run", quiet=True) as domain:
+        domain.run(until="2026-01-01 01:00:00")
+        assert domain.output_files() == [] and domain.restart_files() == []
+        path = domain.write_output()
+        assert path.name == "umwmout_2026-01-01_01:00:00.nc" and path.is_file()
+        np.testing.assert_allclose(domain.output().swh.values[0], domain.grid_field("swh"), rtol=1e-6, equal_nan=True)
+        restart = domain.write_restart()
+        assert restart.name == "umwmrst_2026-01-01_01:00:00.nc" and restart.is_file()
+        assert "F" in umwm.open_restart(restart)
+        files = domain.write_spectrum_output()
+        assert list(files) == ["center"] and len(files["center"]) == 1
+        assert domain.spectrum_output()["center"].sizes["time"] == 1
+        domain.advance()
+        files = domain.write_spectrum_output()
+        assert domain.spectrum_output()["center"].sizes["time"] == 2
+    config.domain.restart = True
+    config.domain.starttimestr = "2026-01-01 01:00:00"
+    with umwm.Domain(config, tmp_path / "run", quiet=True) as domain:
+        assert domain.missing_inputs() == []
+        domain.run()
+        assert domain.finished
+
+
+def test_spectrum_at(library, short_config, tmp_path):
+    with umwm.Domain(short_config, tmp_path / "run", quiet=True) as domain:
+        domain.run(until="2026-01-01 01:00:00")
+        point = domain.spectrum_at(10, 5)
+        assert point.dims == ("direction", "frequency") and point.shape == (36, 37)
+        assert point.coords["x"] == 10 and point.coords["y"] == 5
+        np.testing.assert_array_equal(point.values, domain.spectrum().isel(x=10, y=5).values)
+        source = domain.spectrum_at(10, 5, "Sin")
+        assert source.name == "Sin"
+        with pytest.raises(ValueError, match="land"):
+            domain.spectrum_at(0, 0)
+        with pytest.raises(IndexError):
+            domain.spectrum_at(21, 0)
+
+
+def test_summary_clean_and_directory_config(library, short_config, tmp_path):
+    workdir = tmp_path / "run"
+    with umwm.Domain(short_config, workdir, quiet=True) as domain:
+        text = domain.summary()
+        assert "21 x 11 grid points" in text and "constant wind 10 m/s" in text
+        domain.run()
+        text = domain.summary()
+        assert "171 sea cells" in text and "now at 2026-01-01 02:00:00" in text
+        assert "gridded every 1 h" in text and "restart every 1 h" in text
+    # a run directory stands for its namelist and becomes the workdir
+    domain = umwm.Domain(workdir, quiet=True)
+    assert domain.workdir == workdir.resolve()
+    assert domain.config.domain.stoptimestr == "2026-01-01 02:00:00"
+    assert domain.config.spectrum_points[0].name == "center"
+    removed = domain.clean(restart=False)
+    assert {path.name for path in removed} >= {"umwmout.grid", "umwmout_2026-01-01_00:00:00.nc"}
+    assert domain.output_files() == [] and len(domain.restart_files()) == 2
+    assert domain.clean() and domain.restart_files() == []
+    assert domain.clean() == []
+
+
+def test_input_problems(library, rankine_config, tmp_path):
+    domain = umwm.Domain(rankine_config, tmp_path / "run")
+    bad = np.zeros((5, 7), dtype=np.float32)
+    for time in rankine_config.step_times():
+        umwm.write_forcing(domain.input_dir, time, uw=bad, vw=bad)
+    problems = domain.input_problems()
+    assert any("'uw' has shape (1, 5, 7), expected (..., 11, 21)" in problem for problem in problems)
+    assert any("'rhoa' not found" in problem for problem in problems)
+    with pytest.raises(ValueError, match="input file problems"):
+        domain.check_inputs()
+    config = rankine_config.copy()
+    config.grid.gridfromfile = True
+    domain = umwm.Domain(config, tmp_path / "grid")
+    umwm.write_grid(domain.input_dir, np.zeros((11, 21)), np.zeros((11, 21)))
+    assert not any("umwm.grid" in problem for problem in domain.input_problems())
+    umwm.write_grid(domain.input_dir, np.zeros((3, 3)), np.zeros((3, 3)))
+    assert any("umwm.grid: variable 'lon' has shape (3, 3)" in problem for problem in domain.input_problems())
+
+
+def test_plot(library, short_config, tmp_path):
+    pytest.importorskip("matplotlib")
+    import matplotlib
+
+    matplotlib.use("Agg")
+    with umwm.Domain(short_config, tmp_path / "run", quiet=True) as domain:
+        domain.run(until="2026-01-01 01:00:00")
+        ax = domain.plot("swh")
+        assert "significant wave height" in ax.get_title()
+        assert ax.get_xlabel() == "x [km]"
+        ax = domain.plot("mwd")
+        assert ax.collections[0].get_cmap().name == "twilight"
+        ax = domain.plot("u_stokes", level=1)  # positive everywhere under an eastward wind
+        assert ax.collections[0].get_cmap().name == "viridis"
+        assert "stokes drift x-component" in ax.get_title()
