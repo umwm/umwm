@@ -44,7 +44,7 @@ from .output import (
     spectrum_output_files,
 )
 
-__version__ = "0.1.0"
+__version__ = "26.10"
 
 __all__ = [
     "Config", "ConfigError", "Domain", "run", "SpectrumPoint",
