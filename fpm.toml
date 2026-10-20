@@ -1,5 +1,5 @@
 name = "umwm"
-version = "0.1.0"
+version = "26.10"
 license = "MIT"
 author = "UMWM contributors"
 maintainer = "Milan Curcic"
@@ -58,3 +58,13 @@ main = "test_grid.f90"
 name = "test_forcing"
 source-dir = "tests"
 main = "test_forcing.f90"
+
+[[test]]
+name = "test_source_functions"
+source-dir = "tests"
+main = "test_source_functions.f90"
+
+[[test]]
+name = "test_domain"
+source-dir = "tests"
+main = "test_domain.f90"

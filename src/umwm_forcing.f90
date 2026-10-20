@@ -3,7 +3,6 @@ module umwm_forcing
   use netcdf
   use umwm_config, only: config_type
   use umwm_grid, only: grid_type
-  use umwm_module, only: sumt
 
   implicit none
 
@@ -264,15 +263,16 @@ contains
   end subroutine forcing_load
 
 
-  subroutine forcing_interpolate(self, config, grid)
+  subroutine forcing_interpolate(self, config, grid, time)
     ! Interpolate atmospheric and oceanic forcing fields in time.
     class(forcing_type), intent(inout) :: self
     type(config_type), intent(in) :: config
     type(grid_type), intent(in) :: grid
+    real, intent(in) :: time ! time since the backward snapshot [s]
 
     real :: alpha
 
-    alpha = sumt / config % dtg
+    alpha = time / config % dtg
 
     if (config % winds) then
 

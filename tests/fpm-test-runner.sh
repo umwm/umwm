@@ -29,4 +29,5 @@ if [ ! -f input/.rankine_forcing.stamp ]; then
   touch input/.rankine_forcing.stamp
 fi
 
+mkdir -p output
 exec "$test_executable" "$@"

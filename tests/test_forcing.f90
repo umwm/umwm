@@ -6,7 +6,6 @@ program test_forcing
 #endif
   use umwm_forcing, only: forcing_type, min_wind_speed
   use umwm_grid, only: grid_type
-  use umwm_module, only: sumt
 
   implicit none
 
@@ -81,8 +80,7 @@ contains
     forcing % rhowb = 1.0
     forcing % rhowf = 1.1
 
-    sumt = 5.0
-    call forcing % interpolate(config, grid)
+    call forcing % interpolate(config, grid, 5.0)
 
     expected_wspd = 1.5
     expected_wdir = 0.0
@@ -143,8 +141,7 @@ contains
     forcing % uwf = 0.0
     forcing % vwf = 0.0
 
-    sumt = 5.0
-    call forcing % interpolate(config, grid)
+    call forcing % interpolate(config, grid, 5.0)
 
     ok = all(abs(forcing % wspd - min_wind_speed) < 1e-6)
 
@@ -227,8 +224,7 @@ contains
     expected_rhow = 0.5 * (rhow0 + forcing % rhowf)
     expected_rhorat = expected_rhoa / expected_rhow
 
-    sumt = 0.5 * config % dtg
-    call forcing % interpolate(config, grid)
+    call forcing % interpolate(config, grid, 0.5 * config % dtg)
 
     ok = maxval(abs(uw0 - forcing % uwf)) > 1.0 .and. &
          maxval(abs(vw0 - forcing % vwf)) > 1.0 .and. &

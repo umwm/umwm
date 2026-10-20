@@ -1,10 +1,13 @@
 *.a
 *.o
 *.mod
+*.smod
 
 src/datetime_module.f90
 
-umwm
+# the executable (built in src/ and copied to the top level), not the Python package
+/umwm
+/src/umwm
 
 umwm_gridgen
 umwm_topogen
@@ -17,5 +20,17 @@ umwmout_*.nc
 umwmin_*.nc
 umwmrst_*.nc
 tests/input/.rankine_forcing.stamp
+tests/output/
+tests/test_*
+!tests/test_*.f90
 build/
 .venv/
+
+# shared library and Python package build artifacts
+src/shared/
+python/umwm/libumwm.so
+python/umwm.egg-info/
+__pycache__/
+*.pyc
+.pytest_cache/
+dist/

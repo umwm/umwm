@@ -6,33 +6,68 @@ This file is a technical reference for the physics implemented in the University
 
 | Physics area | Main implementation | Purpose |
 | --- | --- | --- |
-| Model loop | `src/umwm_top.f90` | Calls source functions, source integration, advection, refraction, stress, Stokes drift, diagnostics, and output. |
+| Model domain and loop | `src/umwm_domain.f90` | `domain_type` owns the model state, initializes it, and runs the time loop: source functions, source integration, advection, refraction, stress, Stokes drift, diagnostics, and output. |
+| Output and output-time physics | `src/umwm_domain_output.f90` | Integrated diagnostics, ocean-side stress and energy fluxes, gridded and spectrum NetCDF output. |
 | Forcing state | `src/umwm_forcing.f90` | `forcing_type` owns mutable wind, current, density, sea-ice, remapped, and interpolation-scratch fields. |
 | Source functions | `src/umwm_source_functions.f90` | Wind input, wave breaking, nonlinear downshifting, turbulence, and sea-ice attenuation. |
-| Source integration and diagnostics | `src/umwm_physics.f90` | Exponential source update, diagnostic spectral tail, integrated wave diagnostics. |
+| Source integration | `src/umwm_physics.f90` | Exponential source update, diagnostic spectral tail, physics time step limit. |
 | Propagation and refraction | `src/umwm_advection.f90` | First-order upstream advection in geographic and directional space. |
-| Stress | `src/umwm_stress.f90` | Wind form/skin stress, ocean-top and ocean-bottom momentum fluxes, drag coefficient. |
-| Stokes drift | `src/umwm_stokes.f90` | Wave-induced Stokes drift and e-folding depth. |
+| Stress | `src/umwm_stress.f90` | Form/skin drag, drag coefficient, stress tail, and spectral stress integrals. The domain evaluates the atmospheric stress each time step, and the ocean-top and ocean-bottom momentum fluxes (`ocean_stress` in `src/umwm_domain_output.f90`) at gridded output times, or each time step when coupled with ESMF. |
+| Stokes drift | `src/umwm_stokes.f90` | `stokes_type` with wave-induced Stokes drift and e-folding depth. |
 | Spectral grid | `src/umwm_spectrum.f90` | `spectrum_type`, frequency and direction coordinates, and spectral spacings. |
 | Dispersion | `src/umwm_dispersion.f90` | Capillary-gravity dispersion relation, wavenumber solve, angular frequency, and group speed. |
-| Initialization and precomputed factors | `src/umwm_init.f90` | Runtime allocation, legacy spectrum aliases, wave kinematics, integration weights, dissipation constants, CFL limits. |
+| Initialization and precomputed factors | `src/umwm_domain.f90` | Runtime allocation, spectral coordinates, wave kinematics, integration weights, dissipation constants, CFL limits. |
+| Parallel environment and halo exchange | `src/umwm_env.f90`, `src/umwm_mpi.f90` | Process rank and count; halo exchange and gathering of tile fields. |
+| C API | `src/umwm_capi.f90` | `bind(c)` procedures for foreign-language callers: the domain lifecycle through an opaque handle, and access to the domain fields by name as pointers into the model memory. Used by the Python package in `python/`. |
 
-The top-level program constructs explicit `config`, `grid`, `spectrum`,
-and `forcing` objects. `config_type` remains the source of forcing
-switches and constants, while `forcing_type` owns the mutable runtime
-forcing snapshots and remapped fields.
+The main program instantiates one `domain_type` from `src/umwm_domain.f90`
+and calls its `initialize`, `run`, and `finalize` procedures. `run` loops
+over `advance`, which integrates one global time step `dtg`: the forcing
+update, the inner loop of source time steps, and the output due at the
+new time; `advance` and `finished` are public so that a driver, such as
+the Python package, can step the model and inspect it between steps. The
+domain is constructed from `config_type`, `spectrum_type`, `grid_type`,
+`forcing_type`, and `stokes_type` components, and owns the wave spectrum
+and all fields derived from it; there is no global model state.
+
+The Python package in `python/` (see `python/README.md`) drives the model
+through the C API of `src/umwm_capi.f90`, compiled into the shared library
+`libumwm.so` by `make shared`: a Python `Domain` holds a `domain_type`
+through an opaque handle, and the fields of the domain are exposed as
+NumPy arrays viewing the Fortran memory, so the time integration runs
+entirely in Fortran.
+`config_type` remains the source of forcing switches and constants, while
+`forcing_type` owns the mutable runtime forcing snapshots and remapped
+fields.
+
+The source functions, integration, advection, and stress kernels operate
+on one spectral column (all frequencies and directions of a grid cell)
+with explicit-shape array arguments, so that compilers can vectorize them;
+the domain loops over cells and passes column slices of its state.
 
 Within each global forcing/output time step `dtg`, UMWM repeatedly runs:
 
 1. Advance file-backed forcing snapshots, when not ESMF-coupled.
 2. Interpolate `forcing` fields.
-3. Compute `Sin`, `Sds`, `Snl`, `Sice`, plus turbulence and linear sink rates.
-4. Integrate source terms with a dynamic physics time step `dts`.
-5. Exchange MPI halos when enabled.
-6. Propagate wave variance geographically.
-7. Refract wave variance directionally.
-8. Compute atmospheric stress and drag.
-9. At output times, compute Stokes drift, diagnostics, ocean stress, spectra, grid output, and restart output.
+3. Compute `Sin`, `Sds`, `Sice`, turbulence and linear sink rates, and the
+   largest stable physics time step of each cell.
+4. Find the dynamic physics time step `dts`, the minimum over all cells.
+5. Integrate source terms over `dts`, including `Snl`.
+6. Exchange MPI halos when enabled.
+7. Propagate wave variance geographically.
+8. Refract wave variance directionally.
+9. Compute atmospheric stress and drag.
+10. At output times, compute Stokes drift, diagnostics, ocean stress, spectra, grid output, and restart output.
+    When coupled with ESMF, ocean stress is computed each time step.
+
+Steps 5 and 7 to 9 are pipelined over grid cells: a cell is propagated a
+fixed number of cells after its integration, at least the largest
+distance to a neighbor cell in the tile, so that the spectra of its
+neighbors are integrated and still in cache. Under MPI, the cells in the
+halo of neighboring tiles are integrated first, and the halo is exchanged
+before the pipeline starts. The halo is one grid row or column wide, and
+the model stops at startup if a tile is narrower than the halo of its
+neighbors.
 
 ## State Variables and Conventions
 
@@ -57,13 +92,13 @@ updates remain disabled under `ESMF`, where coupled forcing is expected
 to be supplied externally.
 
 The spectral grid metadata is represented explicitly by
-`type(spectrum_type)` from `src/umwm_spectrum.f90`. The top-level program
-constructs one spectrum object after namelist input is read, then passes
-it through initialization, the model loop, diagnostics, restart I/O,
-spectrum/grid output, source functions, advection/refraction, stress,
-and Stokes drift. The legacy module variables `om`, `pm`, `f`, `th`,
-`dlnf`, `dth`, and `dom` remain initialized from this object for
-existing arrays and formulas.
+`type(spectrum_type)` from `src/umwm_spectrum.f90`. `domain % initialize`
+constructs one spectrum object after namelist input is read, and the
+domain uses it for the spectral dimensions and spacings, the direction
+projection of the grid, restart I/O, and spectrum and grid output. The
+domain keeps default-real copies of the frequency and direction
+coordinates, `f(:)` and `th(:)`, with their cosines and sines, for the
+model arrays and formulas.
 
 The model uses mathematical direction convention: $\phi=0$ points in the
 positive $x$ direction and positive angles rotate counter-clockwise.
@@ -119,10 +154,8 @@ $$
 \left(p-\frac{N_\phi+1}{2}\right)\Delta\phi.
 $$
 
-During initialization, the legacy arrays `f(:)` and `th(:)` are assigned
-from `spectrum % frequency` and `spectrum % direction`. This preserves
-the existing numerical paths while making frequency and direction counts
-available through explicit state.
+During initialization, the domain arrays `f(:)` and `th(:)` are assigned
+from `spectrum % frequency` and `spectrum % direction`.
 
 The angular-frequency increment used to infer $dk$ is
 
@@ -425,11 +458,34 @@ E_{q,p'}
 k_q^3\,dk_q\,d\phi.
 $$
 
-The code computes the spilling part first, before applying
+Because $\cos^2 x = (1 + \cos 2x)/2$, the double sum reduces to three
+direction-integrated moments of the longer waves,
+
+$$
+\overline{\chi^2}_{o,p}
+=
+M^{(0)}_o + \cos(2\phi_p)\,M^{(c)}_o + \sin(2\phi_p)\,M^{(s)}_o,
+\qquad
+M^{(0,c,s)}_o
+=
+\frac{d\phi}{2}
+\sum_{q<o}
+k_q^3\,dk_q
+\sum_{p'}
+E_{q,p'}\,\{1, \cos 2\phi_{p'}, \sin 2\phi_{p'}\},
+$$
+
+which `mss_moments` evaluates in $O(N_f N_\phi)$ rather than
+$O(N_f N_\phi^2)$ operations. The power of the saturation spectrum is
+evaluated in double precision.
+
+The code computes and stores the spilling part, before applying
 $\coth(0.2kd)$. This lets `Snl` use the spilling-only dissipation
-rate. After `Snl` is formed, `sds` is multiplied by `cothkd` to include
-the finite-depth/plunging-breaker enhancement in the decay rate used by
-the source integrator and stress diagnostics.
+rate. The factor `cothkd` is applied where `sds` is used, to include the
+finite-depth/plunging-breaker enhancement in the decay rate used by the
+source integrator, the stress diagnostics, and the `Sds` output. Between
+output times, `sds` is evaluated only for the frequencies used by the
+integration, up to two bins above the prognostic range.
 
 ## Turbulent Dissipation `Sdt`
 
@@ -810,7 +866,8 @@ added only when the current fields are nonzero.
 
 Open boundary conditions are applied next to land and at regional domain
 edges unless boundary input is supplied. Global domains use periodic
-east-west boundary conditions.
+east-west boundary conditions. Land cells take, at each frequency, the
+smallest phase and group speed over all sea cells.
 
 ## Refraction
 
@@ -1351,6 +1408,13 @@ The current focused tests are:
 | --- | --- |
 | `test_dispersion` | Wavenumber/frequency round-trip accuracy and positive finite group speed for the capillary-gravity dispersion module. |
 | `test_spectrum` | Spectrum constructor metadata, endpoint frequencies, legacy log-space frequency equivalence, direction-grid equivalence, `dlnf`, and `dth`. |
+| `test_source_functions` | Mean-squared slope moments against the direct sum over directions, the vectorized power function against the intrinsic, and the wind input against a step-by-step evaluation. |
+| `test_domain` | One-hour integration of the idealized hurricane case by `domain_type` with gridded and spectrum output and Stokes drift, compared with the mean and maximum of output fields, ocean stress, and Stokes drift from UMWM before the domain refactor. |
+
+The Python package has its own test suite in `python/tests`, run with
+`python -m pytest python/tests`, which includes the same idealized
+hurricane case driven from Python and compared with the same reference
+values, and `python/tests/mpi_smoke.py` for a library built with MPI.
 
 `make clean` at the top level recurses into `tests/` and removes
 test-local binaries, object files, and module files.

@@ -1,298 +1,16 @@
 module umwm_stress
 
-  !! Module with functions and subroutines to evaluate stresses.
+  !! Functions and subroutines to evaluate stresses.
 
-  use umwm_module, only: bf1, bf2, cd, cp0, cth, dthg, dummy, e, &
-                         epsx_atm, epsx_ocn, epsy_atm, epsy_ocn, &
-                         invcp0, k, kdk, oc, &
-                         sbf, sds, sdt, sdv, snl, ssin, &
-                         sth, tailatmx, tailatmy, tailocnx, tailocny, &
-                         taux, taux1, taux2, taux3, taux_diag, taux_form, &
-                         taux_ocnbot, taux_ocntop, taux_skin, taux_snl, &
-                         tauy, tauy1, tauy2, tauy3, tauy_diag, tauy_form, &
-                         tauy_ocnbot, tauy_ocntop, tauy_skin, tauy_snl, &
-                         th, ustar
-  use umwm_advection, only: zerocurrents
-  use umwm_config, only: config_type
   use umwm_constants, only: rk
-  use umwm_forcing, only: forcing_type
-  use umwm_grid, only: grid_type
-  use umwm_spectrum, only: spectrum_type
-  use umwm_stokes, only: u_stokes => us, v_stokes => vs
 
   implicit none
 
   private
-  public :: stress
+  public :: directional_integral, drag_coefficient, drag_coefficient_skin, &
+            stress_tail, wind_relative
 
 contains
-
-  subroutine stress(config, option, spectrum, grid, forcing)
-
-    type(config_type), intent(in) :: config
-    character(3), intent(in) :: option
-    type(spectrum_type), intent(in) :: spectrum
-    type(grid_type), intent(in) :: grid
-    type(forcing_type), intent(in) :: forcing
-
-    integer :: i, o, p
-
-    real(rk) :: taux_util(spectrum % num_frequencies, grid % istart:grid % iend)
-    real(rk) :: tauy_util(spectrum % num_frequencies, grid % istart:grid % iend)
-    real(rk) :: tail(grid % istart:grid % iend)
-
-    ! wind speed and direction relative to surface velocity
-    real(rk) :: wspdrel(grid % istart:grid % iend), wdirrel(grid % istart:grid % iend)
-
-    real(rk) :: cd_form(grid % istart:grid % iend), cd_skin(grid % istart:grid % iend)
-
-    associate(istart => grid % istart, iend => grid % iend)
-
-    ! evaluate wind speed dependent tail
-    tail = stress_tail(forcing % wspd(istart:iend), k(spectrum % num_frequencies,istart:iend))
-
-    if (option == 'ocn') then
-
-      ! compute stress into ocean top (positive into ocean)
-      taux_util = 0
-      tauy_util = 0
-      do i = istart, iend
-        do p = 1, spectrum % num_directions
-
-          ! dissipation into currents
-          do o = 1, spectrum % num_frequencies
-            taux_util(o,i) = taux_util(o,i) + e(o,p,i)         &
-                           * (sds(o,p,i) + sdt(o,i) + sdv(o,i))&
-                           * cth(p) * invcp0(o,i)
-            tauy_util(o,i) = tauy_util(o,i) + e(o,p,i)         &
-                           * (sds(o,p,i) + sdt(o,i) + sdv(o,i))&
-                           * sth(p) * invcp0(o,i)
-          end do
-
-          ! correction for the Snl in diagnostic part
-          do o = 3, spectrum % num_frequencies
-
-            taux_util(o,i) = taux_util(o,i) - snl(o,p,i)     &
-                           * (bf1 * cp0(o,i) * invcp0(o-1,i) &
-                           +  bf2 * cp0(o,i) * invcp0(o-2,i))&
-                           * cth(p) * invcp0(o,i)
-
-            tauy_util(o,i) = tauy_util(o,i) - snl(o,p,i)     &
-                           * (bf1 * cp0(o,i) * invcp0(o-1,i) &
-                           +  bf2 * cp0(o,i) * invcp0(o-2,i))&
-                           * sth(p) * invcp0(o,i)
-
-          end do
-        end do
-      end do
-
-      do concurrent(i = istart:iend)
-
-        ! compute the tail
-        tailocnx(i) = taux_util(spectrum % num_frequencies,i) &
-                    * k(spectrum % num_frequencies,i) * tail(i) * forcing % rhow(i) * dthg
-        tailocny(i) = tauy_util(spectrum % num_frequencies,i) &
-                    * k(spectrum % num_frequencies,i) * tail(i) * forcing % rhow(i) * dthg
-
-        ! integrate over frequencies
-        taux_ocntop(i) = sum(taux_util(:,i) * kdk(:,i), dim=1) * forcing % rhow(i) * dthg&
-                       + tailocnx(i) + taux_skin(i)
-        tauy_ocntop(i) = sum(tauy_util(:,i) * kdk(:,i), dim=1) * forcing % rhow(i) * dthg&
-                       + tailocny(i) + tauy_skin(i)
-
-      end do
-
-      ! compute stress into ocean bottom (positive into ocean)
-      taux_util = 0
-      tauy_util = 0
-      do i = istart, iend
-        do p = 1, spectrum % num_directions
-          do o = 1, spectrum % num_frequencies
-            taux_util(o,i) = taux_util(o,i) + e(o,p,i) * sbf(o,i) * cth(p) * invcp0(o,i)
-            tauy_util(o,i) = tauy_util(o,i) + e(o,p,i) * sbf(o,i) * sth(p) * invcp0(o,i)
-          end do
-        end do
-      end do
-
-      do concurrent(i = istart:iend)
-        taux_ocnbot(i) = sum(taux_util(:,i) * kdk(:,i), dim=1) * forcing % rhow(i) * dthg
-        tauy_ocnbot(i) = sum(tauy_util(:,i) * kdk(:,i), dim=1) * forcing % rhow(i) * dthg
-      end do
-
-      ! Snl conserves energy, but not momentum. the following term is
-      ! the momentum loss due to non-linear downshifting of energy.
-      taux_util = 0
-      tauy_util = 0
-      do i = istart, iend
-        do p = 1, spectrum % num_directions
-          do o = 3, oc(i)
-            taux_util(o,i) = taux_util(o,i) + snl(o,p,i)           &
-                           * (bf1 * (1 - cp0(o,i) * invcp0(o-1,i)) &
-                           +  bf2 * (1 - cp0(o,i) * invcp0(o-2,i)))&
-                           * cth(p) * invcp0(o,i)
-            tauy_util(o,i) = tauy_util(o,i) + snl(o,p,i)           &
-                           * (bf1 * (1 - cp0(o,i) * invcp0(o-1,i)) &
-                           +  bf2 * (1 - cp0(o,i) * invcp0(o-2,i)))&
-                           * sth(p) * invcp0(o,i)
-          end do
-        end do
-      end do
-
-      do concurrent(i = istart:iend)
-        taux_snl(i) = sum(taux_util(:,i) * kdk(:,i), dim=1) * forcing % rhow(i) * dthg
-        tauy_snl(i) = sum(tauy_util(:,i) * kdk(:,i), dim=1) * forcing % rhow(i) * dthg
-      end do
-
-      ! compute energy flux into ocean:
-      taux_util = 0
-      tauy_util = 0
-      do i = istart, iend
-        do p = 1, spectrum % num_directions
-
-          do o = 1, spectrum % num_frequencies
-            taux_util(o,i) = taux_util(o,i) + e(o,p,i) * sds(o,p,i) * cth(p)
-            tauy_util(o,i) = tauy_util(o,i) + e(o,p,i) * sds(o,p,i) * sth(p)
-          end do
-
-          do o = 3, spectrum % num_frequencies
-            taux_util(o,i) = taux_util(o,i) - snl(o,p,i)     &
-                           * (bf1 * cp0(o,i) * invcp0(o-1,i) &
-                           +  bf2 * cp0(o,i) * invcp0(o-2,i))&
-                           * cth(p)
-            tauy_util(o,i) = tauy_util(o,i) - snl(o,p,i)     &
-                           * (bf1 * cp0(o,i) * invcp0(o-1,i) &
-                           +  bf2 * cp0(o,i) * invcp0(o-2,i))&
-                           * sth(p)
-          end do
-
-        end do
-      end do
-
-      do concurrent(i = istart:iend)
-        epsx_ocn(i) = sum(taux_util(:,i) * kdk(:,i), dim=1) * forcing % rhow(i) * dthg
-        epsy_ocn(i) = sum(tauy_util(:,i) * kdk(:,i), dim=1) * forcing % rhow(i) * dthg
-      end do
-
-      ! compute energy flux from air:
-      taux_util = 0
-      tauy_util = 0
-      do i = istart, iend
-        do p = 1, spectrum % num_directions
-          do o = 1, spectrum % num_frequencies
-            taux_util(o,i) = taux_util(o,i) + e(o,p,i) * ssin(o,p,i) * cth(p)
-            tauy_util(o,i) = tauy_util(o,i) + e(o,p,i) * ssin(o,p,i) * sth(p)
-          end do
-        end do
-      end do
-
-      do concurrent(i = istart:iend)
-        epsx_atm(i) = sum(taux_util(:,i) * kdk(:,i), dim=1) * forcing % rhow(i) * dthg
-        epsy_atm(i) = sum(tauy_util(:,i) * kdk(:,i), dim=1) * forcing % rhow(i) * dthg
-      end do
-
-      ! this part calculates the components of form drag.
-      ! it has nothing to do with momentum fluxes into ocean,
-      ! but we do it here because it is needed only for output.
-      taux1 = 0
-      tauy1 = 0
-      taux2 = 0
-      tauy2 = 0
-      taux3 = 0
-      tauy3 = 0
-
-      do i = istart, iend
-        do p = 1, spectrum % num_directions
-          do o = 1, spectrum % num_frequencies
-
-            dummy(o,p,i) = e(o,p,i) * ssin(o,p,i) * invcp0(o,i) * kdk(o,i)
-
-            if(ssin(o,p,i) > 0)then ! positive stress
-              ! wind pushing waves
-              taux1(i) = taux1(i) + dummy(o,p,i) * cth(p)
-              tauy1(i) = tauy1(i) + dummy(o,p,i) * sth(p)
-            else ! negative stress, two cases
-              if(cos(forcing % wdir(i)-th(p)) < 0)then
-                ! waves against wind
-                taux2(i) = taux2(i) + dummy(o,p,i) * cth(p)
-                tauy2(i) = tauy2(i) + dummy(o,p,i) * sth(p)
-              else
-                ! waves overrunning wind
-                taux3(i) = taux3(i) + dummy(o,p,i) * cth(p)
-                tauy3(i) = tauy3(i) + dummy(o,p,i) * sth(p)
-              end if
-            end if
-
-          end do
-        end do
-      end do
-
-      taux1 = taux1 * forcing % rhow(istart:iend) * dthg
-      tauy1 = tauy1 * forcing % rhow(istart:iend) * dthg
-      taux2 = taux2 * forcing % rhow(istart:iend) * dthg
-      tauy2 = tauy2 * forcing % rhow(istart:iend) * dthg
-      taux3 = taux3 * forcing % rhow(istart:iend) * dthg
-      tauy3 = tauy3 * forcing % rhow(istart:iend) * dthg
-
-    end if ! if(option=='ocn')
-
-    if (option == 'atm') then
-
-      ! compute form drag from atmosphere: (positive into waves)
-      call stress_vector_integral(e(:,:,istart:iend), ssin, cp0, taux_util, tauy_util)
-
-      do concurrent(i = istart:iend)
-
-        ! compute the tail
-        tailatmx(i) = taux_util(spectrum % num_frequencies,i) &
-                    * k(spectrum % num_frequencies,i) * tail(i) * forcing % rhow(i) * dthg
-        tailatmy(i) = tauy_util(spectrum % num_frequencies,i) &
-                    * k(spectrum % num_frequencies,i) * tail(i) * forcing % rhow(i) * dthg
-
-        taux_form(i) = sum(taux_util(:,i) * kdk(:,i), dim=1)&
-                     * forcing % rhow(i) * dthg + tailatmx(i)
-        tauy_form(i) = sum(tauy_util(:,i) * kdk(:,i), dim=1)&
-                     * forcing % rhow(i) * dthg + tailatmy(i)
-
-        taux_diag(i) = sum(taux_util(oc(i):spectrum % num_frequencies,i) &
-                     * kdk(oc(i):spectrum % num_frequencies,i), dim=1)&
-                     * forcing % rhow(i) * dthg
-        tauy_diag(i) = sum(tauy_util(oc(i):spectrum % num_frequencies,i) &
-                     * kdk(oc(i):spectrum % num_frequencies,i), dim=1)&
-                     * forcing % rhow(i) * dthg
-
-      end do
-
-      ! wind speed and direction relative to surface velocity
-      call wind_relative(forcing % wspd(istart:iend), forcing % wdir(istart:iend), &
-                         forcing % uc(istart:iend) + u_stokes(:,1),                &
-                         forcing % vc(istart:iend) + v_stokes(:,1),                &
-                         wspdrel, wdirrel)
-
-      ! form-induced drag coefficient
-      cd_form = drag_coefficient(taux_form, tauy_form,&
-                                 forcing % rhoa(istart:iend), forcing % wspd(istart:iend))
-
-      ! skin-induced drag coefficient
-      cd_skin = drag_coefficient_skin(cd_form, forcing % wspd(istart:iend), wspdrel, &
-                                      config % z, config % nu_air, config % kappa)
-
-      taux_skin = forcing % rhoa(istart:iend) * cd_skin * wspdrel**2 * cos(wdirrel)
-      tauy_skin = forcing % rhoa(istart:iend) * cd_skin * wspdrel**2 * sin(wdirrel)
-
-      taux = taux_form + taux_skin
-      tauy = tauy_form + tauy_skin
-
-      ! total (form + skin) drag coefficient
-      cd = drag_coefficient(taux, tauy, forcing % rhoa(istart:iend), forcing % wspd(istart:iend))
-
-      ! Update friction velocity based on total (form + skin) stress
-      ustar = sqrt(sqrt(taux**2 + tauy**2) / forcing % rhoa(istart:iend))
-
-    end if ! if(option=='atm')
-
-    end associate
-
-  end subroutine stress
 
   real(rk) pure elemental function drag_coefficient(taux, tauy, rhoa, wspd) result(cd)
     !! Computes drag coefficient from stress vector (taux, tauy, N/m^2),
@@ -340,25 +58,20 @@ contains
          / (kmax_pow_tail * (tail + 1))
   end function stress_tail
 
-  pure subroutine stress_vector_integral(e, src, cp, taux, tauy)
-    !! Integrates the input source function src over the spectrum with
-    !! wave variance e over the directions.
-    real(rk), intent(in) :: e(:,:,:), src(:,:,:), cp(:,:)
-    real(rk), intent(out) :: taux(:,:), tauy(:,:)
-    integer :: i, p, o
-    integer :: dim(3)
-    dim = shape(e)
-    taux = 0
-    tauy = 0
-    do i = 1, dim(3)
-      do p = 1, dim(2)
-        do o = 1, dim(1)
-          taux(o,i) = taux(o,i) + e(o,p,i) * src(o,p,i) * cth(p) / cp(o,i)
-          tauy(o,i) = tauy(o,i) + e(o,p,i) * src(o,p,i) * sth(p) / cp(o,i)
-        end do
-      end do
+  pure subroutine directional_integral(nf, nd, a, b, cth, sth, x, y)
+    !! Integrates a(o,p) * b(o,p) over directions, weighted by the x- and
+    !! y-components of the propagation direction, for each frequency.
+    integer, intent(in) :: nf, nd
+    real(rk), intent(in) :: a(nf,nd), b(nf,nd), cth(nd), sth(nd)
+    real(rk), intent(out) :: x(nf), y(nf)
+    integer :: p
+    x = 0
+    y = 0
+    do p = 1, nd
+      x = x + a(:,p) * b(:,p) * cth(p)
+      y = y + a(:,p) * b(:,p) * sth(p)
     end do
-  end subroutine stress_vector_integral
+  end subroutine directional_integral
 
   pure elemental subroutine wind_relative(wspd, wdir, us, vs, wspdrel, wdirrel)
     !! Computes the wind speed and direction relative to the water surface,
