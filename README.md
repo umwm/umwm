@@ -147,7 +147,33 @@ Running in parallel, for example on 16 cores:
 mpiexec -n 16 ./umwm
 ```
 
+The model runs in the current directory, reading `namelists/main.nml`
+(or the namelist given as the argument, `./umwm path/to/main.nml`) and
+writing its output to `output/`. `./umwm --help` lists the options.
+
 You can read the full technical reference doc [here](DOCS.md).
+
+### Example cases
+
+The [examples](examples/README.md) directory holds a gallery of idealized
+cases with constant wind and no input files: fetch-limited and
+duration-limited growth, the fetches of JONSWAP, a laboratory wave tank,
+and lakes on Titan and Mars with their planetary parameters. Select one
+with `--case`:
+
+```
+./umwm --list-cases
+./umwm --case jonswap
+./umwm --case titan-ontario-lacus
+```
+
+or with the Python command-line tool, which runs a case in a run directory
+named after it:
+
+```
+umwm cases
+umwm run --case mars-jezero-lake
+```
 
 ### Python interface
 
@@ -181,6 +207,7 @@ with umwm.Domain(config, workdir="runs/case1") as domain:
 umwm init runs/case1 -s domain.stoptimestr="2026-01-01 12:00:00"
 umwm run runs/case1
 umwm output runs/case1 --stats
+umwm run --case jonswap          # an example case, in ./jonswap
 ```
 
 See [python/README.md](python/README.md) for the documentation of the

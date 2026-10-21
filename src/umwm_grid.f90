@@ -472,7 +472,7 @@ subroutine define_masks(self, config)
 
     ! discard lakes or unwanted closed basin from the domain:
     if (config % filllakes) then
-      open(unit=24, file='namelists/exclude.nml')
+      open(unit=24, file=config % sibling_path('exclude.nml'))
       do
         read(unit=24, fmt=*, end=107) exm, exn
         fillcount = 0

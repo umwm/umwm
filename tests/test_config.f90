@@ -23,6 +23,8 @@ program test_config
     test(invalid_output_interval), &
     test(invalid_seaice_thresholds), &
     test(invalid_stokes_depths), &
+    test(cutoff_factor), &
+    test(sibling_paths), &
     test(unreadable_namelist) &
   ])
 
@@ -154,6 +156,38 @@ contains
     res = test('invalid_stokes_depths', &
       .not. config % validate(stop_on_error=.false., rank=1))
   end function invalid_stokes_depths
+
+
+  function cutoff_factor() result(res)
+    ! fcut_fac is read, defaults to 0.53 when not set, and must be positive.
+    type(test_result) :: res
+    type(config_type) :: config, without_cutoff
+    logical :: invalid
+
+    config = valid_config()
+    without_cutoff = config_type('namelists/forcing_rankine.nml')
+    config % fcut_fac = 0
+    invalid = .not. config % validate(stop_on_error=.false., rank=1)
+    config = valid_config()
+
+    res = test('cutoff_factor', invalid .and. &
+      nearly_equal(config % fcut_fac, 0.53) .and. &
+      nearly_equal(without_cutoff % fcut_fac, 0.53) .and. &
+      without_cutoff % validate(stop_on_error=.false., rank=1))
+  end function cutoff_factor
+
+
+  function sibling_paths() result(res)
+    ! Files beside the main namelist, such as spectrum.nml.
+    type(test_result) :: res
+    type(config_type) :: config, here
+
+    config = valid_config()
+    here % path = 'main.nml'
+    res = test('sibling_paths', &
+      config % sibling_path('spectrum.nml') == '../namelists/spectrum.nml' .and. &
+      here % sibling_path('exclude.nml') == 'exclude.nml')
+  end function sibling_paths
 
 
   function unreadable_namelist() result(res)

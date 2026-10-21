@@ -152,3 +152,54 @@ def test_output_plot(library, tmp_path, capsys):
     assert image.is_file() and image.stat().st_size > 1000
     assert main(["output", str(workdir), "--plot", "u_stokes", "--level", "2", "--time", "0", "--save", str(image)]) == 0
     assert main(["output", str(workdir), "--plot", "nope", "--save", str(image)]) == 1
+
+
+def test_cases(capsys):
+    assert main(["cases"]) == 0
+    out = capsys.readouterr().out
+    assert all(name in out for name in ("fetch-limited", "wave-tank", "titan-ontario-lacus", "mars-jezero-lake"))
+    assert main(["cases", "titan"]) == 0
+    out = capsys.readouterr().out
+    assert out.startswith("UMWM example case: titan-ontario-lacus") and "umwm run --case titan-ontario-lacus" in out
+    assert main(["cases", "venus"]) == 1
+    assert "unknown case 'venus'" in capsys.readouterr().err
+
+
+def test_config_case(tmp_path, capsys):
+    assert main(["config", "--case", "jonswap", "--check"]) == 0
+    assert "valid" in capsys.readouterr().out
+    assert main(["config", "--case", "mars", "--diff", "defaults"]) == 0
+    out = capsys.readouterr().out
+    assert "physics.g" in out and "3.71" in out and "9.80665" in out
+    assert main(["config", "--case", "wave", "-o", str(tmp_path / "main.nml"), "-s", "forcing_constant.wspd0=5"]) == 0
+    config = umwm.Config.from_namelist(tmp_path / "main.nml")
+    assert config.physics.fcut_fac == 10.0 and config.forcing_constant.wspd0 == 5.0
+    assert main(["config", str(tmp_path / "main.nml"), "--case", "jonswap"]) == 1
+    assert "either a namelist or --case" in capsys.readouterr().err
+
+
+def test_init_case(tmp_path, capsys, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    case = umwm.get_case("wave-tank")
+    assert main(["init", "--case", "wave"]) == 0
+    assert (tmp_path / "wave-tank" / "namelists" / "main.nml").read_text() == case.namelist.read_text()
+    assert umwm.Config.from_namelist(tmp_path / "wave-tank").spectrum_points == case.config().spectrum_points
+    assert main(["init", "runs/tank", "--case", "wave", "-s", "forcing_constant.wspd0=5"]) == 0
+    config = umwm.Config.from_namelist(tmp_path / "runs" / "tank")
+    assert config.forcing_constant.wspd0 == 5.0 and config.physics.fcut_fac == 10.0
+    assert main(["init", "--case", "wave", "--from", str(case.namelist)]) == 1
+
+
+def test_run_case(library, tmp_path, capsys, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    assert main(["run", "--case", "duration", "-s", "domain.stoptimestr=2026-01-01 03:00:00", "-q"]) == 0
+    out = capsys.readouterr().out
+    workdir = tmp_path / "duration-limited"
+    assert f"running example case duration-limited in {workdir}" in out and "run finished at 2026-01-01 03:00:00" in out
+    assert len(umwm.output_files(workdir)) == 4
+    assert set(umwm.spectrum_output_files(workdir)) == {"sea"}
+    assert main(["run", "--case", "duration", "-w", "other", "--check"]) == 0
+    assert "UMWM domain in" in capsys.readouterr().out
+    assert main(["run", "--case", "duration", "a", "-w", "b"]) == 1
+    assert main(["run", "--case", "duration", str(workdir / "namelists" / "main.nml")]) == 1
+    assert "not a file" in capsys.readouterr().err

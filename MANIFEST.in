@@ -3,6 +3,7 @@ include mk/config.mk
 include src/Makefile
 recursive-include src *.f90
 include namelists/*.nml
+include examples/cases.txt examples/*.md examples/*/main.nml examples/*/spectrum.nml
 include python/README.md
 recursive-include python/umwm *.py py.typed
 recursive-include python/tests *.py

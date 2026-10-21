@@ -48,6 +48,7 @@ module umwm_config
     real :: sdt_fac = 0.
     real :: sbf_fac = 0.
     real :: sbp_fac = 0.
+    real :: fcut_fac = 0.53 ! default for namelists that do not set it
 
     logical :: gridfromfile = .false.
     real :: delx = 0.
@@ -83,6 +84,7 @@ module umwm_config
     real, allocatable :: stokes_depths(:)
 
   contains
+    procedure :: sibling_path
     procedure :: validate
   end type config_type
 
@@ -117,7 +119,7 @@ contains
       res%sfct, res%kappa, res%z, res%gustiness, res%dmin, res%explim, &
       res%sin_fac, res%sin_diss1, res%sin_diss2, res%sds_fac, &
       res%sds_power, res%mss_fac, res%snl_fac, res%sdt_fac, res%sbf_fac, &
-      res%sbp_fac, stat, iomsg)
+      res%sbp_fac, res%fcut_fac, stat, iomsg)
     if (stat == 0) call read_grid(unit, res%gridfromfile, res%delx, res%dely, &
       res%topofromfile, res%dpt, res%fillestuaries, res%filllakes, stat, iomsg)
     if (stat == 0) call read_forcing(unit, res%winds, res%currents, &
@@ -169,18 +171,18 @@ contains
   subroutine read_physics(unit, g, nu_air, nu_water, sfct, kappa, z, &
                           gustiness, dmin, explim, sin_fac, sin_diss1, &
                           sin_diss2, sds_fac, sds_power, mss_fac, snl_fac, &
-                          sdt_fac, sbf_fac, sbp_fac, stat, iomsg)
+                          sdt_fac, sbf_fac, sbp_fac, fcut_fac, stat, iomsg)
     integer, intent(in) :: unit
     real, intent(inout) :: g, nu_air, nu_water, sfct, kappa, z
     real, intent(inout) :: gustiness, dmin, explim, sin_fac, sin_diss1
     real, intent(inout) :: sin_diss2, sds_fac, sds_power, mss_fac, snl_fac
-    real, intent(inout) :: sdt_fac, sbf_fac, sbp_fac
+    real, intent(inout) :: sdt_fac, sbf_fac, sbp_fac, fcut_fac
     integer, intent(out) :: stat
     character(len=*), intent(out) :: iomsg
 
     namelist /physics/ g, nu_air, nu_water, sfct, kappa, z, &
       gustiness, dmin, explim, sin_fac, sin_diss1, sin_diss2, &
-      sds_fac, sds_power, mss_fac, snl_fac, sdt_fac, sbf_fac, sbp_fac
+      sds_fac, sds_power, mss_fac, snl_fac, sdt_fac, sbf_fac, sbp_fac, fcut_fac
 
     read(unit, nml=physics, iostat=stat, iomsg=iomsg)
   end subroutine read_physics
@@ -283,6 +285,17 @@ contains
   end subroutine set_stokes_depths
 
 
+  function sibling_path(self, name) result(res)
+    ! The path of the file name in the directory of the main namelist, such
+    ! as the spectrum.nml and exclude.nml namelists that accompany it.
+    class(config_type), intent(in) :: self
+    character(len=*), intent(in) :: name
+    character(len=:), allocatable :: res
+
+    res = self%path(1:index(self%path, '/', back=.true.)) // name
+  end function sibling_path
+
+
   function validate(self, stop_on_error, rank) result(ok)
     class(config_type), intent(inout) :: self
     logical, intent(in), optional :: stop_on_error
@@ -378,6 +391,10 @@ contains
     if (self%dmin <= 0) &
       call diagnostic('error', &
         'bad value in main.nml: dmin must be > 0', ok, rank_value)
+
+    if (self%fcut_fac <= 0) &
+      call diagnostic('error', &
+        'bad value in main.nml: fcut_fac must be > 0', ok, rank_value)
 
     if (.not. self%gridfromfile) then
       if (self%delx <= 0 .or. self%dely <= 0) &

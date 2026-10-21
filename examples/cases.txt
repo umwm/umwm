@@ -1,0 +1,10 @@
+# The example cases of UMWM: one per line, the name of its directory and a
+# one-line description. Each directory holds the main.nml namelist of the
+# case and the spectrum.nml points of its spectrum output. Run a case with
+# `umwm --case NAME` (the executable) or `umwm run --case NAME` (Python).
+fetch-limited        Fetch-limited growth over 1000 km at 10 km resolution, 20 m/s wind
+duration-limited     Duration-limited growth of a uniform sea over 48 hours, 20 m/s wind
+jonswap              JONSWAP fetch-limited growth over 100 km at 1 km resolution, 10 m/s wind
+wave-tank            Laboratory wind-wave tank, 10 m long at 20 cm resolution, 10 m/s wind
+titan-ontario-lacus  Methane-ethane waves on Ontario Lacus, Titan, 1.5 m/s wind
+mars-jezero-lake     Waves on the ancient lake of Jezero crater, Mars, 5 m/s wind

@@ -723,8 +723,8 @@ contains
       ! protection against low wind speed values
       wspd = max(forcing % wspd(i), min_wind_speed)
 
-      ! cut-off frequency (4*pierson-moskowitz peak frequency) and its bin
-      fcutoff = min(0.53 * config % g / wspd, config % fprog)
+      ! cut-off frequency (by default 4*pierson-moskowitz peak frequency) and its bin
+      fcutoff = min(config % fcut_fac * config % g / wspd, config % fprog)
       do o = om - 2, 1, -1
         self % oc(i) = o
         if (fcutoff > self % f(o)) exit

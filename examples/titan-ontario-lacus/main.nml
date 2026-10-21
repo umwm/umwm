@@ -1,0 +1,98 @@
+! UMWM example case: titan-ontario-lacus
+!
+! Wind waves on Ontario Lacus, the largest lake of Titan's south polar region,
+! idealized as a 230 x 75 km basin of uniform 20 m depth at 5 km resolution,
+! under a steady 1.5 m/s wind (at 10 m) along its length, the average storm
+! wind over Titan's lakes (Detelich et al., 2026). The liquid is a mixture of
+! methane, ethane, and nitrogen at 92 K, under a nitrogen atmosphere of
+! 1.5 atm (1.52 bar), with the planetary parameters of Schneck et al. (2026)
+! and their PlanetWaves model (v1.0.0, doi:10.5281/zenodo.18906357):
+!
+!   gravity                      g        = 1.352 m/s^2
+!   air density (ideal N2 gas)   rhoa0    = 5.564 kg/m^3
+!   air kinematic viscosity      nu_air   = 1.156e-6 m^2/s (6.432e-6 Pa s)
+!   liquid density               rhow0    = 588.15 kg/m^3
+!   liquid kinematic viscosity   nu_water = 8.084e-7 m^2/s
+!   liquid surface tension       sfct     = 0.032766 N/m
+!
+! The low gravity and the dense atmosphere make the waves slow, long, and
+! high for their wind. After a day, the significant wave height grows from
+! 0.24 m at 5 km to 0.48 m at 100 km, with dominant periods from 5.7 to 9.5 s;
+! farther down the lake the waves are limited by the duration of the wind
+! rather than by the fetch, and are still growing slowly.
+!
+! Spectra are written along the lake, at the points of spectrum.nml.
+&DOMAIN
+  isGlobal     = .false.               ! Global (.T.) or regional (.F.): a closed lake
+  mm           = 48                    ! Domain size in x: 230 km of liquid
+  nm           = 17                    ! Domain size in y: 75 km of liquid
+  om           = 37                    ! Number of frequency bins
+  pm           = 36                    ! Number of directions
+  fmin         = 0.02                  ! Lowest frequency bin [Hz]
+  fmax         = 2.0                   ! Highest frequency bin [Hz]
+  fprog        = 2.0                   ! Highest prognostic frequency bin [Hz]
+  startTimeStr = '2026-01-01 00:00:00' ! Simulation start time
+  stopTimeStr  = '2026-01-02 00:00:00' ! Simulation end time
+  dtg          = 3600                  ! Global (I/O) time step [s]
+  restart      = .false.               ! Restart from file
+/
+&PHYSICS
+  g            = 1.352   ! Gravitational acceleration [m/s^2]
+  nu_air       = 1.156E-6 ! Kinematic viscosity of air [m^2/s]
+  nu_water     = 8.084E-7 ! Kinematic viscosity of the liquid [m^2/s]
+  sfct         = 0.032766 ! Surface tension [N/m]
+  kappa        = 0.4     ! Von Karman constant
+  z            = 10.     ! Height of the input wind speed [m]
+  gustiness    = 0.0     ! Random wind gustiness factor (should be between 0 and 0.2)
+  dmin         = 10.     ! Depth limiter [m]
+  explim       = 0.9     ! Exponent limiter (0.69 ~ 100% growth)
+  sin_fac      = 0.11    ! Input factor from following winds
+  sin_diss1    = 0.10    ! Damping factor from opposing winds
+  sin_diss2    = 0.001   ! Damping factor from swell overrunning wind
+  sds_fac      = 42.     ! Breaking dissipation factor
+  sds_power    = 2.4     ! Saturation spectrum power
+  mss_fac      = 360     ! Mean-square-slope adjustment to Sds
+  snl_fac      = 5.0     ! Wave energy downshifting factor
+  sdt_fac      = 0.002   ! Dissipation due to turbulence factor
+  sbf_fac      = 0.003   ! Bottom friction coefficient [m/s]
+  sbp_fac      = 0.003   ! Bottom percolation coefficient [m/s]
+  fcut_fac     = 0.53    ! Prognostic cutoff frequency factor, fc = fcut_fac*g/U
+/
+&GRID
+  gridFromFile  = .F.   ! Set to .T. if lon/lat fields are input from file
+  delx          = 5000  ! Grid spacing in x [m] if gridFromFile = .F.
+  dely          = 5000  ! Grid spacing in y [m] if gridFromFile = .F.
+  topoFromFile  = .F.   ! Set to .T. to input bathymetry from file
+  dpt           = 20    ! Constant water depth [m] if topoFromFile = .F.
+  fillEstuaries = .F.   ! Set to .T. to fill cells with 3 land neighbours
+  fillLakes     = .F.   ! Set to .T. to fill user chosen seas/lakes
+/
+&FORCING
+  winds         = .F. ! Wind input from file
+  currents      = .F. ! Currents input from file
+  air_density   = .F. ! Air density input from file
+  water_density = .F. ! Water density input from file
+  seaice        = .F. ! Sea ice fraction from file
+/
+&FORCING_CONSTANT
+  wspd0         = 1.5       ! Wind speed [m/s]
+  wdir0         = 0         ! Wind direction [rad]: toward +x, along the lake
+  uc0           = 0         ! x-component ocean current [m/s]
+  vc0           = 0         ! y-component ocean current [m/s]
+  rhoa0         = 5.564     ! Air density [kg/m^3]
+  rhow0         = 588.15    ! Liquid density [kg/m^3]
+  fice0         = 0.0       ! Sea ice fraction []
+  fice_lth      = 0.30      ! Sea ice fraction - lower threshold for attenuation
+  fice_uth      = 0.75      ! Sea ice fraction - upper threshold for attenuation
+/
+&OUTPUT
+  outgrid       = 1   ! Gridded output interval  [hours]
+  outspec       = 1   ! Spectrum output interval [hours]
+  outrst        = 0   ! Restart output interval  [hours]
+  xpl           = 46  ! Grid cell in x for stdout (screen): 225 km fetch
+  ypl           = 9   ! Grid cell in y for stdout (screen): the center line
+  stokes        = .t. ! Output Stokes drift velocity fields
+/
+&STOKES
+  depths        = 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0 1.2 1.4 1.6 1.8 2.0 2.4 2.8 3.2 3.6 4.0 4.5 5.0 6 7 8 9 10 12 14 16 18 20
+/

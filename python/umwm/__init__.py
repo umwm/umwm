@@ -14,10 +14,13 @@ Configure, run, and inspect the wave model from Python::
         output = domain.output()          # xarray.Dataset of the output files
 
 The model runs in the compiled Fortran library; Python drives it through
-its C API and views its memory without copying.
+its C API and views its memory without copying. ``umwm.list_cases()`` lists
+the example cases, idealized configurations that run without input files,
+and ``umwm.Config.from_case("jonswap")`` reads one.
 """
 
 from ._library import LibraryNotFoundError, barrier, find_library, flush_denormals, library, mpi, rank, size
+from .cases import Case, examples_dir, get_case, list_cases
 from .config import (
     Config,
     ConfigError,
@@ -50,6 +53,7 @@ __all__ = [
     "Config", "ConfigError", "Domain", "run", "SpectrumPoint",
     "DomainConfig", "PhysicsConfig", "GridConfig", "ForcingConfig", "ForcingConstantConfig",
     "OutputConfig", "StokesConfig", "FIELDS",
+    "Case", "list_cases", "get_case", "examples_dir",
     "write_forcing", "write_forcing_dataset", "write_grid", "write_rankine_forcing", "forcing_filename",
     "plot_field",
     "open_output", "open_spectrum_output", "open_restart", "open_grid",

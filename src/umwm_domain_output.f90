@@ -549,11 +549,13 @@ contains
   contains
 
     subroutine read_points()
-      ! Reads the spectrum output points from namelists/spectrum.nml.
+      ! Reads the spectrum output points from the spectrum.nml next to the
+      ! main namelist (namelists/spectrum.nml by default).
       integer, parameter :: max_points = 999
       integer :: m(max_points), n(max_points), npts, unit, xy(2)
       character(40) :: id(max_points)
       character(2) :: coord_input
+      character(:), allocatable :: path
       real :: lon, lat
 
       self % spectrum_timestr = timestr
@@ -561,7 +563,8 @@ contains
       npts = 0
 
       ! open spectrum points list file:
-      open(newunit=unit, file='namelists/spectrum.nml', status='old', &
+      path = self % config % sibling_path('spectrum.nml')
+      open(newunit=unit, file=path, status='old', &
            form='formatted', access='sequential', iostat=stat)
 
       if (stat == 0) then
@@ -576,25 +579,25 @@ contains
 
             read(unit, *, iostat=stat) m(npts+1), n(npts+1), id(npts+1)
             if (is_iostat_end(stat)) exit
-            if (stat /= 0) stop 'umwm: output_nc: error: cannot read a point in namelists/spectrum.nml'
+            if (stat /= 0) stop 'umwm: output_nc: error: cannot read a point in ' // path
 
             if (m(npts+1) < 2 .or. m(npts+1) > self % config % mm - 1 .or. &
                 n(npts+1) < 2 .or. n(npts+1) > self % config % nm - 1) &
-              stop 'umwm: output_nc: error: a requested point ' &
-                // 'in spectrum.nml is out of bounds'
+              stop 'umwm: output_nc: error: a requested point in ' // path &
+                // ' is out of bounds'
 
           else if (any(coord_input == ['ll', 'LL'])) then
 
             read(unit, *, iostat=stat) lon, lat, id(npts+1)
             if (is_iostat_end(stat)) exit
-            if (stat /= 0) stop 'umwm: output_nc: error: cannot read a point in namelists/spectrum.nml'
+            if (stat /= 0) stop 'umwm: output_nc: error: cannot read a point in ' // path
             xy = minloc((lon - self % grid % lon)**2 + (lat - self % grid % lat)**2)
             m(npts+1) = xy(1)
             n(npts+1) = xy(2)
 
           else
 
-            stop 'umwm: output_nc: error: first line in namelists/spectrum.nml must' &
+            stop 'umwm: output_nc: error: first line in ' // path // ' must ' &
               // 'contain "xy" (or "XY") or "ll" (or "LL").'
 
           end if

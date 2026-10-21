@@ -9,7 +9,8 @@ The library is built from the Fortran sources with the UMWM Makefile
     MPI=yes FC=mpifort pip install .     # parallel
 
 A prebuilt library can be used instead by setting ``UMWM_LIBRARY`` to its
-path, in which case it is copied into the package.
+path, in which case it is copied into the package. The example cases of
+``examples/`` are copied into the package as ``umwm/examples``.
 """
 
 import os
@@ -18,6 +19,7 @@ from pathlib import Path
 
 from setuptools import Extension, setup
 from setuptools.command.build_ext import build_ext
+from setuptools.command.build_py import build_py
 
 try:
     from setuptools.command.bdist_wheel import bdist_wheel
@@ -28,6 +30,7 @@ ROOT = Path(__file__).resolve().parent
 LIBRARY = "libumwm.so"
 MAKE_VARIABLES = ("MPI", "FC", "FCFLAGS", "CPPFLAGS", "LDFLAGS", "LDLIBS", "NF_CONFIG",
                   "NETCDF", "NETCDF_FFLAGS", "NETCDF_FLIBS")
+EXAMPLES = ("cases.txt", "*.md", "*/main.nml", "*/spectrum.nml")
 
 
 class BuildSharedLibrary(build_ext):
@@ -62,6 +65,23 @@ class BuildSharedLibrary(build_ext):
         shutil.copy2(build_dir / LIBRARY, destination)
 
 
+class BuildPy(build_py):
+    """Copy the example cases into the package. An editable install finds
+    them in the repository instead."""
+
+    def run(self):
+        super().run()
+        if getattr(self, "editable_mode", False):
+            return
+        source = ROOT / "examples"
+        destination = Path(self.build_lib) / "umwm" / "examples"
+        for pattern in EXAMPLES:
+            for path in sorted(source.glob(pattern)):
+                target = destination / path.relative_to(source)
+                self.mkpath(str(target.parent))
+                self.copy_file(str(path), str(target))
+
+
 class PlatformWheel(bdist_wheel):
     """Tag the wheel as specific to the platform but not to the Python version:
     the library is loaded with ctypes and does not use the Python ABI."""
@@ -73,5 +93,5 @@ class PlatformWheel(bdist_wheel):
 
 setup(
     ext_modules=[Extension("umwm.libumwm", sources=[])],
-    cmdclass={"build_ext": BuildSharedLibrary, "bdist_wheel": PlatformWheel},
+    cmdclass={"build_ext": BuildSharedLibrary, "build_py": BuildPy, "bdist_wheel": PlatformWheel},
 )

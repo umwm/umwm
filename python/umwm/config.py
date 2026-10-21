@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any, Iterator
 
 from . import namelist
+from .namelist import NamelistError
 
 __all__ = [
     "Config",
@@ -95,6 +96,7 @@ class PhysicsConfig:
     sdt_fac: float = field(default=0.002, metadata=_doc("Dissipation due to turbulence factor"))
     sbf_fac: float = field(default=0.003, metadata=_doc("Bottom friction coefficient", "m/s"))
     sbp_fac: float = field(default=0.003, metadata=_doc("Bottom percolation coefficient", "m/s"))
+    fcut_fac: float = field(default=0.53, metadata=_doc("Prognostic cutoff frequency factor, fc = fcut_fac*g/U"))
 
 
 @dataclass
@@ -244,6 +246,14 @@ class Config:
         if exclude_points is not None:
             config.exclude_points = read_exclude_points(exclude_points)
         return config
+
+    @classmethod
+    def from_case(cls, name: str) -> "Config":
+        """The configuration of an example case (see :func:`umwm.list_cases`),
+        given by its name or a unique prefix of it, such as ``"titan"``."""
+        from .cases import get_case
+
+        return cls.from_namelist(get_case(name).namelist)
 
     @classmethod
     def from_namelist_text(cls, text: str) -> "Config":
@@ -447,6 +457,8 @@ class Config:
             errors.append("gustiness must be positive")
         if physics.dmin <= 0:
             errors.append("dmin must be > 0")
+        if physics.fcut_fac <= 0:
+            errors.append("fcut_fac must be > 0")
         if not grid.gridfromfile and (grid.delx <= 0 or grid.dely <= 0):
             errors.append("delx and dely must be > 0")
         if not grid.topofromfile and grid.dpt <= 0:
@@ -509,6 +521,19 @@ class Config:
                     notes[(group_name, item.name)] = f"{description} [{units}]" if units else description
         return namelist.dumps(groups, comments=notes)
 
+    def namelist_text(self, source=None) -> str:
+        """The text of the ``main.nml`` file for this configuration: the text of
+        the namelist file ``source``, with its comments, if it holds this
+        configuration, and :meth:`to_namelist` otherwise."""
+        if source is not None:
+            try:
+                text = Path(source).read_text(encoding="utf-8")
+                if list(Config.from_namelist_text(text).items()) == list(self.items()):
+                    return text
+            except (OSError, ConfigError, NamelistError):
+                pass
+        return self.to_namelist()
+
     def spectrum_points_text(self) -> str:
         """The text of the ``spectrum.nml`` file listing the spectrum output points."""
         if not self.spectrum_points:
@@ -528,12 +553,14 @@ class Config:
         """The text of the ``exclude.nml`` file listing cells of enclosed seas to exclude."""
         return "".join(f"{m} {n}\n" for m, n in self.exclude_points)
 
-    def write(self, path, spectrum_points: bool = True, exclude_points: bool = True) -> Path:
+    def write(self, path, spectrum_points: bool = True, exclude_points: bool = True, source=None) -> Path:
         """Write ``main.nml`` to ``path`` and, next to it, ``spectrum.nml`` and
-        ``exclude.nml`` when points are configured. Returns the path."""
+        ``exclude.nml`` when points are configured. Returns the path. The
+        namelist file ``source``, such as the one the configuration was read
+        from, is copied with its comments if it holds this configuration."""
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(self.to_namelist(), encoding="utf-8")
+        path.write_text(self.namelist_text(source), encoding="utf-8")
         if spectrum_points and self.spectrum_points:
             (path.parent / "spectrum.nml").write_text(self.spectrum_points_text(), encoding="utf-8")
         if exclude_points and self.exclude_points:

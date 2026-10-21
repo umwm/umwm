@@ -176,12 +176,12 @@ class Domain:
 
         A namelist file the configuration was read from is left untouched
         when the configuration still matches it, so that its comments are
-        preserved. Only the root process writes; all processes wait for it.
+        preserved, and is copied with them into another run directory. Only
+        the root process writes; all processes wait for it.
         """
         if self.rank == 0:
-            main_text = self.config.to_namelist()
             if not self._matches_file(self.namelist_path, lambda text: Config.from_namelist_text(text) == self._bare_config()):
-                self.namelist_path.write_text(main_text, encoding="utf-8")
+                self.namelist_path.write_text(self.config.namelist_text(self._source_namelist), encoding="utf-8")
             if self.config.spectrum_points:
                 path = self.namelist_dir / "spectrum.nml"
                 text = self.config.spectrum_points_text()

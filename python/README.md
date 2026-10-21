@@ -169,6 +169,23 @@ existing directory of input files as `workdir/input`.
 `write_rankine_forcing` writes hourly files for an idealized, translating
 hurricane vortex, the test case of the model; see `python/examples/rankine.py`.
 
+### Example cases
+
+The [example cases](../examples/README.md) of the repository are idealized
+configurations with constant forcing and no input files: fetch-limited and
+duration-limited growth, JONSWAP, a laboratory wave tank, and lakes on Titan
+and Mars. The package includes them, and `UMWM_EXAMPLES` can point to
+another copy of the `examples` directory.
+
+```python
+umwm.list_cases()                            # [Case(name="fetch-limited", ...), ...]
+case = umwm.get_case("titan")                # by name, or a unique prefix of it
+print(case.description, case.notes())        # one line, and the comments of its namelist
+config = umwm.Config.from_case("jonswap")    # with its spectrum output points
+domain = umwm.run(config, "runs/jonswap")
+domain = umwm.run(case.namelist, "runs/titan")   # keeps the comments in runs/titan/namelists
+```
+
 ### Model state
 
 Every field of the domain is accessible by name (see `umwm.FIELDS` and the
@@ -268,7 +285,7 @@ namelist variable names, and the defaults of `namelists/main.nml`.
 | Group | Class | Contents |
 | --- | --- | --- |
 | `config.domain` | `DomainConfig` | `isglobal`, `mm`, `nm`, `om`, `pm`, `fmin`, `fmax`, `fprog`, `starttimestr`, `stoptimestr`, `reftimestr`, `dtg`, `restart` |
-| `config.physics` | `PhysicsConfig` | `g`, `nu_air`, `nu_water`, `sfct`, `kappa`, `z`, `gustiness`, `dmin`, `explim`, `sin_fac`, `sin_diss1`, `sin_diss2`, `sds_fac`, `sds_power`, `mss_fac`, `snl_fac`, `sdt_fac`, `sbf_fac`, `sbp_fac` |
+| `config.physics` | `PhysicsConfig` | `g`, `nu_air`, `nu_water`, `sfct`, `kappa`, `z`, `gustiness`, `dmin`, `explim`, `sin_fac`, `sin_diss1`, `sin_diss2`, `sds_fac`, `sds_power`, `mss_fac`, `snl_fac`, `sdt_fac`, `sbf_fac`, `sbp_fac`, `fcut_fac` |
 | `config.grid` | `GridConfig` | `gridfromfile`, `delx`, `dely`, `topofromfile`, `dpt`, `fillestuaries`, `filllakes` |
 | `config.forcing` | `ForcingConfig` | `winds`, `currents`, `air_density`, `water_density`, `seaice` |
 | `config.forcing_constant` | `ForcingConstantConfig` | `wspd0`, `wdir0`, `uc0`, `vc0`, `rhoa0`, `rhow0`, `fice0`, `fice_lth`, `fice_uth` |
@@ -287,6 +304,7 @@ written to `exclude.nml`, for `grid.filllakes`.
 
 ```python
 config = umwm.Config.from_namelist("namelists/main.nml")   # also reads spectrum.nml, exclude.nml next to it
+config = umwm.Config.from_case("wave-tank")                  # an example case
 config["domain.dtg"] = 1800                                  # dotted keys, with conversion from strings
 config.update({"output.outgrid": 1}, forcing__winds=True)
 config.start_time, config.stop_time                          # datetimes of the time strings
@@ -303,9 +321,10 @@ the namelist syntax the model uses (groups, scalars, lists, comments).
 ## Command-line tool
 
 ```
-umwm init [WORKDIR] [-s GROUP.NAME=VALUE ...] [--from NAMELIST] [-f]
-umwm config [NAMELIST] [-s GROUP.NAME=VALUE ...] [-o FILE] [--json] [--check] [--describe [GROUP]] [--diff NAMELIST]
-umwm run [NAMELIST|WORKDIR] [-w WORKDIR] [-i INPUT_DIR] [-s GROUP.NAME=VALUE ...] [-n N] [--until TIME] [--log FILE] [-q] [--check]
+umwm init [WORKDIR] [-s GROUP.NAME=VALUE ...] [--from NAMELIST | --case NAME] [-f]
+umwm config [NAMELIST | --case NAME] [-s GROUP.NAME=VALUE ...] [-o FILE] [--json] [--check] [--describe [GROUP]] [--diff NAMELIST]
+umwm run [NAMELIST|WORKDIR] [-w WORKDIR] [-c NAME] [-i INPUT_DIR] [-s GROUP.NAME=VALUE ...] [-n N] [--until TIME] [--log FILE] [-q] [--check]
+umwm cases [NAME]
 umwm forcing rankine [-w WORKDIR] [--hours N] [--nx N --ny N --dx M --dy M] [--vmax V --rmw R ...]
 umwm output [SOURCE] [-v VAR ...] [--stats] [--spectrum] [--plot VAR [--time T] [--level L] [--save FILE]]
 umwm clean [WORKDIR] [--keep-output] [--keep-restart]
@@ -322,6 +341,20 @@ umwm run runs/case1 -s forcing.currents=.true. --log runs/case1/run.log
 umwm output runs/case1 --stats -v swh mwp cd
 umwm output runs/case1 --plot swh --save swh.png
 umwm clean runs/case1
+```
+
+The example cases run with `--case NAME` (or a unique prefix of the name),
+by default in a run directory named after the case, and `umwm cases` lists
+them; `umwm init --case NAME` creates a run directory from a case to edit:
+
+```
+umwm cases                                       # list the example cases
+umwm cases titan                                 # describe titan-ontario-lacus
+umwm run --case jonswap                          # in ./jonswap
+umwm run --case jonswap runs/j15 -s forcing_constant.wspd0=15
+umwm output jonswap --stats
+umwm init --case wave-tank runs/tank             # then edit and 'umwm run runs/tank'
+umwm config --case mars --diff defaults          # what the case changes
 ```
 
 `umwm run` reads `namelists/main.nml` of the run directory (the current

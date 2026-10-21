@@ -32,6 +32,7 @@
   sdt_fac      = 0.002   ! Dissipation due to turbulence factor
   sbf_fac      = 0.003   ! Bottom friction coefficient [m/s]
   sbp_fac      = 0.003   ! Bottom percolation coefficient [m/s]
+  fcut_fac     = 0.53    ! Prognostic cutoff frequency factor, fc = fcut_fac*g/U
 /
 &GRID
   gridFromFile  = .F.   ! Set to .T. if lon/lat fields are input from file
