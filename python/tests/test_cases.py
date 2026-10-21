@@ -124,4 +124,4 @@ def test_wave_tank_cutoff(library, tmp_path):
             heights[fcut_fac] = domain.grid_field("swh")[1:-1, 0]
     growing, uniform = heights[10.0], heights[0.53]
     assert np.all(np.diff(growing) > 0) and 0.004 < growing[0] < 0.006 and 0.015 < growing[-1] < 0.025
-    assert np.ptp(uniform) < 0.01 * uniform.mean() and uniform.mean() > 0.1
+    assert np.ptp(uniform) < 0.02 * uniform.mean() and uniform.mean() > 3 * growing.max()

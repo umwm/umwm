@@ -7,8 +7,12 @@
 ! tank of unlimited width, and the wind blows toward +y from the upwind end
 ! at y = 0; grid row n is at a fetch of (n-1)*dely. The waves are steady
 ! along the tank within a minute, with the significant wave height growing
-! from 1 cm at 1 m to 3 cm at 9.8 m and the peak frequency falling from 3.5
-! to 1.9 Hz.
+! from 1 cm at 1 m to 2.9 cm at 9.8 m and the peak frequency falling from 3.5
+! to 1.8 Hz.
+!
+! The frequencies span 1 to 20 Hz, through the gravity-capillary range: the
+! phase speed is smallest at k = sqrt(g*rhow0/sfct) = 367 rad/m, a 1.7 cm
+! wavelength, at 13.5 Hz.
 !
 ! In a tank the spectral peak lies far above the default cutoff of the
 ! prognostic range, fc = 0.53*g/U (about 4 times the Pierson-Moskowitz peak
@@ -22,7 +26,7 @@
   nm           = 51                    ! Domain size in y: 10 m, land rows at both ends
   om           = 37                    ! Number of frequency bins
   pm           = 36                    ! Number of directions
-  fmin         = 0.5                   ! Lowest frequency bin [Hz]
+  fmin         = 1.0                   ! Lowest frequency bin [Hz]
   fmax         = 20.0                  ! Highest frequency bin [Hz]
   fprog        = 20.0                  ! Highest prognostic frequency bin [Hz]
   startTimeStr = '2026-01-01 00:00:00' ! Simulation start time

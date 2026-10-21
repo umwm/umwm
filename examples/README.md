@@ -127,17 +127,19 @@ wind, at 20 cm resolution. The wind speed is the wind at 10 m, to which
 laboratory winds are customarily extrapolated with the logarithmic profile
 for comparison with field measurements. The tank is periodic in x, of
 unlimited width. The waves are steady along the tank within a minute: the
-significant wave height grows from 1 cm at 1 m to 3 cm at 9.8 m, and the
-peak frequency falls from 3.5 to 1.9 Hz. The gridded output and the spectra
-along the tank are written every 10 s, every global time step
-(`outgrid = outspec = -1`).
+significant wave height grows from 1 cm at 1 m to 2.9 cm at 9.8 m, and the
+peak frequency falls from 3.5 to 1.8 Hz. The frequencies span 1 to 20 Hz,
+through the gravity-capillary range: the phase speed is smallest at 13.5 Hz,
+for a wavenumber of (g ρ<sub>w</sub>/σ)<sup>1/2</sup> = 367 rad/m and a wavelength of
+1.7 cm. The gridded output and the spectra along the tank are written every
+10 s, every global time step (`outgrid = outspec = -1`).
 
 In a tank the waves are far younger than a fully developed sea, and their
 spectral peak lies far above the default cutoff of the prognostic range,
 f<sub>c</sub> = 0.53 g/U ≈ 4 f<sub>PM</sub>, which is 0.52 Hz for this wind; with the
 default, the whole spectrum of the tank would be in the diagnostic
-equilibrium range, at the same height, about 19 cm, all along the tank. The
-case sets `fcut_fac = 10`, which raises the cutoff to 9.8 Hz.
+equilibrium range, at nearly the same height, about 8 cm, all along the
+tank. The case sets `fcut_fac = 10`, which raises the cutoff to 9.8 Hz.
 
 ## Waves on other worlds
 
