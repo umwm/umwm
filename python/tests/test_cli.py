@@ -203,3 +203,18 @@ def test_run_case(library, tmp_path, capsys, monkeypatch):
     assert main(["run", "--case", "duration", "a", "-w", "b"]) == 1
     assert main(["run", "--case", "duration", str(workdir / "namelists" / "main.nml")]) == 1
     assert "not a file" in capsys.readouterr().err
+
+
+def test_case_with_input_files(library, tmp_path, capsys, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    case = umwm.get_case("seamount")
+    assert main(["init", "--case", "seamount"]) == 0
+    copied = tmp_path / "seamount" / "input" / "umwm.gridtopo"
+    assert copied.is_file() and not copied.is_symlink()
+    assert copied.read_bytes() == (case.input_dir / "umwm.gridtopo").read_bytes()
+    assert "copied umwm.gridtopo" in capsys.readouterr().out
+    settings = ["-s", "domain.stoptimestr=2026-01-01 01:00:00", "-q"]
+    assert main(["run", "--case", "eddy", "runs/eddies", *settings]) == 0
+    assert (tmp_path / "runs" / "eddies" / "input").resolve() == umwm.get_case("eddy-field").input_dir.resolve()
+    assert main(["run", "--case", "eddy", "runs/eddies", *settings]) == 0  # again, with the input linked
+    assert len(umwm.output_files(tmp_path / "runs" / "eddies")) == 2

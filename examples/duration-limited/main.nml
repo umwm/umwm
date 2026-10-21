@@ -68,6 +68,7 @@
   air_density   = .F. ! Air density input from file
   water_density = .F. ! Water density input from file
   seaice        = .F. ! Sea ice fraction from file
+  steady        = .F. ! Forcing from file is steady: read at the start time only
 /
 &FORCING_CONSTANT
   wspd0         = 20        ! Wind speed [m/s]

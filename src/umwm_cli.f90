@@ -22,14 +22,15 @@ module umwm_cli
 
 contains
 
-  subroutine parse_command_line(namelist, run)
+  subroutine parse_command_line(namelist, input_dir, run)
     ! Sets namelist to the main namelist to run: the path given as the
     ! argument, the main.nml of the example case given with --case, or
-    ! namelists/main.nml by default. run is .false. when the program should
-    ! stop without running, after showing the help or the list of cases.
-    ! Invalid arguments, an unknown case, or a missing output directory stop
-    ! the program with an error.
-    character(:), allocatable, intent(out) :: namelist
+    ! namelists/main.nml by default; and input_dir to the directory of the
+    ! input files: input/ of the case, or input/ of the current directory.
+    ! run is .false. when the program should stop without running, after
+    ! showing the help or the list of cases. Invalid arguments, an unknown
+    ! case, or a missing output directory stop the program with an error.
+    character(:), allocatable, intent(out) :: namelist, input_dir
     logical, intent(out) :: run
 
     character(:), allocatable :: argument, case_name
@@ -66,9 +67,11 @@ contains
       n = n + 1
     end do
 
+    input_dir = 'input'
     if (allocated(case_name)) then
       if (allocated(namelist)) call fail('give either a namelist or --case, not both')
       namelist = case_namelist(case_name)
+      input_dir = namelist(1:index(namelist, '/', back=.true.)) // 'input'
     else if (.not. allocated(namelist)) then
       namelist = default_namelist
     end if
@@ -211,7 +214,8 @@ contains
       '       umwm --list-cases', &
       '', &
       'Runs the University of Miami Wave Model in the current directory, which holds', &
-      'the input/, output/ and restart/ directories of the run.', &
+      'the input/, output/ and restart/ directories of the run; an example case', &
+      'reads its input files, if it has any, from its own input/ directory.', &
       '', &
       '  NAMELIST          the main namelist to run (default: ' // default_namelist // ')', &
       '  -c, --case NAME   run the example case NAME; a unique prefix of the name', &

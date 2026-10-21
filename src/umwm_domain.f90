@@ -157,17 +157,20 @@ module umwm_domain
 
 contains
 
-  subroutine initialize(self, path, stat)
+  subroutine initialize(self, path, stat, input_dir)
     ! Reads the configuration from the namelist file at path, and
     ! constructs the grids, forcing, and the initial wave state.
     ! If stat is present, it is set to 0 on success and to 1 if the
     ! configuration is invalid, in which case the domain is left
     ! uninitialized; otherwise an invalid configuration stops the program.
+    ! The input files are read from input_dir, input/ by default.
     class(domain_type), intent(inout) :: self
     character(*), intent(in) :: path
     integer, intent(out), optional :: stat
+    character(*), intent(in), optional :: input_dir
 
     self % config = config_type(path)
+    if (present(input_dir)) self % config % input_dir = input_dir
     if (.not. self % config % validate(stop_on_error=.not. present(stat), rank=nproc)) then
       if (present(stat)) stat = 1
       return

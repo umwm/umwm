@@ -18,6 +18,9 @@ umwm.grid
 umwm.gridtopo
 umwmout_*.nc
 umwmin_*.nc
+# the input files of the example cases
+!examples/*/input/umwm.gridtopo
+!examples/*/input/umwmin_*.nc
 umwmrst_*.nc
 tests/input/.rankine_forcing.stamp
 tests/output/

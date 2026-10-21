@@ -30,7 +30,7 @@ ROOT = Path(__file__).resolve().parent
 LIBRARY = "libumwm.so"
 MAKE_VARIABLES = ("MPI", "FC", "FCFLAGS", "CPPFLAGS", "LDFLAGS", "LDLIBS", "NF_CONFIG",
                   "NETCDF", "NETCDF_FFLAGS", "NETCDF_FLIBS")
-EXAMPLES = ("cases.txt", "*.md", "*/main.nml", "*/spectrum.nml")
+EXAMPLES = ("cases.txt", "*.md", "*/main.nml", "*/spectrum.nml", "*/make_input.py", "*/input/*")
 
 
 class BuildSharedLibrary(build_ext):

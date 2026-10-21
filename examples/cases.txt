@@ -8,3 +8,5 @@ jonswap              JONSWAP fetch-limited growth over 100 km at 1 km resolution
 wave-tank            Laboratory wind-wave tank, 10 m long at 20 cm resolution, 10 m/s wind
 titan-ontario-lacus  Methane-ethane waves on Ontario Lacus, Titan, 1.5 m/s wind
 mars-jezero-lake     Waves on the ancient lake of Jezero crater, Mars, 5 m/s wind
+seamount             Wind waves over a Gaussian seamount, 100 x 160 km at 2.5 km, 20 m/s wind
+eddy-field           Wind waves through steady mesoscale eddies, 200 x 300 km at 4 km, 20 m/s wind

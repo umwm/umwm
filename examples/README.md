@@ -1,10 +1,12 @@
 # UMWM example cases
 
-A gallery of idealized cases, ready to run: the wind, the water depth, and
-the other parameters are constant, and no input files are needed. Each case
-is a directory with its `main.nml` namelist, whose leading comments describe
-the case, and the `spectrum.nml` points of its spectrum output; `cases.txt`
-lists the cases.
+A gallery of idealized cases, ready to run: the wind and the other
+parameters are constant, and most cases need no input files. Each case is a
+directory with its `main.nml` namelist, whose leading comments describe the
+case, and the `spectrum.nml` points of its spectrum output; `cases.txt`
+lists the cases. The `seamount` and `eddy-field` cases bring their input
+files, a bathymetry and steady currents, in their `input/` directory, with
+the `make_input.py` script that writes them.
 
 | Case | What it shows | Grid | Run time |
 | --- | --- | --- | ---: |
@@ -14,6 +16,8 @@ lists the cases.
 | [`wave-tank`](wave-tank/main.nml) | Waves in a laboratory wind-wave tank, 10 m/s wind | 10 m at 20 cm, 2 min | 15 s |
 | [`titan-ontario-lacus`](titan-ontario-lacus/main.nml) | Methane-ethane waves on a lake of Titan, 1.5 m/s wind | 230 x 75 km at 5 km, 24 h | 60 s |
 | [`mars-jezero-lake`](mars-jezero-lake/main.nml) | Waves on the ancient lake of Jezero crater, Mars, 5 m/s wind | 40 x 40 km at 1 km, 12 h | 20 s |
+| [`seamount`](seamount/main.nml) | Waves over a Gaussian seamount, 20 m/s wind | 100 x 160 km at 2.5 km, 12 h | 45 s |
+| [`eddy-field`](eddy-field/main.nml) | Waves through steady mesoscale eddies, 20 m/s wind | 200 x 300 km at 4 km, 15 h | 70 s |
 
 The run times are approximate, for a serial run on one core.
 
@@ -42,12 +46,15 @@ mkdir -p runs/jonswap/output && cd runs/jonswap
 ```
 
 `./umwm path/to/main.nml` runs any other namelist, such as a copy of a case
-that you changed; its `spectrum.nml` is read from the same directory.
+that you changed; its `spectrum.nml` is read from the same directory. A case
+reads its input files from its own `input/` directory, while other runs read
+them from `input/` of the current directory.
 
 In parallel, the processes share the sea cells and the results are the same
 as those of a serial run. The cases are small, so a few processes are
-enough: the periodic cases, four grid columns wide, run on up to four
-processes, and `duration-limited`, a single sea cell, only in serial.
+enough: `fetch-limited`, `jonswap` and `wave-tank`, four grid columns wide,
+run on up to four processes, and `duration-limited`, a single sea cell, only
+in serial.
 
 With the [Python command-line tool](../python/README.md), `umwm run --case
 NAME` runs a case in a run directory, by default a directory named after the
@@ -61,11 +68,15 @@ umwm run --case jonswap runs/j15 -s forcing_constant.wspd0=15
 umwm output jonswap --stats                      # summarize the output
 umwm output jonswap --plot swh --save swh.png
 umwm init --case mars runs/mars                  # a run directory to edit
+umwm init --case seamount runs/sm                # with a copy of the input files
 umwm config --case titan --diff defaults         # what the case changes
 ```
 
+`umwm run --case` links the `input/` directory of a case into the run
+directory, and `umwm init --case` copies its input files there, to edit.
 From Python, `umwm.Config.from_case(name)` reads the configuration of a
-case, and `umwm.list_cases()` lists them:
+case, `umwm.list_cases()` lists them, and `case.domain(workdir)` is a
+domain of a case with its input files:
 
 ```python
 import umwm
@@ -205,12 +216,53 @@ umwm run --case mars runs/mars-2bar -s forcing_constant.rhoa0=3.6752 -s physics.
 Schneck et al. (2026) modeled Jezero with winds of 2 to 3 m/s, close to the
 threshold of wave growth there; try `-s forcing_constant.wspd0=3`.
 
+## Bathymetry and currents
+
+These two cases, like the other ocean cases, model frequencies from 0.04 to
+14 Hz in 52 bins, and have a steady, uniform 20 m/s wind blowing offshore
+from a straight coast, as in `fetch-limited`: the domain is periodic in x,
+and the wind blows toward +y from the land row at y = 0.
+
+**`seamount`**: a Gaussian seamount rises from a 1000 m deep floor to 20 m
+below the surface at the center of a 100 × 160 km domain, at 80 km fetch,
+with a width (the standard deviation of the Gaussian) of 20 km, at 2.5 km
+resolution. The bathymetry is read from `input/umwm.gridtopo`
+(`topoFromFile`). After about 8 hours the waves over the seamount are
+steady. Over its top, where the 10 s waves feel the bottom, the significant
+wave height is 4.7 m, 8% lower than the 5.1 m away from it, and downwind the
+seamount casts a weak shadow, 2% lower 20 km beyond its top. With the broad
+directional spread of a wind sea, refraction over the seamount does not
+focus the waves into a higher sea in its lee. Spectra are written upwind of,
+on, and downwind of the seamount, and at the same fetch away from it.
+
+**`eddy-field`**: beyond 60 km from the coast of a 200 × 300 km domain, at 4
+km resolution, the waves cross 14 mesoscale eddies of Gaussian shape, 6
+rotating clockwise and 8 counterclockwise, with radii of 13 to 28 km and
+speeds up to 0.7 m/s (rms 0.3 m/s), which do not evolve in time. The
+currents are read once, from `input/umwmin_2026-01-01_00:00:00.nc`, and
+held constant (`currents` and `steady` in `&FORCING`). The currents refract
+and advect the waves: across the eddies, the significant wave height varies
+by -9% to +11% around its mean at each fetch (standard deviation 3%), in
+streaks downwind of the eddies, where it would be uniform without currents.
+After 15 hours the pattern is steady, while the waves at the far end are
+still growing slowly. Spectra are written upwind of the eddies and across
+the domain beyond them.
+
+The `make_input.py` script of each case writes its input file on the grid of
+its `main.nml`, from parameters at its top: the depths and the width of the
+seamount, and the number, sizes, speeds, and random seed of the eddies.
+After changing them, `python make_input.py` in the case directory writes the
+input file again.
+
 ## Adding a case
 
 A case is a directory with a complete `main.nml`, which sets every
 namelist variable, and optionally a `spectrum.nml`, listed in `cases.txt`
-with a one-line description. The test suite of the Python package checks
-that every case listed is complete and valid.
+with a one-line description. Its input files, if any, go in its `input/`
+directory; forcing read from file should be steady (`forcing.steady`), so
+that one file of the start time is enough. The test suite of the Python
+package checks that every case listed is complete and valid, and that its
+input files match its grid.
 
 ## References
 

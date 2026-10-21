@@ -151,7 +151,9 @@ Forcing is read, per global time step, from `input/umwmin_<time>.nc` when
 is set. `write_forcing` writes such a file from arrays of shape `(ny, nx)`,
 and `write_forcing_dataset` one file per time of an xarray dataset with
 dimensions `(time, y, x)`, for example from a reanalysis interpolated to the
-model grid:
+model grid. With `config.forcing.steady`, the forcing is read once, from the
+file of the start time, and held constant (`config.forcing_times()` lists
+the files the model reads):
 
 ```python
 for time in config.step_times():
@@ -172,10 +174,12 @@ hurricane vortex, the test case of the model; see `python/examples/rankine.py`.
 ### Example cases
 
 The [example cases](../examples/README.md) of the repository are idealized
-configurations with constant forcing and no input files: fetch-limited and
-duration-limited growth, JONSWAP, a laboratory wave tank, and lakes on Titan
-and Mars. The package includes them, and `UMWM_EXAMPLES` can point to
-another copy of the `examples` directory.
+configurations with constant forcing: fetch-limited and duration-limited
+growth, JONSWAP, a laboratory wave tank, lakes on Titan and Mars, and waves
+over a seamount and through an eddy field, which bring their input files
+(a bathymetry and steady currents) in their `input/` directory. The package
+includes them, and `UMWM_EXAMPLES` can point to another copy of the
+`examples` directory.
 
 ```python
 umwm.list_cases()                            # [Case(name="fetch-limited", ...), ...]
@@ -184,6 +188,8 @@ print(case.description, case.notes())        # one line, and the comments of its
 config = umwm.Config.from_case("jonswap")    # with its spectrum output points
 domain = umwm.run(config, "runs/jonswap")
 domain = umwm.run(case.namelist, "runs/titan")   # keeps the comments in runs/titan/namelists
+with umwm.get_case("seamount").domain("runs/seamount") as domain:   # with its input directory linked
+    domain.run()
 ```
 
 ### Model state

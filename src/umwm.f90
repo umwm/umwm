@@ -7,13 +7,13 @@ program umwm
   implicit none
 
   type(domain_type) :: domain
-  character(:), allocatable :: namelist
+  character(:), allocatable :: namelist, input_dir
   logical :: run
 
   call env_init()
-  call parse_command_line(namelist, run)
+  call parse_command_line(namelist, input_dir, run)
   if (run) then
-    call domain % initialize(namelist)
+    call domain % initialize(namelist, input_dir=input_dir)
     call domain % run()
     call domain % finalize()
   end if

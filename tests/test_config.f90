@@ -178,15 +178,20 @@ contains
 
 
   function sibling_paths() result(res)
-    ! Files beside the main namelist, such as spectrum.nml.
+    ! Files beside the main namelist, such as spectrum.nml, and in the
+    ! input directory, input/ by default.
     type(test_result) :: res
     type(config_type) :: config, here
 
     config = valid_config()
     here % path = 'main.nml'
+    here % input_dir = '../examples/seamount/input'
     res = test('sibling_paths', &
       config % sibling_path('spectrum.nml') == '../namelists/spectrum.nml' .and. &
-      here % sibling_path('exclude.nml') == 'exclude.nml')
+      here % sibling_path('exclude.nml') == 'exclude.nml' .and. &
+      config % input_path('umwm.grid') == 'input/umwm.grid' .and. &
+      here % input_path('umwm.gridtopo') == '../examples/seamount/input/umwm.gridtopo' .and. &
+      .not. config % steady)
   end function sibling_paths
 
 

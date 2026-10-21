@@ -3,14 +3,16 @@ wind and other parameters and no input files, ready to run.
 
 The cases are in the ``examples`` directory of the UMWM repository, of which
 the package includes a copy: one directory per case, with its ``main.nml``
-namelist (whose leading comments describe the case) and the ``spectrum.nml``
-points of its spectrum output, listed with a one-line description in
+namelist (whose leading comments describe the case), the ``spectrum.nml``
+points of its spectrum output, and the input files of the cases that have
+them in ``input/``, listed with a one-line description in
 ``examples/cases.txt``. The command-line tool runs them with ``umwm run
 --case NAME`` and the executable with ``umwm --case NAME``.
 
 >>> import umwm
 >>> [case.name for case in umwm.list_cases()]
-['fetch-limited', 'duration-limited', 'jonswap', 'wave-tank', 'titan-ontario-lacus', 'mars-jezero-lake']
+['fetch-limited', 'duration-limited', 'jonswap', 'wave-tank', 'titan-ontario-lacus', 'mars-jezero-lake',
+ 'seamount', 'eddy-field']
 >>> config = umwm.Config.from_case("jonswap")
 >>> domain = umwm.run(config, workdir="runs/jonswap")
 """
@@ -60,9 +62,25 @@ class Case:
         """The ``main.nml`` namelist of the case."""
         return self.directory / "main.nml"
 
+    @property
+    def input_dir(self) -> Path | None:
+        """The directory of the input files of the case, or None if it has none."""
+        path = self.directory / "input"
+        return path if path.is_dir() else None
+
     def config(self) -> Config:
         """The configuration of the case, with its spectrum output points."""
         return Config.from_namelist(self.namelist)
+
+    def domain(self, workdir=None, **kwargs):
+        """A :class:`~umwm.Domain` of the case in the run directory ``workdir``
+        (by default a directory named after the case), with the input
+        directory of the case linked as its ``input``; ``kwargs`` are passed
+        to the domain."""
+        from .domain import Domain
+
+        kwargs.setdefault("input_dir", self.input_dir)
+        return Domain(self.namelist, Path(workdir or self.name), **kwargs)
 
     def notes(self) -> str:
         """The description of the case in the leading comments of its namelist."""

@@ -7,7 +7,9 @@ import umwm
 from umwm import namelist
 from umwm.config import GROUPS
 
-CASES = ["fetch-limited", "duration-limited", "jonswap", "wave-tank", "titan-ontario-lacus", "mars-jezero-lake"]
+CASES = ["fetch-limited", "duration-limited", "jonswap", "wave-tank", "titan-ontario-lacus", "mars-jezero-lake",
+         "seamount", "eddy-field"]
+WITH_INPUTS = {"seamount": ["umwm.gridtopo"], "eddy-field": ["umwmin_2026-01-01_00:00:00.nc"]}
 
 # Variables that the model defaults to the same values as the package; the
 # model defaults the others to zero.
@@ -25,6 +27,10 @@ def test_list_cases(repo_root):
         assert case.description
         for name in ("main.nml", "spectrum.nml"):
             assert (case.directory / name).read_text() == (examples / case.name / name).read_text()
+        inputs = sorted(path.name for path in case.input_dir.iterdir()) if case.input_dir else []
+        assert inputs == WITH_INPUTS.get(case.name, [])
+        for name in inputs:
+            assert (case.input_dir / name).read_bytes() == (examples / case.name / "input" / name).read_bytes()
         assert case.notes().startswith(f"UMWM example case: {case.name}\n")
     assert {path.parent.name for path in examples.glob("*/main.nml")} == set(CASES)
 
@@ -42,8 +48,9 @@ def test_case_namelist_is_complete_and_valid(name):
         assert not missing, f"{name}: &{group_name.upper()} does not set {sorted(missing)}"
     config = case.config()
     config.validate()
-    assert not config.forcing_from_file
-    assert not (config.grid.gridfromfile or config.grid.topofromfile or config.domain.restart)
+    assert (config.forcing_from_file or config.grid.topofromfile) == (case.input_dir is not None)
+    assert config.forcing.steady or not config.forcing_from_file
+    assert not (config.grid.gridfromfile or config.domain.restart)
     assert config.output.outrst == 0
     assert config.spectrum_points and all(point.by_index for point in config.spectrum_points)
 
@@ -91,12 +98,25 @@ def test_namelist_text_keeps_comments():
     assert umwm.Config().namelist_text() == umwm.Config().to_namelist()
 
 
+@pytest.mark.parametrize("name", sorted(WITH_INPUTS))
+def test_case_inputs(library, tmp_path, name):
+    """The input files of a case are complete and match its grid; the steady
+    forcing of the eddy field needs only the file of the start time."""
+    case = umwm.get_case(name)
+    domain = case.domain(tmp_path / name)
+    assert domain.input_dir.resolve() == case.input_dir.resolve()
+    assert domain.input_problems() == []
+    if domain.config.forcing_from_file:
+        domain.config.forcing.steady = False
+        assert len(domain.missing_inputs()) == len(domain.config.step_times()) - 1
+
+
 @pytest.mark.parametrize("name", CASES)
 def test_case_runs(library, tmp_path, name):
     """Each case runs for one global time step from its namelist, which is
     copied with its comments into the run directory, and writes its output."""
     case = umwm.get_case(name)
-    with umwm.Domain(case.namelist, tmp_path / name, quiet=True) as domain:
+    with case.domain(tmp_path / name, quiet=True) as domain:
         domain.advance()
         swh = domain.grid_field("swh")
         assert np.all(np.isfinite(swh[1:-1, 1:-1])) and np.nanmin(swh) > 0

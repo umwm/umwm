@@ -156,10 +156,11 @@ You can read the full technical reference doc [here](DOCS.md).
 ### Example cases
 
 The [examples](examples/README.md) directory holds a gallery of idealized
-cases with constant wind and no input files: fetch-limited and
-duration-limited growth, the fetches of JONSWAP, a laboratory wave tank,
-and lakes on Titan and Mars with their planetary parameters. Select one
-with `--case`:
+cases with constant wind: fetch-limited and duration-limited growth, the
+fetches of JONSWAP, a laboratory wave tank, lakes on Titan and Mars with
+their planetary parameters, and waves over a seamount and through a field
+of ocean eddies, whose bathymetry and currents come with the cases. Select
+one with `--case`:
 
 ```
 ./umwm --list-cases

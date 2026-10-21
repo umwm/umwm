@@ -121,6 +121,7 @@ class ForcingConfig:
     air_density: bool = field(default=False, metadata=_doc("Air density input from file"))
     water_density: bool = field(default=False, metadata=_doc("Water density input from file"))
     seaice: bool = field(default=False, metadata=_doc("Sea ice fraction input from file"))
+    steady: bool = field(default=False, metadata=_doc("Forcing from file is steady: read at the start time only"))
 
 
 @dataclass
@@ -410,6 +411,12 @@ class Config:
             time = time + self.time_step
             times.append(time)
         return times
+
+    def forcing_times(self) -> list[datetime]:
+        """The times of the forcing input files the model reads: the start time
+        and the end of each global time step, or only the start time if the
+        forcing is steady."""
+        return [self.start_time] if self.forcing.steady else self.step_times(include_start=True)
 
     @property
     def forcing_from_file(self) -> bool:

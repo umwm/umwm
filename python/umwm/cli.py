@@ -22,6 +22,7 @@ from __future__ import annotations
 import argparse
 import os
 import shlex
+import shutil
 import sys
 from pathlib import Path
 
@@ -121,6 +122,11 @@ def command_init(args) -> int:
         (workdir / name).mkdir(parents=True, exist_ok=True)
     config.write(namelist, source=source)
     print(f"umwm: wrote {namelist}")
+    case_inputs = Path(source).parent / "input" if args.case else None
+    if case_inputs is not None and case_inputs.is_dir():
+        for path in sorted(case_inputs.iterdir()):
+            shutil.copy2(path, workdir / "input" / path.name)
+            print(f"umwm: copied {path.name} into {workdir / 'input'}")
     print(f"umwm: run directory {workdir} is ready; put input files in {workdir / 'input'} and run 'umwm run {workdir}'")
     return 0
 
@@ -192,7 +198,6 @@ def _run_case(args) -> int:
     """Run an example case in the run directory given as the target or with
     --workdir, by default a directory named after the case."""
     from .cases import get_case
-    from .domain import Domain
 
     case = get_case(args.case)
     if args.target and args.workdir:
@@ -200,7 +205,7 @@ def _run_case(args) -> int:
     workdir = Path(args.target or args.workdir or case.name)
     if workdir.is_file():
         raise ValueError(f"with --case, the target is the run directory, not a file: {workdir}")
-    domain = Domain(case.namelist, workdir.resolve(), input_dir=args.input_dir, log=args.log, quiet=args.quiet)
+    domain = case.domain(workdir.resolve(), input_dir=args.input_dir or case.input_dir, log=args.log, quiet=args.quiet)
     _apply_settings(domain.config, args.settings)
     if domain.rank == 0 and not args.check:
         print(f"umwm: running example case {case.name} in {domain.workdir}")

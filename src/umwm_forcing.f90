@@ -146,7 +146,8 @@ contains
 
 
   subroutine forcing_update(self, config, timestr, grid)
-    ! Advance forcing snapshots and load the next file-backed snapshot.
+    ! Advance forcing snapshots and load the next file-backed snapshot;
+    ! steady forcing keeps the snapshot of the start time.
     class(forcing_type), intent(inout) :: self
     type(config_type), intent(in) :: config
     character(len=19), intent(in) :: timestr
@@ -168,7 +169,7 @@ contains
 
     self % readfile = any([config % winds, config % currents, config % air_density, &
                            config % water_density, config % seaice])
-    if (self % readfile) call self % load(config, timestr, grid)
+    if (self % readfile .and. .not. config % steady) call self % load(config, timestr, grid)
 
   end subroutine forcing_update
 
@@ -187,7 +188,7 @@ contains
     readstr = timestr
     readstr(11:11) = '_'
 
-    nc_infile = 'input/umwmin_' // readstr // '.nc'
+    nc_infile = config % input_path('umwmin_' // readstr // '.nc')
     self % readfile = any([config % winds, config % currents, config % air_density, &
                            config % water_density, config % seaice])
 

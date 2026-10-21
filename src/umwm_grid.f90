@@ -237,22 +237,22 @@ subroutine define_grid(self, config)
 
   if (config % gridfromfile) then
 
-    stat = nf90_open('input/umwm.gridtopo', nf90_nowrite, ncid)
+    stat = nf90_open(config % input_path('umwm.gridtopo'), nf90_nowrite, ncid)
 
     if (stat /= 0) then
 
       if (nproc == 0) then
-        call raiseexception('warning', 'grid', &
-                            'input/umwm.gridtopo not found; trying input/umwm.grid')
+        call raiseexception('warning', 'grid', config % input_path('umwm.gridtopo') &
+                            // ' not found; trying ' // config % input_path('umwm.grid'))
       end if
 
-      stat = nf90_open('input/umwm.grid', nf90_nowrite, ncid)
+      stat = nf90_open(config % input_path('umwm.grid'), nf90_nowrite, ncid)
 
       if (stat /= 0) then
 
         if (nproc == 0) then
-          call raiseexception('abort', 'grid', &
-                              'input/umwm.grid not found. make sure input files are in place')
+          call raiseexception('abort', 'grid', config % input_path('umwm.grid') &
+                              // ' not found. make sure input files are in place')
         end if
 
         stop
@@ -385,7 +385,7 @@ subroutine define_grid(self, config)
 
   if (config % topofromfile) then ! read depth field from file
 
-    call grid_nc_check(nf90_open('input/umwm.gridtopo', nf90_nowrite, ncid))
+    call grid_nc_check(nf90_open(config % input_path('umwm.gridtopo'), nf90_nowrite, ncid))
     call grid_nc_check(nf90_inq_varid(ncid, 'z', varid))
     call grid_nc_check(nf90_get_var(ncid, varid, self % d_2d))
     call grid_nc_check(nf90_close(ncid))

@@ -14,6 +14,7 @@ module umwm_config
     logical :: read_ok = .false.
     character(len=256) :: path = ''
     character(len=256) :: read_error = ''
+    character(len=256) :: input_dir = 'input' ! directory of the input files
 
     logical :: isglobal = .false.
     integer :: mm = 0
@@ -63,6 +64,7 @@ module umwm_config
     logical :: air_density = .false.
     logical :: water_density = .false.
     logical :: seaice = .false.
+    logical :: steady = .false.
 
     real :: wspd0 = 0.
     real :: wdir0 = 0.
@@ -84,6 +86,7 @@ module umwm_config
     real, allocatable :: stokes_depths(:)
 
   contains
+    procedure :: input_path
     procedure :: sibling_path
     procedure :: validate
   end type config_type
@@ -123,7 +126,7 @@ contains
     if (stat == 0) call read_grid(unit, res%gridfromfile, res%delx, res%dely, &
       res%topofromfile, res%dpt, res%fillestuaries, res%filllakes, stat, iomsg)
     if (stat == 0) call read_forcing(unit, res%winds, res%currents, &
-      res%air_density, res%water_density, res%seaice, stat, iomsg)
+      res%air_density, res%water_density, res%seaice, res%steady, stat, iomsg)
     if (stat == 0) call read_forcing_constant(unit, res%wspd0, res%wdir0, &
       res%uc0, res%vc0, res%rhoa0, res%rhow0, res%fice0, res%fice_lth, &
       res%fice_uth, stat, iomsg)
@@ -205,13 +208,14 @@ contains
 
 
   subroutine read_forcing(unit, winds, currents, air_density, water_density, &
-                          seaice, stat, iomsg)
+                          seaice, steady, stat, iomsg)
     integer, intent(in) :: unit
     logical, intent(inout) :: winds, currents, air_density, water_density, seaice
+    logical, intent(inout) :: steady
     integer, intent(out) :: stat
     character(len=*), intent(out) :: iomsg
 
-    namelist /forcing/ winds, currents, air_density, water_density, seaice
+    namelist /forcing/ winds, currents, air_density, water_density, seaice, steady
 
     read(unit, nml=forcing, iostat=stat, iomsg=iomsg)
   end subroutine read_forcing
@@ -283,6 +287,16 @@ contains
       end if
     end do
   end subroutine set_stokes_depths
+
+
+  function input_path(self, name) result(res)
+    ! The path of the input file name, in the input directory of the run.
+    class(config_type), intent(in) :: self
+    character(len=*), intent(in) :: name
+    character(len=:), allocatable :: res
+
+    res = trim(self%input_dir) // '/' // name
+  end function input_path
 
 
   function sibling_path(self, name) result(res)

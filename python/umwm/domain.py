@@ -238,7 +238,7 @@ class Domain:
         if config.grid.filllakes and not (self.namelist_dir / "exclude.nml").is_file() and not config.exclude_points:
             missing.append(self.namelist_dir / "exclude.nml")
         if config.forcing_from_file:
-            for time in config.step_times(include_start=True):
+            for time in config.forcing_times():
                 path = self.input_dir / forcing_filename(time)
                 if not path.is_file():
                     missing.append(path)
@@ -282,7 +282,7 @@ class Domain:
             check(gridtopo if gridtopo.is_file() else self.input_dir / "umwm.grid", ["lon", "lat"], 2)
         variables = self._required_forcing_variables()
         if variables:
-            for time in config.step_times(include_start=True):
+            for time in config.forcing_times():
                 check(self.input_dir / forcing_filename(time), variables, 3)
         return problems
 
@@ -481,6 +481,8 @@ class Domain:
             constants.append(f"water density {constant.rhow0:g} kg/m^3")
         if not forcing.seaice:
             constants.append(f"sea ice fraction {constant.fice0:g}")
+        if sources and forcing.steady:
+            sources[-1] += " (steady)"
         lines.append("  forcing: " + ("from input files: " + ", ".join(sources) + "; " if sources else "")
                      + "constant " + ", ".join(constants))
 
