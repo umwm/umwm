@@ -10,16 +10,21 @@
 ! height growing from 2.7 m at 10 km to 10 m at 990 km, where the sea is
 ! close to the Pierson-Moskowitz full development.
 !
+! The frequencies span 0.04 to 14 Hz, to the gravity-capillary range: the
+! phase speed is smallest at k = sqrt(g*rhow0/sfct) = 380 rad/m, a 1.65 cm
+! wavelength, at 13.7 Hz. 52 bins keep the spacing of the default 37 bins
+! from 0.0313 to 2 Hz.
+!
 ! Spectra are written along the fetch, at the points of spectrum.nml.
 &DOMAIN
   isGlobal     = .true.                ! Periodic in x: a straight coast without ends
   mm           = 4                     ! Domain size in x
   nm           = 101                   ! Domain size in y: 1000 km, land rows at both ends
-  om           = 37                    ! Number of frequency bins
+  om           = 52                    ! Number of frequency bins
   pm           = 36                    ! Number of directions
-  fmin         = 0.0313                ! Lowest frequency bin [Hz]
-  fmax         = 2.0                   ! Highest frequency bin [Hz]
-  fprog        = 2.0                   ! Highest prognostic frequency bin [Hz]
+  fmin         = 0.04                  ! Lowest frequency bin [Hz]
+  fmax         = 14.0                  ! Highest frequency bin [Hz]
+  fprog        = 14.0                  ! Highest prognostic frequency bin [Hz]
   startTimeStr = '2026-01-01 00:00:00' ! Simulation start time
   stopTimeStr  = '2026-01-03 00:00:00' ! Simulation end time
   dtg          = 3600                  ! Global (I/O) time step [s]

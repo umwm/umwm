@@ -10,7 +10,7 @@ lists the cases.
 | --- | --- | --- | ---: |
 | [`fetch-limited`](fetch-limited/main.nml) | Growth with fetch to full development, 20 m/s wind | 1000 km at 10 km, 48 h | 25 s |
 | [`duration-limited`](duration-limited/main.nml) | Growth with time of a uniform sea, 20 m/s wind | one sea cell, 48 h | 1 s |
-| [`jonswap`](jonswap/main.nml) | Fetch-limited growth over the fetches of JONSWAP, 10 m/s wind | 100 km at 1 km, 12 h | 20 s |
+| [`jonswap`](jonswap/main.nml) | Fetch-limited growth over the fetches of JONSWAP, 10 m/s wind | 100 km at 1 km, 12 h | 15 s |
 | [`wave-tank`](wave-tank/main.nml) | Waves in a laboratory wind-wave tank, 10 m/s wind | 10 m at 20 cm, 2 min | 15 s |
 | [`titan-ontario-lacus`](titan-ontario-lacus/main.nml) | Methane-ethane waves on a lake of Titan, 1.5 m/s wind | 230 x 75 km at 5 km, 24 h | 60 s |
 | [`mars-jezero-lake`](mars-jezero-lake/main.nml) | Waves on the ancient lake of Jezero crater, Mars, 5 m/s wind | 40 x 40 km at 1 km, 12 h | 20 s |
@@ -80,6 +80,13 @@ with umwm.Domain(config, workdir="runs/jonswap15") as domain:
 
 ## Fetch-limited and duration-limited growth
 
+The ocean cases (`fetch-limited`, `duration-limited` and `jonswap`) model
+frequencies from 0.04 to 14 Hz in 52 bins, the frequency spacing of the
+default 37 bins from 0.0313 to 2 Hz, up to the smallest phase speed of sea
+water at 13.7 Hz (a 1.65 cm wavelength), in the gravity-capillary range. The
+longer high-frequency tail barely changes the wave heights, but lowers the
+drag coefficient at 20 m/s by about 5%, to 2.0 × 10<sup>-3</sup>.
+
 **`fetch-limited`**: a steady, uniform 20 m/s wind blows offshore from a
 straight coast over 1000 km of deep water. The domain is periodic in x
 (`isGlobal = .true.`), so the coast and the wave field are uniform along it,
@@ -98,10 +105,12 @@ Moskowitz, 1964). Spectra are written hourly at 50, 200, 500 and 990 km.
 without fetch limitation. The wave field is then the same everywhere, and
 the model reduces to the integration of the source functions at a point: the
 domain is a single sea cell, so large (10<sup>6</sup> km) that propagation out of
-it is negligible. The significant wave height grows to 6.1 m in 6 hours,
-9.6 m in 24 hours and 12 m in 48 hours, with the dominant period growing from
-11 s to 18 s. After about 30 hours of wind the sea is as developed as at
-1000 km fetch in the fetch-limited case. The spectrum is written hourly.
+it is negligible. The significant wave height grows to 6.0 m in 6 hours,
+9.6 m in 24 hours and 11.9 m in 48 hours, with the dominant period growing
+from 11 s to 18 s. After about 30 hours of wind the sea is as developed as at
+1000 km fetch in the fetch-limited case. The spectrum is written hourly;
+after 48 hours its peak, at 0.057 Hz, is three bins above the lowest
+frequency, so lower `fmin` to run the case longer.
 
 **`jonswap`**: fetch-limited growth over the fetches of the Joint North Sea
 Wave Project (JONSWAP; Hasselmann et al., 1973), with a 10 m/s wind over 100
@@ -148,7 +157,7 @@ PlanetWaves model (v1.0.0, [doi:10.5281/zenodo.18906357](https://doi.org/10.5281
 which give the air density from the ideal gas law and the properties of the
 liquids from the DIPPR database and, for Titan, the TitanPool model:
 
-| Parameter | Namelist | Earth (default) | Titan, Ontario Lacus | Mars, Jezero (0.5 bar) |
+| Parameter | Namelist | Earth, ocean cases | Titan, Ontario Lacus | Mars, Jezero (0.5 bar) |
 | --- | --- | ---: | ---: | ---: |
 | Gravity [m/s<sup>2</sup>] | `g` | 9.80665 | 1.352 | 3.71 |
 | Atmosphere | | | N<sub>2</sub>, 1.5 atm, 92 K | CO<sub>2</sub>, 0.5 bar, 288 K |
@@ -159,11 +168,11 @@ liquids from the DIPPR database and, for Titan, the TitanPool model:
 | Liquid kinematic viscosity [m<sup>2</sup>/s] | `nu_water` | 0.9e-6 | 8.084e-7 | 1.156e-6 |
 | Surface tension [N/m] | `sfct` | 0.07 | 0.032766 | 0.073836 |
 | Smallest phase speed [Hz, cm] | | 13.7, 1.65 | 3.3, 4.0 | 6.5, 2.8 |
-| Frequencies [Hz] | `fmin`, `fmax` | 0.0313 to 2 | 0.02 to 5 | 0.05 to 10 |
-| Frequency bins | `om` | 37 | 49 | 47 |
+| Frequencies [Hz] | `fmin`, `fmax` | 0.04 to 14 | 0.02 to 5 | 0.05 to 10 |
+| Frequency bins | `om` | 52 | 49 | 47 |
 
 The geometry of the lakes is idealized as rectangular basins of uniform depth.
-As in the wave tank, the frequencies extend through the gravity-capillary
+As in the Earth cases, the frequencies extend through the gravity-capillary
 range, past the smallest phase speed, at the wavenumber (g ρ<sub>w</sub>/σ)<sup>1/2</sup>;
 with the lower gravity of Titan and Mars, it lies at lower frequencies and
 longer wavelengths than on Earth. The number of bins keeps the frequency
