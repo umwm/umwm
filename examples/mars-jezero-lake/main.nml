@@ -16,19 +16,24 @@
 !
 ! For their high-pressure case of 2 bar, set rhoa0 = 3.6752 and
 ! nu_air = 3.9405e-6. After about 8 hours the waves are steady, with the
-! significant wave height growing from 0.22 m at 1 km to 0.58 m at 40 km and
-! dominant periods from 3.2 to 5.9 s.
+! significant wave height growing from 0.21 m at 1 km to 0.57 m at 40 km and
+! dominant periods from 3.2 to 5.6 s.
+!
+! The frequencies span 0.05 to 10 Hz, through the gravity-capillary range:
+! the phase speed is smallest at k = sqrt(g*rhow0/sfct) = 224 rad/m, a 2.8 cm
+! wavelength, at 6.5 Hz. 47 bins keep the spacing of the default 37 bins
+! from 0.0313 to 2 Hz.
 !
 ! Spectra are written along the lake, at the points of spectrum.nml.
 &DOMAIN
   isGlobal     = .false.               ! Global (.T.) or regional (.F.): a closed lake
   mm           = 42                    ! Domain size in x: 40 km of water
   nm           = 42                    ! Domain size in y: 40 km of water
-  om           = 37                    ! Number of frequency bins
+  om           = 47                    ! Number of frequency bins
   pm           = 36                    ! Number of directions
   fmin         = 0.05                  ! Lowest frequency bin [Hz]
-  fmax         = 4.0                   ! Highest frequency bin [Hz]
-  fprog        = 4.0                   ! Highest prognostic frequency bin [Hz]
+  fmax         = 10.0                  ! Highest frequency bin [Hz]
+  fprog        = 10.0                  ! Highest prognostic frequency bin [Hz]
   startTimeStr = '2026-01-01 00:00:00' ! Simulation start time
   stopTimeStr  = '2026-01-01 12:00:00' ! Simulation end time
   dtg          = 3600                  ! Global (I/O) time step [s]

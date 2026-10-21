@@ -158,15 +158,24 @@ liquids from the DIPPR database and, for Titan, the TitanPool model:
 | Liquid density [kg/m<sup>3</sup>] | `rhow0` | 1030 | 588.15 | 998.21 |
 | Liquid kinematic viscosity [m<sup>2</sup>/s] | `nu_water` | 0.9e-6 | 8.084e-7 | 1.156e-6 |
 | Surface tension [N/m] | `sfct` | 0.07 | 0.032766 | 0.073836 |
+| Smallest phase speed [Hz, cm] | | 13.7, 1.65 | 3.3, 4.0 | 6.5, 2.8 |
+| Frequencies [Hz] | `fmin`, `fmax` | 0.0313 to 2 | 0.02 to 5 | 0.05 to 10 |
+| Frequency bins | `om` | 37 | 49 | 47 |
 
 The geometry of the lakes is idealized as rectangular basins of uniform depth.
+As in the wave tank, the frequencies extend through the gravity-capillary
+range, past the smallest phase speed, at the wavenumber (g ρ<sub>w</sub>/σ)<sup>1/2</sup>;
+with the lower gravity of Titan and Mars, it lies at lower frequencies and
+longer wavelengths than on Earth. The number of bins keeps the frequency
+spacing of the default 37 bins from 0.0313 to 2 Hz, since the downshifting
+`Snl` moves energy by one or two bins and so depends on the spacing.
 
 **`titan-ontario-lacus`**: Ontario Lacus, the largest lake of Titan's south
 polar region, as a 230 × 75 km basin, 20 m deep, under a 1.5 m/s wind along
 its length, the average storm wind over Titan's lakes (Detelich et al.,
 2026). The low gravity and the dense atmosphere make the waves slow, long,
 and high for their wind. After a day, the significant wave height grows from
-0.24 m at 5 km to 0.48 m at 100 km, with dominant periods from 5.7 to 9.5 s,
+0.23 m at 5 km to 0.46 m at 100 km, with dominant periods from 5.6 to 10 s,
 in the range of 15 to 48 cm and 6 to 10.5 s found by Detelich et al. (2026)
 for such winds; farther down the lake the waves are limited by the duration
 of the wind rather than by the fetch, and are still growing slowly. Spectra
@@ -175,8 +184,8 @@ are written hourly at 25, 100 and 225 km.
 **`mars-jezero-lake`**: the lake that filled Jezero crater on early Mars, as a
 40 × 40 km basin, 100 m deep, under a 5 m/s wind, with the low-pressure (0.5
 bar) atmosphere of Schneck et al. (2026). After about 8 hours the waves are
-steady, with the significant wave height growing from 0.22 m at 1 km to
-0.58 m at 40 km and dominant periods from 3.2 to 5.9 s. Spectra are written
+steady, with the significant wave height growing from 0.21 m at 1 km to
+0.57 m at 40 km and dominant periods from 3.2 to 5.6 s. Spectra are written
 hourly at 10, 20 and 40 km. For the high-pressure (2 bar) atmosphere of
 Schneck et al. (2026):
 
