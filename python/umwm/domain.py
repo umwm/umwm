@@ -26,7 +26,7 @@ from . import output as _output
 from ._library import library
 from ._redirect import redirect_stdout_fd
 from .config import Config, ConfigError, namelist_path, parse_time
-from .forcing import FORCING_VARIABLES, forcing_filename, write_forcing, write_grid
+from .forcing import FORCING_VARIABLES, STEADY_FORCING_FILE, forcing_filename, forcing_files, write_forcing, write_grid
 
 __all__ = ["Domain", "run"]
 
@@ -238,8 +238,8 @@ class Domain:
         if config.grid.filllakes and not (self.namelist_dir / "exclude.nml").is_file() and not config.exclude_points:
             missing.append(self.namelist_dir / "exclude.nml")
         if config.forcing_from_file:
-            for time in config.forcing_times():
-                path = self.input_dir / forcing_filename(time)
+            for name in forcing_files(config):
+                path = self.input_dir / name
                 if not path.is_file():
                     missing.append(path)
         if config.domain.restart:
@@ -282,8 +282,8 @@ class Domain:
             check(gridtopo if gridtopo.is_file() else self.input_dir / "umwm.grid", ["lon", "lat"], 2)
         variables = self._required_forcing_variables()
         if variables:
-            for time in config.forcing_times():
-                check(self.input_dir / forcing_filename(time), variables, 3)
+            for name in forcing_files(config):
+                check(self.input_dir / name, variables, 3)
         return problems
 
     def check_inputs(self) -> None:
@@ -713,7 +713,7 @@ class Domain:
         if self.rank == 0:
             path = write_forcing(self.input_dir, time, **fields)
         else:
-            path = self.input_dir / forcing_filename(time)
+            path = self.input_dir / (STEADY_FORCING_FILE if fields.get("steady") else forcing_filename(time))
         self.barrier()
         return path
 

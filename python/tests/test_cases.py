@@ -9,7 +9,7 @@ from umwm.config import GROUPS
 
 CASES = ["fetch-limited", "duration-limited", "jonswap", "wave-tank", "titan-ontario-lacus", "mars-jezero-lake",
          "seamount", "eddy-field"]
-WITH_INPUTS = {"seamount": ["umwm.gridtopo"], "eddy-field": ["umwmin_2026-01-01_00:00:00.nc"]}
+WITH_INPUTS = {"seamount": ["umwm.gridtopo"], "eddy-field": ["umwmin.nc"]}
 
 # Variables that the model defaults to the same values as the package; the
 # model defaults the others to zero.
@@ -101,14 +101,14 @@ def test_namelist_text_keeps_comments():
 @pytest.mark.parametrize("name", sorted(WITH_INPUTS))
 def test_case_inputs(library, tmp_path, name):
     """The input files of a case are complete and match its grid; the steady
-    forcing of the eddy field needs only the file of the start time."""
+    forcing of the eddy field is one file, umwmin.nc."""
     case = umwm.get_case(name)
     domain = case.domain(tmp_path / name)
     assert domain.input_dir.resolve() == case.input_dir.resolve()
     assert domain.input_problems() == []
     if domain.config.forcing_from_file:
         domain.config.forcing.steady = False
-        assert len(domain.missing_inputs()) == len(domain.config.step_times()) - 1
+        assert len(domain.missing_inputs()) == len(domain.config.step_times())
 
 
 @pytest.mark.parametrize("name", CASES)

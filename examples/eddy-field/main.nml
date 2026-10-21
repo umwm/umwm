@@ -14,9 +14,9 @@
 ! changing by less than 0.2% in the last hour, while the waves at the far end
 ! are still growing slowly.
 !
-! The currents are read once from input/umwmin_2026-01-01_00:00:00.nc and
-! held constant (currents and steady in &FORCING); make_input.py writes the
-! file, and its parameters set the eddy field.
+! The currents are read once from input/umwmin.nc and held constant
+! (currents and steady in &FORCING); make_input.py writes the file, and its
+! parameters set the eddy field.
 !
 ! The frequencies span 0.04 to 14 Hz, to the gravity-capillary range: the
 ! phase speed is smallest at k = sqrt(g*rhow0/sfct) = 380 rad/m, a 1.65 cm
@@ -76,7 +76,7 @@
   air_density   = .F. ! Air density input from file
   water_density = .F. ! Water density input from file
   seaice        = .F. ! Sea ice fraction from file
-  steady        = .T. ! Forcing from file is steady: read at the start time only
+  steady        = .T. ! Forcing from file is steady: read once from input/umwmin.nc
 /
 &FORCING_CONSTANT
   wspd0         = 20        ! Wind speed [m/s]

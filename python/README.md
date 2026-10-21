@@ -151,9 +151,10 @@ Forcing is read, per global time step, from `input/umwmin_<time>.nc` when
 is set. `write_forcing` writes such a file from arrays of shape `(ny, nx)`,
 and `write_forcing_dataset` one file per time of an xarray dataset with
 dimensions `(time, y, x)`, for example from a reanalysis interpolated to the
-model grid. With `config.forcing.steady`, the forcing is read once, from the
-file of the start time, and held constant (`config.forcing_times()` lists
-the files the model reads):
+model grid. With `config.forcing.steady`, the forcing is read once, from
+`input/umwmin.nc`, and held constant; `write_forcing(..., steady=True)`
+writes that file, and `umwm.forcing_files(config)` lists the files the model
+reads:
 
 ```python
 for time in config.step_times():

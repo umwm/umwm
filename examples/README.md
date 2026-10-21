@@ -239,9 +239,9 @@ on, and downwind of the seamount, and at the same fetch away from it.
 km resolution, the waves cross 14 mesoscale eddies of Gaussian shape, 6
 rotating clockwise and 8 counterclockwise, with radii of 13 to 28 km and
 speeds up to 0.7 m/s (rms 0.3 m/s), which do not evolve in time. The
-currents are read once, from `input/umwmin_2026-01-01_00:00:00.nc`, and
-held constant (`currents` and `steady` in `&FORCING`). The currents refract
-and advect the waves: across the eddies, the significant wave height varies
+currents are read once, from `input/umwmin.nc`, and held constant
+(`currents` and `steady` in `&FORCING`). The currents refract and advect
+the waves: across the eddies, the significant wave height varies
 by -9% to +11% around its mean at each fetch (standard deviation 3%), in
 streaks downwind of the eddies, where it would be uniform without currents.
 After 15 hours the pattern is steady, while the waves at the far end are

@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Write the steady currents of the eddy-field case: input/umwmin_<start time>.nc.
+"""Write the steady currents of the eddy-field case: input/umwmin.nc.
 
 A synthetic field of mesoscale eddies, cyclones and anticyclones of
 Gaussian shape, placed at random on the grid of main.nml next to this
@@ -63,7 +63,7 @@ x = np.arange(config.domain.mm) * config.grid.delx
 y = np.arange(config.domain.nm) * config.grid.dely
 uc, vc, eddies = eddy_field(x, y, np.random.default_rng(SEED))
 speed = np.hypot(uc, vc)
-path = umwm.write_forcing(here / "input", config.start_time, uc=uc, vc=vc, x=x, y=y,
+path = umwm.write_forcing(here / "input", config.start_time, uc=uc, vc=vc, x=x, y=y, steady=True,
                           attrs={"description": f"{len(eddies)} Gaussian eddies, seed {SEED}"})
 print(f"wrote {path}: {len(eddies)} eddies ({sum(e[3] < 0 for e in eddies)} counterclockwise), "
       f"radii {min(e[2] for e in eddies) / 1e3:.0f} to {max(e[2] for e in eddies) / 1e3:.0f} km, "
