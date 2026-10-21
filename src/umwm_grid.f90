@@ -991,12 +991,19 @@ subroutine remap(self, config)
                          // 'its neighbors; use fewer processes'
 #endif
 
-  ! treat land points for halo-adjacent arrays:
+  ! treat land points for halo-adjacent arrays: neighbors on land, whose
+  ! true indices are beyond the sea points, and neighbors outside the tile
+  ! and its halo. Land is told by the true index because the halo of the
+  ! last tile of a global domain extends beyond im, over land indices.
   do i = self % istart, self % iend
-    if (self % is(i) < self % iistart .or. self % is(i) > self % iiend) self % is(i) = self % iistart - 1
-    if (self % in(i) < self % iistart .or. self % in(i) > self % iiend) self % in(i) = self % iistart - 1
-    if (self % ie(i) < self % iistart .or. self % ie(i) > self % iiend) self % ie(i) = self % iistart - 1
-    if (self % iw(i) < self % iistart .or. self % iw(i) > self % iiend) self % iw(i) = self % iistart - 1
+    if (self % iis(i) > self % im .or. self % is(i) < self % iistart .or. self % is(i) > self % iiend) &
+      self % is(i) = self % iistart - 1
+    if (self % iin(i) > self % im .or. self % in(i) < self % iistart .or. self % in(i) > self % iiend) &
+      self % in(i) = self % iistart - 1
+    if (self % iie(i) > self % im .or. self % ie(i) < self % iistart .or. self % ie(i) > self % iiend) &
+      self % ie(i) = self % iistart - 1
+    if (self % iiw(i) > self % im .or. self % iw(i) < self % iistart .or. self % iw(i) > self % iiend) &
+      self % iw(i) = self % iistart - 1
   end do
 
 #ifdef MPI
