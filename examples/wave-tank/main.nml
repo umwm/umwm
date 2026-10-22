@@ -1,0 +1,97 @@
+! UMWM example case: wave-tank
+!
+! Wind waves in a 10 m long laboratory wind-wave tank with 0.5 m of fresh
+! water, under a 10 m/s wind (the wind speed at 10 m, to which laboratory
+! winds are customarily extrapolated with the logarithmic profile), at 20 cm
+! resolution. As in the fetch-limited case, the domain is periodic in x, a
+! tank of unlimited width, and the wind blows toward +y from the upwind end
+! at y = 0; grid row n is at a fetch of (n-1)*dely. The waves are steady
+! along the tank within a minute, with the significant wave height growing
+! from 1 cm at 1 m to 2.9 cm at 9.8 m and the peak frequency falling from 3.5
+! to 1.8 Hz.
+!
+! The frequencies span 1 to 20 Hz, through the gravity-capillary range: the
+! phase speed is smallest at k = sqrt(g*rhow0/sfct) = 367 rad/m, a 1.7 cm
+! wavelength, at 13.5 Hz.
+!
+! In a tank the spectral peak lies far above the default cutoff of the
+! prognostic range, fc = 0.53*g/U (about 4 times the Pierson-Moskowitz peak
+! frequency, 0.52 Hz here), so fcut_fac = 10 raises it to 9.8 Hz; with the
+! default, the whole spectrum would be in the diagnostic equilibrium range.
+! The gridded output is written every global time step of 10 s (outgrid =
+! -1), as are the spectra along the tank (spectrum.nml).
+&DOMAIN
+  isGlobal     = .true.                ! Periodic in x: a tank of unlimited width
+  mm           = 4                     ! Domain size in x
+  nm           = 51                    ! Domain size in y: 10 m, land rows at both ends
+  om           = 37                    ! Number of frequency bins
+  pm           = 36                    ! Number of directions
+  fmin         = 1.0                   ! Lowest frequency bin [Hz]
+  fmax         = 20.0                  ! Highest frequency bin [Hz]
+  fprog        = 20.0                  ! Highest prognostic frequency bin [Hz]
+  startTimeStr = '2026-01-01 00:00:00' ! Simulation start time
+  stopTimeStr  = '2026-01-01 00:02:00' ! Simulation end time
+  dtg          = 10                    ! Global (I/O) time step [s]
+  restart      = .false.               ! Restart from file
+/
+&PHYSICS
+  g            = 9.80665 ! Gravitational acceleration [m/s^2]
+  nu_air       = 1.5E-5  ! Kinematic viscosity of air [m^2/s] (20 C)
+  nu_water     = 1.0E-6  ! Kinematic viscosity of water [m^2/s] (fresh water, 20 C)
+  sfct         = 0.0728  ! Surface tension [N/m] (fresh water, 20 C)
+  kappa        = 0.4     ! Von Karman constant
+  z            = 10.     ! Height of the input wind speed [m]: 10 m equivalent
+  gustiness    = 0.0     ! Random wind gustiness factor (should be between 0 and 0.2)
+  dmin         = 0.1     ! Depth limiter [m]
+  explim       = 0.9     ! Exponent limiter (0.69 ~ 100% growth)
+  sin_fac      = 0.11    ! Input factor from following winds
+  sin_diss1    = 0.10    ! Damping factor from opposing winds
+  sin_diss2    = 0.001   ! Damping factor from swell overrunning wind
+  sds_fac      = 42.     ! Breaking dissipation factor
+  sds_power    = 2.4     ! Saturation spectrum power
+  mss_fac      = 360     ! Mean-square-slope adjustment to Sds
+  snl_fac      = 5.0     ! Wave energy downshifting factor
+  sdt_fac      = 0.002   ! Dissipation due to turbulence factor
+  sbf_fac      = 0.003   ! Bottom friction coefficient [m/s]
+  sbp_fac      = 0.003   ! Bottom percolation coefficient [m/s]
+  fcut_fac     = 10.     ! Prognostic cutoff frequency factor, fc = fcut_fac*g/U: 9.8 Hz
+/
+&GRID
+  gridFromFile  = .F.   ! Set to .T. if lon/lat fields are input from file
+  delx          = 0.2   ! Grid spacing in x [m] if gridFromFile = .F.
+  dely          = 0.2   ! Grid spacing in y [m] if gridFromFile = .F.
+  topoFromFile  = .F.   ! Set to .T. to input bathymetry from file
+  dpt           = 0.5   ! Constant water depth [m] if topoFromFile = .F.
+  fillEstuaries = .F.   ! Set to .T. to fill cells with 3 land neighbours
+  fillLakes     = .F.   ! Set to .T. to fill user chosen seas/lakes
+/
+&FORCING
+  winds         = .F. ! Wind input from file
+  currents      = .F. ! Currents input from file
+  air_density   = .F. ! Air density input from file
+  water_density = .F. ! Water density input from file
+  seaice        = .F. ! Sea ice fraction from file
+  steady        = .F. ! Forcing from file is steady: read once from input/umwmin.nc
+/
+&FORCING_CONSTANT
+  wspd0         = 10        ! Wind speed [m/s]
+  wdir0         = 1.5707963 ! Wind direction [rad]: toward +y, along the tank
+  uc0           = 0         ! x-component ocean current [m/s]
+  vc0           = 0         ! y-component ocean current [m/s]
+  rhoa0         = 1.2       ! Air density [kg/m^3]
+  rhow0         = 998       ! Water density [kg/m^3] (fresh water)
+  fice0         = 0.0       ! Sea ice fraction []
+  fice_lth      = 0.30      ! Sea ice fraction - lower threshold for attenuation
+  fice_uth      = 0.75      ! Sea ice fraction - upper threshold for attenuation
+/
+&OUTPUT
+  outgrid       = -1  ! Gridded output interval  [hours]: every global time step
+  outspec       = -1  ! Spectrum output interval [hours]: every global time step
+  outrst        = 0   ! Restart output interval  [hours]
+  xpl           = 2   ! Grid cell in x for stdout (screen)
+  ypl           = 26  ! Grid cell in y for stdout (screen): 5 m fetch
+  stokes        = .t. ! Output Stokes drift velocity fields
+/
+&STOKES
+  depths        = 0.005 0.01 0.02 0.03 0.05 0.1 0.2 0.3 0.5
+/

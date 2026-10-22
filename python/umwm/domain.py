@@ -26,7 +26,7 @@ from . import output as _output
 from ._library import library
 from ._redirect import redirect_stdout_fd
 from .config import Config, ConfigError, namelist_path, parse_time
-from .forcing import FORCING_VARIABLES, forcing_filename, write_forcing, write_grid
+from .forcing import FORCING_VARIABLES, forcing_filename, forcing_files, write_forcing, write_grid
 
 __all__ = ["Domain", "run"]
 
@@ -176,12 +176,12 @@ class Domain:
 
         A namelist file the configuration was read from is left untouched
         when the configuration still matches it, so that its comments are
-        preserved. Only the root process writes; all processes wait for it.
+        preserved, and is copied with them into another run directory. Only
+        the root process writes; all processes wait for it.
         """
         if self.rank == 0:
-            main_text = self.config.to_namelist()
             if not self._matches_file(self.namelist_path, lambda text: Config.from_namelist_text(text) == self._bare_config()):
-                self.namelist_path.write_text(main_text, encoding="utf-8")
+                self.namelist_path.write_text(self.config.namelist_text(self._source_namelist), encoding="utf-8")
             if self.config.spectrum_points:
                 path = self.namelist_dir / "spectrum.nml"
                 text = self.config.spectrum_points_text()
@@ -238,8 +238,8 @@ class Domain:
         if config.grid.filllakes and not (self.namelist_dir / "exclude.nml").is_file() and not config.exclude_points:
             missing.append(self.namelist_dir / "exclude.nml")
         if config.forcing_from_file:
-            for time in config.step_times(include_start=True):
-                path = self.input_dir / forcing_filename(time)
+            for name in forcing_files(config):
+                path = self.input_dir / name
                 if not path.is_file():
                     missing.append(path)
         if config.domain.restart:
@@ -282,8 +282,8 @@ class Domain:
             check(gridtopo if gridtopo.is_file() else self.input_dir / "umwm.grid", ["lon", "lat"], 2)
         variables = self._required_forcing_variables()
         if variables:
-            for time in config.step_times(include_start=True):
-                check(self.input_dir / forcing_filename(time), variables, 3)
+            for name in forcing_files(config):
+                check(self.input_dir / name, variables, 3)
         return problems
 
     def check_inputs(self) -> None:
@@ -481,6 +481,8 @@ class Domain:
             constants.append(f"water density {constant.rhow0:g} kg/m^3")
         if not forcing.seaice:
             constants.append(f"sea ice fraction {constant.fice0:g}")
+        if sources and forcing.steady:
+            sources[-1] += " (steady)"
         lines.append("  forcing: " + ("from input files: " + ", ".join(sources) + "; " if sources else "")
                      + "constant " + ", ".join(constants))
 
@@ -711,7 +713,7 @@ class Domain:
         if self.rank == 0:
             path = write_forcing(self.input_dir, time, **fields)
         else:
-            path = self.input_dir / forcing_filename(time)
+            path = self.input_dir / forcing_filename(time, fields.get("steady", False))
         self.barrier()
         return path
 

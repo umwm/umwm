@@ -237,22 +237,22 @@ subroutine define_grid(self, config)
 
   if (config % gridfromfile) then
 
-    stat = nf90_open('input/umwm.gridtopo', nf90_nowrite, ncid)
+    stat = nf90_open(config % input_path('umwm.gridtopo'), nf90_nowrite, ncid)
 
     if (stat /= 0) then
 
       if (nproc == 0) then
-        call raiseexception('warning', 'grid', &
-                            'input/umwm.gridtopo not found; trying input/umwm.grid')
+        call raiseexception('warning', 'grid', config % input_path('umwm.gridtopo') &
+                            // ' not found; trying ' // config % input_path('umwm.grid'))
       end if
 
-      stat = nf90_open('input/umwm.grid', nf90_nowrite, ncid)
+      stat = nf90_open(config % input_path('umwm.grid'), nf90_nowrite, ncid)
 
       if (stat /= 0) then
 
         if (nproc == 0) then
-          call raiseexception('abort', 'grid', &
-                              'input/umwm.grid not found. make sure input files are in place')
+          call raiseexception('abort', 'grid', config % input_path('umwm.grid') &
+                              // ' not found. make sure input files are in place')
         end if
 
         stop
@@ -385,7 +385,7 @@ subroutine define_grid(self, config)
 
   if (config % topofromfile) then ! read depth field from file
 
-    call grid_nc_check(nf90_open('input/umwm.gridtopo', nf90_nowrite, ncid))
+    call grid_nc_check(nf90_open(config % input_path('umwm.gridtopo'), nf90_nowrite, ncid))
     call grid_nc_check(nf90_inq_varid(ncid, 'z', varid))
     call grid_nc_check(nf90_get_var(ncid, varid, self % d_2d))
     call grid_nc_check(nf90_close(ncid))
@@ -405,13 +405,16 @@ end subroutine define_grid
 subroutine define_masks(self, config)
 ! Defines landmasks and optionally removes one-cell wide estuaries and lakes.
 
+  use umwm_env, only: nproc
+  use umwm_util, only: raiseexception
+
   class(grid_type), intent(inout) :: self
   type(config_type), intent(in) :: config
   logical :: iterate
 
   integer :: m, n
   integer :: exm, exn
-  integer :: cnt, fillcount
+  integer :: cnt, fillcount, stat
 
   ! set masks:
   if (config % topofromfile) then
@@ -472,7 +475,13 @@ subroutine define_masks(self, config)
 
     ! discard lakes or unwanted closed basin from the domain:
     if (config % filllakes) then
-      open(unit=24, file='namelists/exclude.nml')
+      open(unit=24, file=config % sibling_path('exclude.nml'), status='old', &
+           action='read', iostat=stat)
+      if (stat /= 0) then
+        if (nproc == 0) call raiseexception('abort', 'grid', config % sibling_path('exclude.nml') &
+          // ' not found; it lists the cells of the lakes to fill with fillLakes')
+        stop 1
+      end if
       do
         read(unit=24, fmt=*, end=107) exm, exn
         fillcount = 0
@@ -991,12 +1000,19 @@ subroutine remap(self, config)
                          // 'its neighbors; use fewer processes'
 #endif
 
-  ! treat land points for halo-adjacent arrays:
+  ! treat land points for halo-adjacent arrays: neighbors on land, whose
+  ! true indices are beyond the sea points, and neighbors outside the tile
+  ! and its halo. Land is told by the true index because the halo of the
+  ! last tile of a global domain extends beyond im, over land indices.
   do i = self % istart, self % iend
-    if (self % is(i) < self % iistart .or. self % is(i) > self % iiend) self % is(i) = self % iistart - 1
-    if (self % in(i) < self % iistart .or. self % in(i) > self % iiend) self % in(i) = self % iistart - 1
-    if (self % ie(i) < self % iistart .or. self % ie(i) > self % iiend) self % ie(i) = self % iistart - 1
-    if (self % iw(i) < self % iistart .or. self % iw(i) > self % iiend) self % iw(i) = self % iistart - 1
+    if (self % iis(i) > self % im .or. self % is(i) < self % iistart .or. self % is(i) > self % iiend) &
+      self % is(i) = self % iistart - 1
+    if (self % iin(i) > self % im .or. self % in(i) < self % iistart .or. self % in(i) > self % iiend) &
+      self % in(i) = self % iistart - 1
+    if (self % iie(i) > self % im .or. self % ie(i) < self % iistart .or. self % ie(i) > self % iiend) &
+      self % ie(i) = self % iistart - 1
+    if (self % iiw(i) > self % im .or. self % iw(i) < self % iistart .or. self % iw(i) > self % iiend) &
+      self % iw(i) = self % iistart - 1
   end do
 
 #ifdef MPI

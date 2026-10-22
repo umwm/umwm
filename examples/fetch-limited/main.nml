@@ -1,0 +1,93 @@
+! UMWM example case: fetch-limited
+!
+! Fetch-limited growth under a steady, uniform 20 m/s wind blowing offshore
+! from a straight coast over 1000 km of deep water, at 10 km resolution.
+! The domain is periodic in x (isGlobal = .true.), so the coast and the wave
+! field are uniform along it and there are no lateral boundaries. The wind
+! blows toward +y (wdir0 = pi/2), from the land row at y = 0, the coast, to
+! the land row at y = 1000 km; grid row n is at a fetch of (n-1)*dely.
+! After about 36 hours the wave field is steady, with the significant wave
+! height growing from 2.7 m at 10 km to 10 m at 990 km, where the sea is
+! close to the Pierson-Moskowitz full development.
+!
+! The frequencies span 0.04 to 14 Hz, to the gravity-capillary range: the
+! phase speed is smallest at k = sqrt(g*rhow0/sfct) = 380 rad/m, a 1.65 cm
+! wavelength, at 13.7 Hz. 52 bins keep the spacing of the default 37 bins
+! from 0.0313 to 2 Hz.
+!
+! Spectra are written along the fetch, at the points of spectrum.nml.
+&DOMAIN
+  isGlobal     = .true.                ! Periodic in x: a straight coast without ends
+  mm           = 4                     ! Domain size in x
+  nm           = 101                   ! Domain size in y: 1000 km, land rows at both ends
+  om           = 52                    ! Number of frequency bins
+  pm           = 36                    ! Number of directions
+  fmin         = 0.04                  ! Lowest frequency bin [Hz]
+  fmax         = 14.0                  ! Highest frequency bin [Hz]
+  fprog        = 14.0                  ! Highest prognostic frequency bin [Hz]
+  startTimeStr = '2026-01-01 00:00:00' ! Simulation start time
+  stopTimeStr  = '2026-01-03 00:00:00' ! Simulation end time
+  dtg          = 3600                  ! Global (I/O) time step [s]
+  restart      = .false.               ! Restart from file
+/
+&PHYSICS
+  g            = 9.80665 ! Gravitational acceleration [m/s^2]
+  nu_air       = 1.56E-5 ! Kinematic viscosity of air [m^2/s]
+  nu_water     = 0.90E-6 ! Kinematic viscosity of water [m^2/s]
+  sfct         = 0.07    ! Surface tension [N/m]
+  kappa        = 0.4     ! Von Karman constant
+  z            = 10.     ! Height of the input wind speed [m]
+  gustiness    = 0.0     ! Random wind gustiness factor (should be between 0 and 0.2)
+  dmin         = 10.     ! Depth limiter [m]
+  explim       = 0.9     ! Exponent limiter (0.69 ~ 100% growth)
+  sin_fac      = 0.11    ! Input factor from following winds
+  sin_diss1    = 0.10    ! Damping factor from opposing winds
+  sin_diss2    = 0.001   ! Damping factor from swell overrunning wind
+  sds_fac      = 42.     ! Breaking dissipation factor
+  sds_power    = 2.4     ! Saturation spectrum power
+  mss_fac      = 360     ! Mean-square-slope adjustment to Sds
+  snl_fac      = 5.0     ! Wave energy downshifting factor
+  sdt_fac      = 0.002   ! Dissipation due to turbulence factor
+  sbf_fac      = 0.003   ! Bottom friction coefficient [m/s]
+  sbp_fac      = 0.003   ! Bottom percolation coefficient [m/s]
+  fcut_fac     = 0.53    ! Prognostic cutoff frequency factor, fc = fcut_fac*g/U
+/
+&GRID
+  gridFromFile  = .F.   ! Set to .T. if lon/lat fields are input from file
+  delx          = 10000 ! Grid spacing in x [m] if gridFromFile = .F.
+  dely          = 10000 ! Grid spacing in y [m] if gridFromFile = .F.
+  topoFromFile  = .F.   ! Set to .T. to input bathymetry from file
+  dpt           = 1000  ! Constant water depth [m] if topoFromFile = .F.
+  fillEstuaries = .F.   ! Set to .T. to fill cells with 3 land neighbours
+  fillLakes     = .F.   ! Set to .T. to fill user chosen seas/lakes
+/
+&FORCING
+  winds         = .F. ! Wind input from file
+  currents      = .F. ! Currents input from file
+  air_density   = .F. ! Air density input from file
+  water_density = .F. ! Water density input from file
+  seaice        = .F. ! Sea ice fraction from file
+  steady        = .F. ! Forcing from file is steady: read once from input/umwmin.nc
+/
+&FORCING_CONSTANT
+  wspd0         = 20        ! Wind speed [m/s]
+  wdir0         = 1.5707963 ! Wind direction [rad]: toward +y, offshore
+  uc0           = 0         ! x-component ocean current [m/s]
+  vc0           = 0         ! y-component ocean current [m/s]
+  rhoa0         = 1.2       ! Air density [kg/m^3]
+  rhow0         = 1030      ! Water density [kg/m^3]
+  fice0         = 0.0       ! Sea ice fraction []
+  fice_lth      = 0.30      ! Sea ice fraction - lower threshold for attenuation
+  fice_uth      = 0.75      ! Sea ice fraction - upper threshold for attenuation
+/
+&OUTPUT
+  outgrid       = 1   ! Gridded output interval  [hours]
+  outspec       = 1   ! Spectrum output interval [hours]
+  outrst        = 0   ! Restart output interval  [hours]
+  xpl           = 2   ! Grid cell in x for stdout (screen)
+  ypl           = 51  ! Grid cell in y for stdout (screen): 500 km fetch
+  stokes        = .t. ! Output Stokes drift velocity fields
+/
+&STOKES
+  depths        = 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0 1.2 1.4 1.6 1.8 2.0 2.4 2.8 3.2 3.6 4.0 4.5 5.0 6 7 8 9 10 12 14 16 18 20 24 28 32 40 50 60 70 80 90 100
+/

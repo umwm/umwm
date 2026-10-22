@@ -119,6 +119,7 @@ def test_spectrum_points_validation():
     ({"output.xpl": 50}, "xpl and ypl"),
     ({"forcing_constant.fice_lth": 0.9}, "fice_lth"),
     ({"stokes.depths": [-1.0]}, "Stokes depth"),
+    ({"physics.fcut_fac": 0.0}, "fcut_fac"),
 ])
 def test_validate_errors(change, message):
     config = Config().update(change)

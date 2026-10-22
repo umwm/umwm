@@ -1,4 +1,5 @@
 import json
+import re
 
 import numpy as np
 import pytest
@@ -152,3 +153,95 @@ def test_output_plot(library, tmp_path, capsys):
     assert image.is_file() and image.stat().st_size > 1000
     assert main(["output", str(workdir), "--plot", "u_stokes", "--level", "2", "--time", "0", "--save", str(image)]) == 0
     assert main(["output", str(workdir), "--plot", "nope", "--save", str(image)]) == 1
+
+
+def test_cases(capsys):
+    assert main(["cases"]) == 0
+    out = capsys.readouterr().out
+    assert all(name in out for name in ("fetch-limited", "wave-tank", "titan-ontario-lacus", "mars-jezero-lake"))
+    assert main(["cases", "titan"]) == 0
+    out = capsys.readouterr().out
+    assert out.startswith("UMWM example case: titan-ontario-lacus") and "umwm run --case titan-ontario-lacus" in out
+    assert main(["cases", "venus"]) == 1
+    assert "unknown case 'venus'" in capsys.readouterr().err
+
+
+def test_config_case(tmp_path, capsys):
+    assert main(["config", "--case", "jonswap", "--check"]) == 0
+    assert "valid" in capsys.readouterr().out
+    assert main(["config", "--case", "mars", "--diff", "defaults"]) == 0
+    out = capsys.readouterr().out
+    assert "physics.g" in out and "3.71" in out and "9.80665" in out
+    assert main(["config", "--case", "wave", "-o", str(tmp_path / "main.nml"), "-s", "forcing_constant.wspd0=5"]) == 0
+    config = umwm.Config.from_namelist(tmp_path / "main.nml")
+    assert config.physics.fcut_fac == 10.0 and config.forcing_constant.wspd0 == 5.0
+    assert main(["config", str(tmp_path / "main.nml"), "--case", "jonswap"]) == 1
+    assert "either a namelist or --case" in capsys.readouterr().err
+
+
+def test_init_case(tmp_path, capsys, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    case = umwm.get_case("wave-tank")
+    assert main(["init", "--case", "wave"]) == 0
+    assert (tmp_path / "wave-tank" / "namelists" / "main.nml").read_text() == case.namelist.read_text()
+    assert umwm.Config.from_namelist(tmp_path / "wave-tank").spectrum_points == case.config().spectrum_points
+    assert main(["init", "runs/tank", "--case", "wave", "-s", "forcing_constant.wspd0=5"]) == 0
+    config = umwm.Config.from_namelist(tmp_path / "runs" / "tank")
+    assert config.forcing_constant.wspd0 == 5.0 and config.physics.fcut_fac == 10.0
+    assert main(["init", "--case", "wave", "--from", str(case.namelist)]) == 1
+
+
+def test_run_case(library, tmp_path, capsys, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    assert main(["run", "--case", "duration", "-s", "domain.stoptimestr=2026-01-01 03:00:00", "-q"]) == 0
+    out = capsys.readouterr().out
+    workdir = tmp_path / "duration-limited"
+    assert f"running example case duration-limited in {workdir}" in out and "run finished at 2026-01-01 03:00:00" in out
+    assert len(umwm.output_files(workdir)) == 4
+    assert set(umwm.spectrum_output_files(workdir)) == {"sea"}
+    assert main(["run", "--case", "duration", "-w", "other", "--check"]) == 0
+    assert "UMWM domain in" in capsys.readouterr().out
+    assert main(["run", "--case", "duration", "a", "-w", "b"]) == 1
+    assert main(["run", "--case", "duration", str(workdir / "namelists" / "main.nml")]) == 1
+    assert "not a file" in capsys.readouterr().err
+
+
+def test_case_with_input_files(library, tmp_path, capsys, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    case = umwm.get_case("seamount")
+    assert main(["init", "--case", "seamount"]) == 0
+    copied = tmp_path / "seamount" / "input" / "umwm.gridtopo"
+    assert copied.is_file() and not copied.is_symlink()
+    assert copied.read_bytes() == (case.input_dir / "umwm.gridtopo").read_bytes()
+    assert "copied umwm.gridtopo" in capsys.readouterr().out
+    settings = ["-s", "domain.stoptimestr=2026-01-01 01:00:00", "-q"]
+    assert main(["run", "--case", "eddy", "runs/eddies", *settings]) == 0
+    eddies = tmp_path / "runs" / "eddies"
+    forcing = eddies / "input" / "umwmin.nc"
+    assert not (eddies / "input").is_symlink() and not forcing.is_symlink()
+    assert forcing.read_bytes() == (umwm.get_case("eddy-field").input_dir / "umwmin.nc").read_bytes()
+    assert main(["run", "--case", "eddy", "runs/eddies", *settings]) == 0  # again, with the inputs in place
+    assert len(umwm.output_files(eddies)) == 2
+    capsys.readouterr()
+
+    # The run directory of 'umwm init --case' runs with 'umwm run --case'
+    # while it holds the case, but its edits are not replaced without --force.
+    assert main(["run", "--case", "seamount", "--check"]) == 0
+    namelist = tmp_path / "seamount" / "namelists" / "main.nml"
+    namelist.write_text(re.sub(r"wspd0\s*= 20", "wspd0 = 15", namelist.read_text()))
+    assert main(["run", "--case", "seamount", "--check"]) == 1
+    assert "holds another configuration than the case seamount" in capsys.readouterr().err
+    assert umwm.Config.from_namelist(namelist).forcing_constant.wspd0 == 15.0
+    assert main(["run", "--case", "seamount", "--force", *settings]) == 0
+    assert umwm.Config.from_namelist(namelist).forcing_constant.wspd0 == 20.0
+    copied.write_bytes(b"edited")
+    assert main(["run", "--case", "seamount", "--check", *settings]) == 1
+    assert "differs from the input file umwm.gridtopo" in capsys.readouterr().err
+    assert copied.read_bytes() == b"edited"
+    assert main(["init", "--case", "seamount", "--force"]) == 0
+    assert copied.read_bytes() == (case.input_dir / "umwm.gridtopo").read_bytes()
+
+    # The input directory of the case is not changed by a run of it.
+    assert main(["run", "--case", "seamount", "runs/linked", "-i", str(case.input_dir), "--check"]) == 0
+    assert main(["init", "--case", "seamount", "runs/linked", "--force"]) == 0
+    assert sorted(path.name for path in case.input_dir.iterdir()) == ["umwm.gridtopo"]
