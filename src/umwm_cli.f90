@@ -3,8 +3,12 @@ module umwm_cli
   ! to run, given as a path or as the name of an example case of the
   ! examples gallery, and checks the run directory.
 
+  use iso_c_binding, only: c_associated, c_char, c_null_char, c_ptr
   use iso_fortran_env, only: output_unit
   use umwm_env, only: nproc
+#ifdef MPI
+  use mpi
+#endif
 
   implicit none
 
@@ -19,6 +23,14 @@ module umwm_cli
     character(64) :: name = ''
     character(256) :: description = ''
   end type case_type
+
+  interface
+    type(c_ptr) function c_realpath(path, resolved) bind(c, name='realpath')
+      import :: c_char, c_ptr
+      character(kind=c_char), intent(in) :: path(*)
+      character(kind=c_char), intent(out) :: resolved(*)
+    end function c_realpath
+  end interface
 
 contains
 
@@ -133,9 +145,9 @@ contains
 
   function examples_dir() result(dir)
     ! The directory of the example cases: $UMWM_EXAMPLES if set, otherwise
-    ! examples/ in the current directory or next to the executable.
+    ! examples/ in the current directory or next to the executable, with
+    ! symbolic links resolved.
     character(:), allocatable :: dir
-    character(:), allocatable :: program_path
     integer :: length, stat
 
     call get_environment_variable('UMWM_EXAMPLES', length=length, status=stat)
@@ -150,14 +162,77 @@ contains
     dir = 'examples'
     if (file_exists(dir // '/' // cases_index)) return
 
-    program_path = get_argument(0)
-    dir = program_path(1:index(program_path, '/', back=.true.)) // 'examples'
-    if (dir /= 'examples' .and. file_exists(dir // '/' // cases_index)) return
+    dir = executable_dir()
+    if (len(dir) > 0) then
+      dir = dir // 'examples'
+      if (file_exists(dir // '/' // cases_index)) return
+    end if
 
     call fail('example cases not found; run from the UMWM directory, ' &
               // 'or set UMWM_EXAMPLES to the examples directory')
 
   end function examples_dir
+
+
+  function executable_dir() result(dir)
+    ! The directory of the executable, ending with /, with symbolic links
+    ! resolved: that of the program path it was started with, or of the
+    ! first directory in PATH that holds a program started by its name.
+    ! Empty if the program is not found.
+    character(:), allocatable :: dir
+    character(:), allocatable :: path, search, entry
+    integer :: length, stat, start, colon
+
+    dir = ''
+    path = get_argument(0)
+    if (index(path, '/') == 0) then
+      call get_environment_variable('PATH', length=length, status=stat)
+      if (stat /= 0 .or. length == 0) return
+      allocate(character(length) :: search)
+      call get_environment_variable('PATH', value=search)
+      start = 1
+      do
+        colon = index(search(start:), ':')
+        if (colon == 0) then
+          entry = search(start:)
+        else
+          entry = search(start:start+colon-2)
+        end if
+        if (len(entry) == 0) entry = '.'
+        if (file_exists(entry // '/' // path)) exit
+        if (colon == 0) return
+        start = start + colon
+      end do
+      path = entry // '/' // path
+    end if
+    path = real_path(path)
+    dir = path(1:index(path, '/', back=.true.))
+
+  end function executable_dir
+
+
+  function real_path(path) result(res)
+    ! The absolute path with symbolic links resolved, by the POSIX realpath,
+    ! or path itself if it cannot be resolved.
+    character(*), intent(in) :: path
+    character(:), allocatable :: res
+    character(kind=c_char) :: buffer(4096)
+    integer :: n
+
+    if (.not. c_associated(c_realpath(path // c_null_char, buffer))) then
+      res = path
+      return
+    end if
+    n = 0
+    do while (buffer(n+1) /= c_null_char)
+      n = n + 1
+    end do
+    allocate(character(n) :: res)
+    do n = 1, len(res)
+      res(n:n) = buffer(n)
+    end do
+
+  end function real_path
 
 
   subroutine read_cases(dir, cases, ncases)
@@ -230,14 +305,23 @@ contains
 
 
   subroutine check_output_directory()
-    ! Stops with an error if the output directory cannot be written to.
+    ! Stops with an error if the output directory cannot be written to. The
+    ! root process tests it and tells the others, so that all of them stop.
     integer :: unit, stat
+#ifdef MPI
+    integer :: ierr
+#endif
 
-    if (nproc /= 0) return
-    open(newunit=unit, file='output/.umwm_write_test', status='replace', iostat=stat)
+    stat = 0
+    if (nproc == 0) then
+      open(newunit=unit, file='output/.umwm_write_test', status='replace', iostat=stat)
+      if (stat == 0) close(unit, status='delete')
+    end if
+#ifdef MPI
+    call mpi_bcast(stat, 1, MPI_INTEGER, 0, MPI_COMM_WORLD, ierr)
+#endif
     if (stat /= 0) call fail('cannot write to output/ in the current directory; ' &
                              // 'create the run directory with mkdir -p output restart')
-    close(unit, status='delete')
 
   end subroutine check_output_directory
 

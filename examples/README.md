@@ -37,8 +37,8 @@ mpiexec -n 2 ./umwm --case jonswap   # in parallel
 Each case writes its output to `output/` of the current directory, over
 the output of any earlier run, so run each case in its own directory to
 keep their output apart. The executable finds the cases in `examples/` of
-the current directory or of the directory of the executable, or in
-`$UMWM_EXAMPLES`:
+the current directory or of the directory of the executable, also when it
+is started through `PATH` or a symbolic link, or in `$UMWM_EXAMPLES`:
 
 ```
 mkdir -p runs/jonswap/output && cd runs/jonswap
