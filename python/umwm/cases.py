@@ -1,5 +1,6 @@
 """The example cases: idealized configurations of the model, with constant
-wind and other parameters and no input files, ready to run.
+wind and other parameters, ready to run. Most need no input files; the
+others bring theirs, such as a bathymetry or steady currents.
 
 The cases are in the ``examples`` directory of the UMWM repository, of which
 the package includes a copy: one directory per case, with its ``main.nml``
@@ -35,8 +36,10 @@ INDEX = "cases.txt"
 
 def examples_dir() -> Path:
     """The directory of the example cases: ``$UMWM_EXAMPLES`` if set, else the
-    copy included in the package, or the ``examples`` directory of the
-    repository for a package installed from it in editable mode."""
+    ``examples`` directory of the current directory, such as the repository,
+    as for the ``umwm`` executable, else the copy included in the package, or
+    the ``examples`` directory of the repository for a package installed from
+    it in editable mode."""
     variable = os.environ.get("UMWM_EXAMPLES")
     if variable:
         path = Path(variable).expanduser()
@@ -44,9 +47,9 @@ def examples_dir() -> Path:
             raise FileNotFoundError(f"no {INDEX} in UMWM_EXAMPLES={variable}")
         return path
     package = Path(__file__).resolve().parent
-    for path in (package / "examples", package.parents[1] / "examples"):
+    for path in (Path("examples"), package / "examples", package.parents[1] / "examples"):
         if (path / INDEX).is_file():
-            return path
+            return path.resolve()
     raise FileNotFoundError("the example cases are not found; set UMWM_EXAMPLES to the examples "
                             "directory of the UMWM repository")
 

@@ -9,10 +9,12 @@ CASES = ["fetch-limited", "duration-limited", "jonswap", "wave-tank", "titan-ont
 WITH_INPUTS = {"seamount": ["umwm.gridtopo"], "eddy-field": ["umwmin.nc"]}
 
 
-def test_list_cases(repo_root):
-    """The cases found by the package, in the repository or the copy in the
-    package, are those of the repository, and each is listed in cases.txt."""
+def test_list_cases(repo_root, tmp_path, monkeypatch):
+    """The cases found by the package outside of the repository, in the copy
+    in the package or in the repository for an editable install, are those of
+    the repository, and each is listed in cases.txt."""
     examples = repo_root / "examples"
+    monkeypatch.chdir(tmp_path)
     cases = umwm.list_cases()
     assert [case.name for case in cases] == CASES
     assert (umwm.examples_dir() / "cases.txt").read_text() == (examples / "cases.txt").read_text()
@@ -75,6 +77,14 @@ def test_examples_dir_from_environment(tmp_path, monkeypatch):
     (tmp_path / "cases.txt").write_text("only  the only case\n")
     assert umwm.examples_dir() == tmp_path
     assert [case.name for case in umwm.list_cases()] == ["only"]
+    # Without it, the examples directory of the current directory comes
+    # first, as for the executable.
+    monkeypatch.delenv("UMWM_EXAMPLES")
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "examples").mkdir()
+    (tmp_path / "examples" / "cases.txt").write_text("local  a case of the current directory\n")
+    assert umwm.examples_dir() == (tmp_path / "examples").resolve()
+    assert [case.name for case in umwm.list_cases()] == ["local"]
 
 
 def test_namelist_text_keeps_comments(tmp_path):

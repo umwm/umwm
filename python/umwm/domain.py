@@ -26,7 +26,7 @@ from . import output as _output
 from ._library import library
 from ._redirect import redirect_stdout_fd
 from .config import Config, ConfigError, namelist_path, parse_time
-from .forcing import FORCING_VARIABLES, STEADY_FORCING_FILE, forcing_filename, forcing_files, write_forcing, write_grid
+from .forcing import FORCING_VARIABLES, forcing_filename, forcing_files, write_forcing, write_grid
 
 __all__ = ["Domain", "run"]
 
@@ -713,7 +713,7 @@ class Domain:
         if self.rank == 0:
             path = write_forcing(self.input_dir, time, **fields)
         else:
-            path = self.input_dir / (STEADY_FORCING_FILE if fields.get("steady") else forcing_filename(time))
+            path = self.input_dir / forcing_filename(time, fields.get("steady", False))
         self.barrier()
         return path
 

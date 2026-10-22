@@ -261,7 +261,7 @@ class Config:
         given by its name or a unique prefix of it, such as ``"titan"``."""
         from .cases import get_case
 
-        return cls.from_namelist(get_case(name).namelist)
+        return get_case(name).config()
 
     @classmethod
     def from_namelist_text(cls, text: str) -> "Config":

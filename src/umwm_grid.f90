@@ -405,13 +405,16 @@ end subroutine define_grid
 subroutine define_masks(self, config)
 ! Defines landmasks and optionally removes one-cell wide estuaries and lakes.
 
+  use umwm_env, only: nproc
+  use umwm_util, only: raiseexception
+
   class(grid_type), intent(inout) :: self
   type(config_type), intent(in) :: config
   logical :: iterate
 
   integer :: m, n
   integer :: exm, exn
-  integer :: cnt, fillcount
+  integer :: cnt, fillcount, stat
 
   ! set masks:
   if (config % topofromfile) then
@@ -472,7 +475,13 @@ subroutine define_masks(self, config)
 
     ! discard lakes or unwanted closed basin from the domain:
     if (config % filllakes) then
-      open(unit=24, file=config % sibling_path('exclude.nml'))
+      open(unit=24, file=config % sibling_path('exclude.nml'), status='old', &
+           action='read', iostat=stat)
+      if (stat /= 0) then
+        if (nproc == 0) call raiseexception('abort', 'grid', config % sibling_path('exclude.nml') &
+          // ' not found; it lists the cells of the lakes to fill with fillLakes')
+        stop 1
+      end if
       do
         read(unit=24, fmt=*, end=107) exm, exn
         fillcount = 0

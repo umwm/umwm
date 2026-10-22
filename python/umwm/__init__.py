@@ -15,8 +15,10 @@ Configure, run, and inspect the wave model from Python::
 
 The model runs in the compiled Fortran library; Python drives it through
 its C API and views its memory without copying. ``umwm.list_cases()`` lists
-the example cases, idealized configurations that run without input files,
-and ``umwm.Config.from_case("jonswap")`` reads one.
+the example cases, idealized configurations with constant forcing,
+``umwm.Config.from_case("jonswap")`` reads the configuration of one, and
+``umwm.get_case("seamount").domain(workdir)`` is a domain of one with a copy
+of its input files, for the cases that have them.
 """
 
 from ._library import LibraryNotFoundError, barrier, find_library, flush_denormals, library, mpi, rank, size

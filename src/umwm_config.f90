@@ -8,13 +8,14 @@ module umwm_config
   public :: config_type
 
   integer, parameter :: max_stokes_depths = 100
+  integer, parameter :: max_path = 4096 ! the longest path, PATH_MAX of Linux
   integer, parameter :: allowedoutputtimes(10) = [-1, 0, 1, 2, 3, 4, 6, 8, 12, 24]
 
   type :: config_type
     logical :: read_ok = .false.
-    character(len=256) :: path = ''
-    character(len=256) :: read_error = ''
-    character(len=256) :: input_dir = 'input' ! directory of the input files
+    character(len=max_path) :: path = ''
+    character(len=max_path+256) :: read_error = ''
+    character(len=max_path) :: input_dir = 'input' ! directory of the input files
 
     logical :: isglobal = .false.
     integer :: mm = 0

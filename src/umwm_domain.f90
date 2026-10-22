@@ -404,7 +404,7 @@ contains
         call raiseexception('warning', 'init', &
                             'land-point chosen for stdout, may go out of bounds')
         call raiseexception('warning', 'init', &
-                            'check xpl and ypl in the output namelist in namelists/main.nml')
+                            'check xpl and ypl in the output namelist in ' // trim(config % path))
         stop
       end if
     end if

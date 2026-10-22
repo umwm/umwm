@@ -181,7 +181,7 @@ contains
     character(len=19), intent(in) :: timestr
     type(grid_type), intent(in) :: grid
 
-    character(999) :: nc_infile
+    character(:), allocatable :: nc_infile
     character(19) :: readstr
     integer :: ncid, varid
 
@@ -196,7 +196,7 @@ contains
     self % readfile = any([config % winds, config % currents, config % air_density, &
                            config % water_density, config % seaice])
 
-    if (self % readfile) call forcing_nc_check(nf90_open(trim(nc_infile), nf90_nowrite, ncid))
+    if (self % readfile) call forcing_nc_check(nf90_open(nc_infile, nf90_nowrite, ncid))
 
     if (config % winds) then
       call forcing_nc_check(nf90_inq_varid(ncid, 'uw', varid))

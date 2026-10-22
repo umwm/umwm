@@ -57,15 +57,21 @@ def _add_case_option(parser, action):
                         help=f"{action} the example case NAME (see 'umwm cases'); a unique prefix of the name is enough")
 
 
-def _source_namelist(namelist, case):
-    """The namelist file given by a path or by an example case, or None for the defaults."""
+def _source_case(namelist, case):
+    """The example case given with --case, or None."""
     if case is None:
-        return namelist
+        return None
     if namelist is not None:
         raise ValueError("give either a namelist or --case, not both")
     from .cases import get_case
 
-    return get_case(case).namelist
+    return get_case(case)
+
+
+def _source_namelist(namelist, case):
+    """The namelist file given by a path or by an example case, or None for the defaults."""
+    case = _source_case(namelist, case)
+    return namelist if case is None else case.namelist
 
 
 def _load_config(namelist, settings, case=None) -> Config:
@@ -109,9 +115,10 @@ def _relaunch_under_mpi(processes: int, argv) -> None:
 # ---- subcommands -------------------------------------------------------------
 
 def command_init(args) -> int:
-    source = _source_namelist(args.from_namelist, args.case)
+    case = _source_case(args.from_namelist, args.case)
+    source = args.from_namelist if case is None else case.namelist
     if args.workdir is None:
-        args.workdir = Path(source).parent.name if args.case else "."
+        args.workdir = "." if case is None else case.name
     workdir = Path(args.workdir).resolve()
     namelist = workdir / "namelists" / "main.nml"
     if namelist.exists() and not args.force:
@@ -121,10 +128,8 @@ def command_init(args) -> int:
         (workdir / name).mkdir(parents=True, exist_ok=True)
     config.write(namelist, source=source)
     print(f"umwm: wrote {namelist}")
-    if args.case:
-        from .cases import get_case
-
-        for path in get_case(args.case).copy_inputs(workdir / "input", overwrite=args.force):
+    if case is not None:
+        for path in case.copy_inputs(workdir / "input", overwrite=args.force):
             print(f"umwm: copied {path.name} into {path.parent}")
     print(f"umwm: run directory {workdir} is ready; put input files in {workdir / 'input'} and run 'umwm run {workdir}'")
     return 0
@@ -136,7 +141,7 @@ def command_config(args) -> int:
         config.validate()
         print("umwm: configuration is valid")
     if args.diff is not None:
-        other = Config() if args.diff == "defaults" else Config.from_namelist(args.diff)
+        other = Config() if args.diff == "defaults" and not Path(args.diff).exists() else Config.from_namelist(args.diff)
         differences = config.diff(other)
         this = args.namelist or args.case or "defaults"
         if not differences:
@@ -399,7 +404,8 @@ def build_parser() -> argparse.ArgumentParser:
     config.add_argument("--describe", nargs="?", const="", metavar="GROUP",
                         help="list the variables with their descriptions and units, optionally of one group")
     config.add_argument("--diff", metavar="NAMELIST",
-                        help="show the variables that differ from this namelist file or run directory, or 'defaults'")
+                        help="show the variables that differ from this namelist file or run directory, or from the "
+                             "defaults with 'defaults' (unless a file or directory of that name exists)")
     config.set_defaults(func=command_config)
 
     run = subparsers.add_parser("run", help="run the model",
@@ -427,8 +433,9 @@ def build_parser() -> argparse.ArgumentParser:
     run.set_defaults(func=command_run)
 
     cases = subparsers.add_parser("cases", help="list the example cases, or describe one",
-                                  description="List the example cases, idealized configurations without input "
-                                              "files, or describe one; run one with 'umwm run --case NAME'.")
+                                  description="List the example cases, idealized configurations with constant "
+                                              "forcing, or describe one; run one with 'umwm run --case NAME', "
+                                              "which copies the input files of the cases that have them.")
     cases.add_argument("name", nargs="?", help="the case to describe; a unique prefix of its name is enough")
     cases.set_defaults(func=command_cases)
 

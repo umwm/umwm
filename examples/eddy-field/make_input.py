@@ -38,7 +38,7 @@ def eddy_field(x, y, rng):
     """The currents (uc, vc) of a random field of Gaussian eddies on the grid x, y,
     periodic in x, and the eddies as (x, y, radius, speed) tuples."""
     X, Y = np.meshgrid(x, y)
-    dx = x[1] - x[0]
+    dx, dy = x[1] - x[0], y[1] - y[0]
     width = x.size * dx
     psi = np.zeros(X.shape)
     eddies = []
@@ -52,7 +52,7 @@ def eddy_field(x, y, rng):
         eddies.append((cx, cy, r, speed))
         for shift in (-width, 0.0, width):  # the eddy and its periodic images
             psi += speed * r * np.exp(0.5) * np.exp(-((X - cx - shift) ** 2 + (Y - cy) ** 2) / (2 * r**2))
-    uc = -np.gradient(psi, dx, axis=0)
+    uc = -np.gradient(psi, dy, axis=0)
     vc = (np.roll(psi, -1, axis=1) - np.roll(psi, 1, axis=1)) / (2 * dx)
     return uc, vc, eddies
 

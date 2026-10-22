@@ -9,8 +9,9 @@ The library is built from the Fortran sources with the UMWM Makefile
     MPI=yes FC=mpifort pip install .     # parallel
 
 A prebuilt library can be used instead by setting ``UMWM_LIBRARY`` to its
-path, in which case it is copied into the package. The example cases of
-``examples/`` are copied into the package as ``umwm/examples``.
+path, in which case it is copied into the package. The files of the example
+cases in ``examples/`` that ``MANIFEST.in`` includes in the source
+distribution are copied into the package as ``umwm/examples``.
 """
 
 import os
@@ -30,7 +31,20 @@ ROOT = Path(__file__).resolve().parent
 LIBRARY = "libumwm.so"
 MAKE_VARIABLES = ("MPI", "FC", "FCFLAGS", "CPPFLAGS", "LDFLAGS", "LDLIBS", "NF_CONFIG",
                   "NETCDF", "NETCDF_FFLAGS", "NETCDF_FLIBS")
-EXAMPLES = ("cases.txt", "*.md", "*/main.nml", "*/spectrum.nml", "*/make_input.py", "*/input/*")
+
+
+def example_patterns():
+    """The patterns, relative to examples/, of the files of the example cases
+    that MANIFEST.in includes, so that the wheel holds those of the sdist."""
+    patterns = []
+    for line in (ROOT / "MANIFEST.in").read_text(encoding="utf-8").splitlines():
+        words = line.split()
+        if words[:1] == ["include"]:
+            patterns += [word[len("examples/"):] for word in words[1:] if word.startswith("examples/")]
+    return patterns
+
+
+EXAMPLES = example_patterns()
 
 
 class BuildSharedLibrary(build_ext):

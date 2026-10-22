@@ -36,8 +36,11 @@ STEADY_FORCING_FILE = "umwmin.nc"
 """The input file of steady forcing (``forcing.steady``), read once."""
 
 
-def forcing_filename(time) -> str:
-    """The input file name for a forcing time: ``umwmin_YYYY-MM-DD_HH:MM:SS.nc``."""
+def forcing_filename(time, steady: bool = False) -> str:
+    """The input file name for a forcing time: ``umwmin_YYYY-MM-DD_HH:MM:SS.nc``,
+    or ``umwmin.nc`` for steady forcing (``forcing.steady``), whatever the time."""
+    if steady:
+        return STEADY_FORCING_FILE
     time = time if isinstance(time, datetime) else parse_time(time)
     return f"umwmin_{time:%Y-%m-%d_%H:%M:%S}.nc"
 
@@ -105,7 +108,7 @@ def write_forcing(path, time, *, uw=None, vw=None, uc=None, vc=None, rhoa=None, 
     dataset = xr.Dataset(data_vars=data_vars, coords=coords, attrs=dict(attrs or {}, valid_time=format_time(time)))
     path = Path(path)
     if path.is_dir() or path.suffix != ".nc":
-        path = path / (STEADY_FORCING_FILE if steady else forcing_filename(time))
+        path = path / forcing_filename(time, steady)
     path.parent.mkdir(parents=True, exist_ok=True)
     encoding = {name: {"dtype": "float32"} for name in dataset.data_vars}
     dataset.to_netcdf(path, engine="netcdf4", format="NETCDF4", encoding=encoding, unlimited_dims=("time",))

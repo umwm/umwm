@@ -179,8 +179,9 @@ configurations with constant forcing: fetch-limited and duration-limited
 growth, JONSWAP, a laboratory wave tank, lakes on Titan and Mars, and waves
 over a seamount and through an eddy field, which bring their input files
 (a bathymetry and steady currents) in their `input/` directory. The package
-includes them, and `UMWM_EXAMPLES` can point to another copy of the
-`examples` directory.
+includes them. Like the `umwm` executable, it reads instead the `examples`
+directory of the current directory, such as the repository, if there is
+one, or the copy of the `examples` directory that `UMWM_EXAMPLES` points to.
 
 ```python
 umwm.list_cases()                            # [Case(name="fetch-limited", ...), ...]
