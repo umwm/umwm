@@ -19,7 +19,9 @@ them in ``input/``, listed with a one-line description in
 
 from __future__ import annotations
 
+import filecmp
 import os
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -72,15 +74,53 @@ class Case:
         """The configuration of the case, with its spectrum output points."""
         return Config.from_namelist(self.namelist)
 
-    def domain(self, workdir=None, **kwargs):
+    def domain(self, workdir=None, overwrite=False, **kwargs):
         """A :class:`~umwm.Domain` of the case in the run directory ``workdir``
-        (by default a directory named after the case), with the input
-        directory of the case linked as its ``input``; ``kwargs`` are passed
-        to the domain."""
+        (by default a directory named after the case), into whose ``input``
+        directory the input files of the case are copied by
+        :meth:`copy_inputs`, with ``overwrite``, unless ``kwargs`` give an
+        ``input_dir`` to link there; ``kwargs`` are passed to the domain."""
         from .domain import Domain
 
-        kwargs.setdefault("input_dir", self.input_dir)
-        return Domain(self.namelist, Path(workdir or self.name), **kwargs)
+        domain = Domain(self.namelist, Path(workdir or self.name), **kwargs)
+        if kwargs.get("input_dir") is None:
+            # Every process checks the files before the root process copies
+            # them, so that all of them raise if one differs.
+            pending = self._inputs_to_copy(domain.input_dir, overwrite)
+            domain.barrier()
+            if domain.rank == 0:
+                self._copy(pending)
+            domain.barrier()
+        return domain
+
+    def copy_inputs(self, directory, overwrite=False) -> list[Path]:
+        """Copy the input files of the case into ``directory``, the input
+        directory of a run, and return the paths of the files copied. A file
+        there that is the same as that of the case is kept, and one that
+        differs raises ``FileExistsError`` unless ``overwrite``."""
+        Path(directory).mkdir(parents=True, exist_ok=True)
+        return self._copy(self._inputs_to_copy(directory, overwrite))
+
+    def _inputs_to_copy(self, directory, overwrite) -> list[tuple[Path, Path]]:
+        """The (source, target) pairs of the input files to copy into directory."""
+        pending = []
+        for source in sorted(self.input_dir.iterdir()) if self.input_dir else []:
+            target = Path(directory) / source.name
+            if target.is_file() and filecmp.cmp(source, target, shallow=False):
+                continue
+            if (target.exists() or target.is_symlink()) and not overwrite:
+                raise FileExistsError(f"{target} differs from the input file {source.name} of the case "
+                                      f"{self.name}; remove it, or replace it with overwrite=True (umwm run --force)")
+            pending.append((source, target))
+        return pending
+
+    @staticmethod
+    def _copy(pending) -> list[Path]:
+        for source, target in pending:
+            if target.exists() or target.is_symlink():
+                target.unlink()  # not to write through a link
+            shutil.copy2(source, target)
+        return [target for _, target in pending]
 
     def notes(self) -> str:
         """The description of the case in the leading comments of its namelist."""

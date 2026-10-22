@@ -1,4 +1,5 @@
 import json
+import re
 
 import numpy as np
 import pytest
@@ -215,6 +216,32 @@ def test_case_with_input_files(library, tmp_path, capsys, monkeypatch):
     assert "copied umwm.gridtopo" in capsys.readouterr().out
     settings = ["-s", "domain.stoptimestr=2026-01-01 01:00:00", "-q"]
     assert main(["run", "--case", "eddy", "runs/eddies", *settings]) == 0
-    assert (tmp_path / "runs" / "eddies" / "input").resolve() == umwm.get_case("eddy-field").input_dir.resolve()
-    assert main(["run", "--case", "eddy", "runs/eddies", *settings]) == 0  # again, with the input linked
-    assert len(umwm.output_files(tmp_path / "runs" / "eddies")) == 2
+    eddies = tmp_path / "runs" / "eddies"
+    forcing = eddies / "input" / "umwmin.nc"
+    assert not (eddies / "input").is_symlink() and not forcing.is_symlink()
+    assert forcing.read_bytes() == (umwm.get_case("eddy-field").input_dir / "umwmin.nc").read_bytes()
+    assert main(["run", "--case", "eddy", "runs/eddies", *settings]) == 0  # again, with the inputs in place
+    assert len(umwm.output_files(eddies)) == 2
+    capsys.readouterr()
+
+    # The run directory of 'umwm init --case' runs with 'umwm run --case'
+    # while it holds the case, but its edits are not replaced without --force.
+    assert main(["run", "--case", "seamount", "--check"]) == 0
+    namelist = tmp_path / "seamount" / "namelists" / "main.nml"
+    namelist.write_text(re.sub(r"wspd0\s*= 20", "wspd0 = 15", namelist.read_text()))
+    assert main(["run", "--case", "seamount", "--check"]) == 1
+    assert "holds another configuration than the case seamount" in capsys.readouterr().err
+    assert umwm.Config.from_namelist(namelist).forcing_constant.wspd0 == 15.0
+    assert main(["run", "--case", "seamount", "--force", *settings]) == 0
+    assert umwm.Config.from_namelist(namelist).forcing_constant.wspd0 == 20.0
+    copied.write_bytes(b"edited")
+    assert main(["run", "--case", "seamount", "--check", *settings]) == 1
+    assert "differs from the input file umwm.gridtopo" in capsys.readouterr().err
+    assert copied.read_bytes() == b"edited"
+    assert main(["init", "--case", "seamount", "--force"]) == 0
+    assert copied.read_bytes() == (case.input_dir / "umwm.gridtopo").read_bytes()
+
+    # The input directory of the case is not changed by a run of it.
+    assert main(["run", "--case", "seamount", "runs/linked", "-i", str(case.input_dir), "--check"]) == 0
+    assert main(["init", "--case", "seamount", "runs/linked", "--force"]) == 0
+    assert sorted(path.name for path in case.input_dir.iterdir()) == ["umwm.gridtopo"]

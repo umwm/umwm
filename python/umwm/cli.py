@@ -22,7 +22,6 @@ from __future__ import annotations
 import argparse
 import os
 import shlex
-import shutil
 import sys
 from pathlib import Path
 
@@ -122,11 +121,11 @@ def command_init(args) -> int:
         (workdir / name).mkdir(parents=True, exist_ok=True)
     config.write(namelist, source=source)
     print(f"umwm: wrote {namelist}")
-    case_inputs = Path(source).parent / "input" if args.case else None
-    if case_inputs is not None and case_inputs.is_dir():
-        for path in sorted(case_inputs.iterdir()):
-            shutil.copy2(path, workdir / "input" / path.name)
-            print(f"umwm: copied {path.name} into {workdir / 'input'}")
+    if args.case:
+        from .cases import get_case
+
+        for path in get_case(args.case).copy_inputs(workdir / "input", overwrite=args.force):
+            print(f"umwm: copied {path.name} into {path.parent}")
     print(f"umwm: run directory {workdir} is ready; put input files in {workdir / 'input'} and run 'umwm run {workdir}'")
     return 0
 
@@ -196,7 +195,8 @@ def command_run(args) -> int:
 
 def _run_case(args) -> int:
     """Run an example case in the run directory given as the target or with
-    --workdir, by default a directory named after the case."""
+    --workdir, by default a directory named after the case, which must not
+    hold another namelist or other input files unless --force."""
     from .cases import get_case
 
     case = get_case(args.case)
@@ -205,7 +205,18 @@ def _run_case(args) -> int:
     workdir = Path(args.target or args.workdir or case.name)
     if workdir.is_file():
         raise ValueError(f"with --case, the target is the run directory, not a file: {workdir}")
-    domain = case.domain(workdir.resolve(), input_dir=args.input_dir or case.input_dir, log=args.log, quiet=args.quiet)
+    workdir = workdir.resolve()
+    namelist = workdir / "namelists" / "main.nml"
+    if namelist.is_file() and not args.force:
+        try:
+            same = Config.from_namelist(namelist) == _apply_settings(case.config(), args.settings)
+        except (ConfigError, NamelistError):
+            same = False
+        if not same:
+            raise FileExistsError(
+                f"{namelist} holds another configuration than the case {case.name}; run it with "
+                f"'umwm run {workdir}', run the case in another directory, or pass --force to replace it")
+    domain = case.domain(workdir, overwrite=args.force, input_dir=args.input_dir, log=args.log, quiet=args.quiet)
     _apply_settings(domain.config, args.settings)
     if domain.rank == 0 and not args.check:
         print(f"umwm: running example case {case.name} in {domain.workdir}")
@@ -371,7 +382,8 @@ def build_parser() -> argparse.ArgumentParser:
     init.add_argument("--from", dest="from_namelist", metavar="NAMELIST", help="start from this namelist file instead of the defaults")
     _add_case_option(init, "start from")
     _add_set_option(init)
-    init.add_argument("-f", "--force", action="store_true", help="overwrite an existing main.nml")
+    init.add_argument("-f", "--force", action="store_true",
+                      help="overwrite an existing main.nml, and with --case, input files that differ from those of the case")
     init.set_defaults(func=command_init)
 
     config = subparsers.add_parser("config", help="show, check, describe, compare, or write a configuration",
@@ -407,8 +419,11 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("-q", "--quiet", action="store_true", help="discard the output of the model")
     run.add_argument("--defaults", action="store_true", help="use the default configuration if there is no namelist file")
     run.add_argument("--check", action="store_true", help="only validate the configuration and check the input files")
+    run.add_argument("-f", "--force", action="store_true",
+                     help="with --case, replace a namelist and input files in the run directory that differ from those of the case")
     run.epilog = ("With --case, the run directory is the target or WORKDIR, by default a directory named after "
-                  "the case in the current directory.")
+                  "the case in the current directory, and the input files of the case are copied into its input "
+                  "directory.")
     run.set_defaults(func=command_run)
 
     cases = subparsers.add_parser("cases", help="list the example cases, or describe one",

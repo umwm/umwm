@@ -36,6 +36,8 @@ __all__ = [
     "TIME_FORMAT",
     "parse_value",
     "namelist_path",
+    "unset_variables",
+    "MODEL_DEFAULTS",
 ]
 
 TIME_FORMAT = "%Y-%m-%d %H:%M:%S"
@@ -198,6 +200,11 @@ GROUPS = OrderedDict(
     stokes=StokesConfig,
 )
 """Namelist group names of ``main.nml`` in file order and their dataclasses."""
+
+MODEL_DEFAULTS = frozenset({"domain.reftimestr", "physics.fcut_fac", "forcing.steady"})
+"""Namelist variables that a ``main.nml`` file may leave out, which the model
+defaults to the same values as the package; it defaults most of the others
+to zero."""
 
 
 @dataclass
@@ -525,11 +532,12 @@ class Config:
     def namelist_text(self, source=None) -> str:
         """The text of the ``main.nml`` file for this configuration: the text of
         the namelist file ``source``, with its comments, if it holds this
-        configuration, and :meth:`to_namelist` otherwise."""
+        configuration and sets every variable (see :func:`unset_variables`),
+        and :meth:`to_namelist` otherwise."""
         if source is not None:
             try:
                 text = Path(source).read_text(encoding="utf-8")
-                if list(Config.from_namelist_text(text).items()) == list(self.items()):
+                if not unset_variables(text) and list(Config.from_namelist_text(text).items()) == list(self.items()):
                     return text
             except (OSError, ConfigError, NamelistError):
                 pass
@@ -627,6 +635,20 @@ def _convert(value: Any, kind: Any, key: str) -> Any:
     except (TypeError, ValueError) as error:
         raise ConfigError(f"invalid value {value!r} for {key} (expected {kind})") from error
     raise ConfigError(f"unsupported type {kind} for {key}")
+
+
+def unset_variables(text: str) -> list[str]:
+    """The namelist variables, as ``group.name`` keys, that the text of a
+    ``main.nml`` file does not set, apart from :data:`MODEL_DEFAULTS`. The
+    model gives them its own defaults, mostly zero, where the package gives
+    them those of the configuration classes."""
+    groups = namelist.loads(text)
+    unset = []
+    for key, _ in Config().items():
+        group_name, name = key.split(".")
+        if key not in MODEL_DEFAULTS and name not in groups.get(group_name, {}):
+            unset.append(key)
+    return unset
 
 
 def namelist_path(path) -> Path:

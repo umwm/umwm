@@ -189,7 +189,7 @@ print(case.description, case.notes())        # one line, and the comments of its
 config = umwm.Config.from_case("jonswap")    # with its spectrum output points
 domain = umwm.run(config, "runs/jonswap")
 domain = umwm.run(case.namelist, "runs/titan")   # keeps the comments in runs/titan/namelists
-with umwm.get_case("seamount").domain("runs/seamount") as domain:   # with its input directory linked
+with umwm.get_case("seamount").domain("runs/seamount") as domain:   # with a copy of its input files
     domain.run()
 ```
 
@@ -351,8 +351,10 @@ umwm clean runs/case1
 ```
 
 The example cases run with `--case NAME` (or a unique prefix of the name),
-by default in a run directory named after the case, and `umwm cases` lists
-them; `umwm init --case NAME` creates a run directory from a case to edit:
+by default in a run directory named after the case, into which the input
+files of the case are copied, and `umwm cases` lists them; `umwm init --case
+NAME` creates a run directory from a case to edit, which `umwm run --case`
+does not overwrite unless given `--force`:
 
 ```
 umwm cases                                       # list the example cases

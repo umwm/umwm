@@ -72,8 +72,11 @@ umwm init --case seamount runs/sm                # with a copy of the input file
 umwm config --case titan --diff defaults         # what the case changes
 ```
 
-`umwm run --case` links the `input/` directory of a case into the run
-directory, and `umwm init --case` copies its input files there, to edit.
+`umwm run --case` and `umwm init --case` copy the input files of a case into
+the `input/` directory of the run directory. `umwm run --case` does not
+replace a namelist or input files there that differ from those of the case,
+such as those of a run directory created with `umwm init --case` and
+edited, unless given `--force`; run such a directory with `umwm run DIR`.
 From Python, `umwm.Config.from_case(name)` reads the configuration of a
 case, `umwm.list_cases()` lists them, and `case.domain(workdir)` is a
 domain of a case with its input files:

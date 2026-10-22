@@ -1,19 +1,12 @@
-from dataclasses import fields
-
 import numpy as np
 import pytest
 
 import umwm
-from umwm import namelist
-from umwm.config import GROUPS
+from umwm.config import unset_variables
 
 CASES = ["fetch-limited", "duration-limited", "jonswap", "wave-tank", "titan-ontario-lacus", "mars-jezero-lake",
          "seamount", "eddy-field"]
 WITH_INPUTS = {"seamount": ["umwm.gridtopo"], "eddy-field": ["umwmin.nc"]}
-
-# Variables that the model defaults to the same values as the package; the
-# model defaults the others to zero.
-OPTIONAL = {"domain.reftimestr", "physics.fcut_fac"}
 
 
 def test_list_cases(repo_root):
@@ -40,12 +33,8 @@ def test_case_namelist_is_complete_and_valid(name):
     """Every case sets every namelist variable, so that the model, whose
     defaults differ from those of the package, reads the same configuration."""
     case = umwm.get_case(name)
-    groups = namelist.loads(case.namelist.read_text(encoding="utf-8"))
-    for group_name, group in GROUPS.items():
-        assert group_name in groups
-        missing = {item.name for item in fields(group)
-                   if f"{group_name}.{item.name}" not in OPTIONAL} - set(groups[group_name])
-        assert not missing, f"{name}: &{group_name.upper()} does not set {sorted(missing)}"
+    unset = unset_variables(case.namelist.read_text(encoding="utf-8"))
+    assert not unset, f"{name} does not set {unset}"
     config = case.config()
     config.validate()
     assert (config.forcing_from_file or config.grid.topofromfile) == (case.input_dir is not None)
@@ -88,7 +77,7 @@ def test_examples_dir_from_environment(tmp_path, monkeypatch):
     assert [case.name for case in umwm.list_cases()] == ["only"]
 
 
-def test_namelist_text_keeps_comments():
+def test_namelist_text_keeps_comments(tmp_path):
     case = umwm.get_case("mars")
     config = case.config()
     assert config.namelist_text(case.namelist) == case.namelist.read_text(encoding="utf-8")
@@ -96,16 +85,38 @@ def test_namelist_text_keeps_comments():
     text = config.namelist_text(case.namelist)
     assert "Jezero" not in text and umwm.Config.from_namelist_text(text).forcing_constant.wspd0 == 3.0
     assert umwm.Config().namelist_text() == umwm.Config().to_namelist()
+    # A namelist that leaves out a variable, which the model would set to
+    # zero, is written in full, with the value of the package.
+    partial = tmp_path / "main.nml"
+    lines = case.namelist.read_text(encoding="utf-8").splitlines()
+    partial.write_text("\n".join(line for line in lines if not line.lstrip().startswith("sbf_fac")) + "\n")
+    assert unset_variables(partial.read_text()) == ["physics.sbf_fac"]
+    config = umwm.Config.from_namelist(partial)
+    assert config.namelist_text(partial) == config.to_namelist()
+    assert not unset_variables(config.to_namelist())
 
 
 @pytest.mark.parametrize("name", sorted(WITH_INPUTS))
 def test_case_inputs(library, tmp_path, name):
-    """The input files of a case are complete and match its grid; the steady
-    forcing of the eddy field is one file, umwmin.nc."""
+    """The input files of a case are complete and match its grid, and are
+    copied into the run directory; the steady forcing of the eddy field is
+    one file, umwmin.nc."""
     case = umwm.get_case(name)
     domain = case.domain(tmp_path / name)
-    assert domain.input_dir.resolve() == case.input_dir.resolve()
+    assert not domain.input_dir.is_symlink()
+    for path in case.input_dir.iterdir():
+        copied = domain.input_dir / path.name
+        assert not copied.is_symlink() and copied.read_bytes() == path.read_bytes()
     assert domain.input_problems() == []
+    # An input file that differs is kept, unless overwritten.
+    changed = domain.input_dir / WITH_INPUTS[name][0]
+    changed.write_bytes(b"changed")
+    with pytest.raises(FileExistsError, match="differs from the input file"):
+        case.domain(tmp_path / name)
+    assert changed.read_bytes() == b"changed"
+    assert case.copy_inputs(domain.input_dir, overwrite=True) == [changed]
+    assert changed.read_bytes() == (case.input_dir / changed.name).read_bytes()
+    assert case.copy_inputs(domain.input_dir) == []
     if domain.config.forcing_from_file:
         domain.config.forcing.steady = False
         assert len(domain.missing_inputs()) == len(domain.config.step_times())

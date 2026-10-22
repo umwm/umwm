@@ -45,7 +45,9 @@ def forcing_filename(time) -> str:
 def forcing_files(config) -> list[str]:
     """The names of the forcing input files that the model reads for a
     configuration: one for the start time and for the end of each global time
-    step, or the steady forcing file."""
+    step, or the steady forcing file; none if it reads no forcing from file."""
+    if not config.forcing_from_file:
+        return []
     if config.forcing.steady:
         return [STEADY_FORCING_FILE]
     return [forcing_filename(time) for time in config.step_times(include_start=True)]
