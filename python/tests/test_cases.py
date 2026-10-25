@@ -150,7 +150,8 @@ def test_refraction_gradients(library, tmp_path):
     """Refraction turns the waves over the seamount at the phase speed
     gradient at fixed frequency times cg/cp, the rate at which the energy
     crosses it, and through the eddy field at the velocity gradient of the
-    current, both by centered differences, away from the land rows."""
+    current, both by centered differences, away from the land rows. The
+    action per unit ln(frequency) is the variance spectrum times k/cg."""
     def centered(field, axis, spacing):
         return (np.roll(field, -1, axis) - np.roll(field, 1, axis)) / (2 * spacing)
 
@@ -167,6 +168,8 @@ def test_refraction_gradients(library, tmp_path):
         cg = domain.remap(domain.field("cg0").T, lbound=domain.bounds("cg0")[1])
         assert_matches(domain.remap(domain.field("cgdlncp_dx").T), cg / cp * centered(cp, 1, grid.delx))
         assert_matches(domain.remap(domain.field("cgdlncp_dy").T), cg / cp * centered(cp, 0, grid.dely))
+        kovcg = domain.remap(domain.field("kovcg").T, lbound=domain.bounds("kovcg")[1])
+        np.testing.assert_allclose(kovcg, domain.remap(domain.field("wavenumber").T) / cg, rtol=1e-5)
 
     with umwm.get_case("eddy-field").domain(tmp_path / "eddy-field", quiet=True) as domain:
         domain.advance()  # the current gradients are evaluated in the time steps

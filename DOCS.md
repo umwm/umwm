@@ -11,7 +11,7 @@ This file is a technical reference for the physics implemented in the University
 | Forcing state | `src/umwm_forcing.f90` | `forcing_type` owns mutable wind, current, density, sea-ice, remapped, and interpolation-scratch fields. |
 | Source functions | `src/umwm_source_functions.f90` | Wind input, wave breaking, nonlinear downshifting, turbulence, and sea-ice attenuation. |
 | Source integration | `src/umwm_physics.f90` | Exponential source update, diagnostic spectral tail, physics time step limit. |
-| Propagation and refraction | `src/umwm_advection.f90` | First-order upstream advection in geographic and directional space. |
+| Propagation, refraction, and frequency shift | `src/umwm_advection.f90` | First-order upstream advection of the wave action in geographic, directional, and frequency space. |
 | Stress | `src/umwm_stress.f90` | Form/skin drag, drag coefficient, stress tail, and spectral stress integrals. The domain evaluates the atmospheric stress each time step, and the ocean-top and ocean-bottom momentum fluxes (`ocean_stress` in `src/umwm_domain_output.f90`) at gridded output times, or each time step when coupled with ESMF. |
 | Stokes drift | `src/umwm_stokes.f90` | `stokes_type` with wave-induced Stokes drift and e-folding depth. |
 | Spectral grid | `src/umwm_spectrum.f90` | `spectrum_type`, frequency and direction coordinates, and spectral spacings. |
@@ -58,8 +58,8 @@ Within each global forcing/output time step `dtg`, UMWM repeatedly runs:
 4. Find the dynamic physics time step `dts`, the minimum over all cells.
 5. Integrate source terms over `dts`, including `Snl`.
 6. Exchange MPI halos when enabled.
-7. Propagate wave variance geographically.
-8. Refract wave variance directionally.
+7. Propagate wave action geographically.
+8. Refract wave action directionally and, with currents, shift it in frequency.
 9. Compute atmospheric stress and drag.
 10. At output times, compute Stokes drift, diagnostics, ocean stress, spectra, grid output, and restart output.
     When coupled with ESMF, ocean stress is computed each time step.
@@ -235,32 +235,55 @@ $$
 
 ## Governing Equation
 
-The model solves the wave energy balance equation:
+The model solves the wave action balance equation. The spectral grid is
+fixed in the intrinsic frequency $\sigma = 2\pi f$, and each cell has the
+wavenumbers $k(\sigma, d)$ of its depth. The action density per unit
+$\ln\sigma$ and $\phi$ is
 
 $$
-\frac{\partial E'}{\partial t}
-+ \frac{\partial(\dot{\mathbf{x}}E')}{\partial \mathbf{x}}
-+ \frac{\partial(\dot{k}E')}{\partial k}
-+ \frac{\partial(\dot{\phi}E')}{\partial \phi}
+A = \frac{E_\sigma}{\sigma}\,\frac{d\sigma}{d\ln\sigma} = E\,\frac{k}{c_g},
+$$
+
+where $E(k,\phi)$ is the variance spectrum and
+$E_\sigma = E\,k\,dk/d\sigma = E\,k/c_g$ the variance per unit $\sigma$.
+In $(\mathbf{x}, \ln\sigma, \phi)$,
+
+$$
+\frac{\partial A}{\partial t}
++ \nabla\cdot(\dot{\mathbf{x}}A)
++ \frac{\partial(\dot{\varsigma} A)}{\partial \ln\sigma}
++ \frac{\partial(\dot{\phi}A)}{\partial \phi}
 =
-\rho_w g \sum_{i=1}^{n} S_i.
+\frac{k}{c_g}\sum_{i=1}^{n} S_i,
 $$
 
-The geographic propagation velocity is
+where $\dot{\varsigma} = d\ln\sigma/dt$, and $S_i$ are the source terms
+of $E$. The geographic propagation velocity is
 
 $$
 \dot{\mathbf{x}} = \mathbf{c}_g + \mathbf{u},
 $$
 
 where $\mathbf{u}=(u,v)$ is the current in the wave boundary layer.
+Directional-space advection is refraction, nonzero for spatially varying
+depth and/or inhomogeneous currents. Frequency-space advection is nonzero
+where a current flows across depth contours or varies along the waves; it
+neglects the change of depth in time.
 
-Wavenumber-space advection $\dot{k}$ is nonzero for changing currents
-or moving bottoms. The implemented model treats currents as
-quasi-stationary on wave growth/decay time scales and neglects this
-term.
+Without currents, $\sigma$ is constant along the rays, and the action
+balance is the energy balance at a fixed frequency. Even then, the
+conserved density of a frequency bin is $E\,k/c_g$, not $E$: $k/c_g$
+varies with depth at a fixed frequency, and its ratio between cells gives
+the shoaling of the waves. With currents, the waves exchange energy with
+the current, and the action, not the energy, is conserved; and the
+intrinsic frequency changes along the rays, with the absolute frequency
+$\sigma + \mathbf{k}\cdot\mathbf{u}$ conserved in a steady flow.
 
-Directional-space advection is refraction. It is nonzero for spatially
-varying depth and/or inhomogeneous currents.
+The factor $k/c_g$ (`kovcg`) of each cell and frequency is the same for
+all directions and fixed in time, so the prognostic variable remains $E$:
+the source terms act on $E$, refraction of $E$ is that of $A$, and
+propagation and the frequency shift convert between $E$ and $A$ by
+`kovcg`.
 
 For the variance spectrum, the local source terms are written as signed
 rates or tendencies acting on $E$.
@@ -825,18 +848,21 @@ for propagation and refraction.
 The advection equation in Cartesian projection is
 
 $$
-\frac{\partial E}{\partial t}
+\frac{\partial A}{\partial t}
 =
--\frac{\partial[(c_g\cos\phi+u)E]}{\partial x}
--\frac{\partial[(c_g\sin\phi+v)E]}{\partial y}
--\frac{\partial(\dot{\phi}E)}{\partial \phi}.
+-\frac{\partial[(c_g\cos\phi+u)A]}{\partial x}
+-\frac{\partial[(c_g\sin\phi+v)A]}{\partial y},
 $$
+
+with $A = E\,k/c_g$ in each cell. In terms of $E$, the flux into a cell
+from a neighbor carries the spectrum of the neighbor times the ratio of
+its $k/c_g$ to that of the cell; the flux out of the cell is unchanged.
 
 Geographic propagation uses first-order upstream differencing. For one
 dimension,
 
 $$
-\frac{\partial(\dot{x}E)}{\partial x}
+\frac{\partial(\dot{x}A)}{\partial x}
 \approx
 \frac{\Phi_{i+1/2}-\Phi_{i-1/2}}{\Delta x},
 $$
@@ -846,17 +872,17 @@ with
 $$
 \Phi_{i+1/2}
 =
-\frac{\dot{x}_{i+1/2}+|\dot{x}_{i+1/2}|}{2}E_i
+\frac{\dot{x}_{i+1/2}+|\dot{x}_{i+1/2}|}{2}A_i
 +
-\frac{\dot{x}_{i+1/2}-|\dot{x}_{i+1/2}|}{2}E_{i+1},
+\frac{\dot{x}_{i+1/2}-|\dot{x}_{i+1/2}|}{2}A_{i+1},
 $$
 
 $$
 \Phi_{i-1/2}
 =
-\frac{\dot{x}_{i-1/2}+|\dot{x}_{i-1/2}|}{2}E_{i-1}
+\frac{\dot{x}_{i-1/2}+|\dot{x}_{i-1/2}|}{2}A_{i-1}
 +
-\frac{\dot{x}_{i-1/2}-|\dot{x}_{i-1/2}|}{2}E_i,
+\frac{\dot{x}_{i-1/2}-|\dot{x}_{i-1/2}|}{2}A_i,
 $$
 
 and
@@ -959,6 +985,43 @@ $\zeta/2$: a bin loses at most $a + |\zeta|/2 + b$ through one face, and
 at most $\Delta\phi\,(a + 2b)$ through both faces where the rotation
 diverges, per unit time. One substep is usually enough; the cells next to
 land, whose phase speed is the smallest of all sea cells, may need more.
+
+## Frequency Shift
+
+With currents, the intrinsic frequency changes along the rays at
+
+$$
+\dot{\varsigma}
+=
+\frac{d\ln\sigma}{dt}
+=
+\frac{1}{\sigma}\frac{\partial\sigma}{\partial d}\,\mathbf{u}\cdot\nabla d
+- \frac{c_g}{c}\,\hat{\mathbf{k}}\cdot(\hat{\mathbf{k}}\cdot\nabla)\mathbf{u},
+$$
+
+from the ray equations for $\omega = \sigma(k, d) + \mathbf{k}\cdot\mathbf{u}$
+with a steady depth. At a fixed frequency,
+$(\partial\sigma/\partial d)\nabla d = k\,(c_g/c)\nabla c$, so the first
+term is $\mathbf{u}\cdot(c_g/c)\nabla c\,/\,c$, from the same phase speed
+gradient as refraction. In components,
+$\hat{\mathbf{k}}\cdot(\hat{\mathbf{k}}\cdot\nabla)\mathbf{u}
+= \cos^2\phi\,\partial u/\partial x
++ \sin\phi\cos\phi\,(\partial u/\partial y + \partial v/\partial x)
++ \sin^2\phi\,\partial v/\partial y$.
+Against a current that strengthens along the waves, the waves shorten:
+their intrinsic frequency rises.
+
+The action $A$ is advected in $\ln\sigma$, whose bins are uniformly
+spaced by `dlnf`, with the same upstream-flux form as refraction, for the
+prognostic frequencies of each cell. Action leaves the lowest bin through
+its lower face, with none below it, and flows between the highest
+prognostic bin and the diagnostic tail above it. The time step of each
+cell is split into as many equal substeps as the upstream scheme needs to
+stay stable and positive, from an upper bound of $|\dot{\varsigma}|$ over
+frequency and direction: the strain rate
+$\hat{\mathbf{k}}\cdot(\hat{\mathbf{k}}\cdot\nabla)\mathbf{u}$ is half
+the divergence of the current plus a sinusoid in $2\phi$. The frequency
+shift is evaluated only when the current is nonzero.
 
 ## Wind Stress and Drag
 
@@ -1472,8 +1535,8 @@ The current focused tests are:
 | `test_dispersion` | Wavenumber/frequency round-trip accuracy and positive finite group speed for the capillary-gravity dispersion module. |
 | `test_spectrum` | Spectrum constructor metadata, endpoint frequencies, legacy log-space frequency equivalence, direction-grid equivalence, `dlnf`, and `dth`. |
 | `test_source_functions` | Mean-squared slope moments against the direct sum over directions, the vectorized power function against the intrinsic, and the wind input against a step-by-step evaluation. |
-| `test_advection` | Current-induced ray rotation against the ray equation and in a solid-body eddy, depth-induced ray rotation against Snell's law along a ray over a slope, and the conservation, positivity, and rotation of the spectrum by refraction in several substeps. |
-| `test_domain` | One-hour integration of the idealized hurricane case by `domain_type` with gridded and spectrum output and Stokes drift, compared with the mean and maximum of output fields, ocean stress, and Stokes drift from UMWM before the domain refactor, updated for the corrected current-induced refraction. |
+| `test_advection` | Current-induced ray rotation against the ray equation and in a solid-body eddy, depth-induced ray rotation against Snell's law along a ray over a slope, the conservation, positivity, and rotation of the spectrum by refraction in several substeps, the conservation of action and the shift of the spectrum by the frequency shift, steady shoaling against linear theory, and the steady variance of waves against a strengthening current against ray theory. |
+| `test_domain` | One-hour integration of the idealized hurricane case by `domain_type` with gridded and spectrum output and Stokes drift, compared with the mean and maximum of output fields, ocean stress, and Stokes drift from UMWM before the domain refactor, updated for the corrected current-induced refraction and the frequency shift of the action balance. |
 
 The Python package has its own test suite in `python/tests`, run with
 `python -m pytest python/tests`, which includes the same idealized

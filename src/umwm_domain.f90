@@ -7,7 +7,7 @@ module umwm_domain
   use mpi
 #endif
   use datetime_module, only: datetime, strptime, timedelta
-  use umwm_advection, only: propagation, refraction
+  use umwm_advection, only: frequency_shift, propagation, refraction
   use umwm_config, only: config_type
   use umwm_constants, only: pi, rk, twopi
   use umwm_dispersion, only: group_speed, wavenumber
@@ -63,6 +63,7 @@ module umwm_domain
 
     ! wave kinematics and derived factors (o,i)
     real, allocatable :: k(:,:), cp0(:,:), cg0(:,:) ! cp0 and cg0 include halo
+    real, allocatable :: kovcg(:,:) ! k/cg, action per unit ln(f) over e; includes halo
     real, allocatable :: invcp0(:,:), kdk(:,:), k3dk(:,:), k4(:,:), oneoverk4(:,:)
     real, allocatable :: fkovg(:,:), cothkd(:,:), logl2overz(:,:), psiml2(:,:)
     real, allocatable :: sbf(:,:), sdv(:,:), snl_arg(:,:), bf1_renorm(:,:), bf2_renorm(:,:)
@@ -217,7 +218,8 @@ contains
              self % cgdlncp_dx(om,is:ie), self % cgdlncp_dy(om,is:ie), &
              self % psiml2(om,is:ie), self % sdt(om,is:ie), self % sice(om,is:ie), &
              self % mss_moments(om,3,is:ie), source=0.)
-    allocate(self % cp0(om,iis:iie), self % cg0(om,iis:iie), source=tiny(1.))
+    allocate(self % cp0(om,iis:iie), self % cg0(om,iis:iie), self % kovcg(om,iis:iie), &
+             source=tiny(1.))
 
     allocate(self % e(om,pm,iis:iie), self % ef(om,pm,iis:iie), source=tiny(1.))
     allocate(self % ssin(om,pm,is:ie), self % sds(om,pm,is:ie), self % snl(om,pm,is:ie), &
@@ -370,6 +372,12 @@ contains
     call mpi_allreduce(MPI_IN_PLACE, cg0(:,grid % iistart-1), om, MPI_REAL, MPI_MIN, &
                        MPI_COMM_WORLD, ierr)
 #endif
+
+    ! k/cg, the Jacobian from the variance spectrum to the action per unit
+    ! ln(f), on the sea cells, the halo, and land:
+    do concurrent (o = 1:om, i = grid % iistart-1:grid % iiend)
+      self % kovcg(o,i) = twopi * f(o) / (cp0(o,i) * cg0(o,i))
+    end do
 
     ! phase speed gradients at fixed frequency, times cg/cp, for the
     ! bottom-induced refraction:
@@ -828,9 +836,10 @@ contains
 
 
   subroutine advect_column(self, i, currents)
-    ! Propagates and refracts the spectrum at cell i and integrates into ef,
-    ! and evaluates the wind stress from the updated spectrum. Advection by
-    ! ocean currents is included if currents is .true.
+    ! Propagates and refracts the spectrum at cell i, and with currents
+    ! shifts it in frequency, conserving the wave action, and integrates
+    ! into ef; evaluates the wind stress from the updated spectrum. Advection
+    ! by ocean currents is included if currents is .true.
     class(domain_type), intent(inout) :: self
     integer, intent(in) :: i
     logical, intent(in) :: currents
@@ -840,8 +849,9 @@ contains
 
     associate(config => self % config, grid => self % grid, &
               om => self % spectrum % num_frequencies, pm => self % spectrum % num_directions, &
-              e => self % e, ef => self % ef, cg0 => self % cg0, uc => self % forcing % uc, &
-              vc => self % forcing % vc, ie => self % grid % ie(i), iw => self % grid % iw(i), &
+              e => self % e, ef => self % ef, cg0 => self % cg0, kovcg => self % kovcg, &
+              uc => self % forcing % uc, vc => self % forcing % vc, &
+              ie => self % grid % ie(i), iw => self % grid % iw(i), &
               in => self % grid % in(i), is => self % grid % is(i))
 
     if (self % forcing % fice(i) > config % fice_uth) then
@@ -850,6 +860,7 @@ contains
 
       call propagation(om, pm, self % oc(i), e(:,:,i), e(:,:,ie), e(:,:,iw), e(:,:,in), &
                        e(:,:,is), cg0(:,i), cg0(:,ie), cg0(:,iw), cg0(:,in), cg0(:,is), &
+                       kovcg(:,i), kovcg(:,ie), kovcg(:,iw), kovcg(:,in), kovcg(:,is), &
                        grid % cth_curv(:,i), grid % sth_curv(:,i), grid % dxn(i), grid % dxs(i), &
                        grid % dye(i), grid % dyw(i), currents, &
                        uc(i) + uc(grid % iie(i)), uc(i) + uc(grid % iiw(i)), &
@@ -857,19 +868,34 @@ contains
                        0.25 * self % dts * grid % oneovar(i), ef(:,:,i))
 
 #ifdef ESMF
-      ! in coupled mode, refraction acts on the propagated spectrum
+      ! in coupled mode, refraction and the frequency shift act on the
+      ! propagated spectrum
       e_propagated = ef(:,:,i)
       call refraction(om, pm, self % oc(i), e_propagated, &
                       self % cgdlncp_dx(:,i), self % cgdlncp_dy(:,i), &
                       self % du_dx(i), self % du_dy(i), self % dv_dx(i), self % dv_dy(i), &
                       grid % cth_curv(:,i), grid % sth_curv(:,i), self % dts, self % dth, &
                       ef(:,:,i))
+      if (currents) &
+        call frequency_shift(om, pm, self % oc(i), e_propagated, kovcg(:,i), &
+                             self % invcp0(:,i), cg0(:,i), &
+                             self % cgdlncp_dx(:,i), self % cgdlncp_dy(:,i), uc(i), vc(i), &
+                             self % du_dx(i), self % du_dy(i), self % dv_dx(i), self % dv_dy(i), &
+                             grid % cth_curv(:,i), grid % sth_curv(:,i), self % dts, &
+                             real(self % spectrum % dlnf), ef(:,:,i))
 #else
       call refraction(om, pm, self % oc(i), e(:,:,i), &
                       self % cgdlncp_dx(:,i), self % cgdlncp_dy(:,i), &
                       self % du_dx(i), self % du_dy(i), self % dv_dx(i), self % dv_dy(i), &
                       grid % cth_curv(:,i), grid % sth_curv(:,i), self % dts, self % dth, &
                       ef(:,:,i))
+      if (currents) &
+        call frequency_shift(om, pm, self % oc(i), e(:,:,i), kovcg(:,i), &
+                             self % invcp0(:,i), cg0(:,i), &
+                             self % cgdlncp_dx(:,i), self % cgdlncp_dy(:,i), uc(i), vc(i), &
+                             self % du_dx(i), self % du_dy(i), self % dv_dx(i), self % dv_dy(i), &
+                             grid % cth_curv(:,i), grid % sth_curv(:,i), self % dts, &
+                             real(self % spectrum % dlnf), ef(:,:,i))
 #endif
 
     end if

@@ -353,6 +353,7 @@ contains
     case ('wavenumber', 'k'); call real2(domain % k)
     case ('cp0'); call real2(domain % cp0)
     case ('cg0'); call real2(domain % cg0)
+    case ('kovcg'); call real2(domain % kovcg)
     case ('kdk'); call real2(domain % kdk)
     case ('k3dk'); call real2(domain % k3dk)
     case ('cothkd'); call real2(domain % cothkd)

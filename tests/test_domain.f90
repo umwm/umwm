@@ -22,8 +22,9 @@ contains
     ! Integrates the idealized hurricane case for one hour with gridded and
     ! spectrum output and Stokes drift, and compares the domain mean and
     ! maximum of output fields to those from UMWM before the domain refactor,
-    ! updated for the corrected current-induced refraction, which acts here
-    ! where the uniform current meets the land at the edges of the domain.
+    ! updated for the corrected current-induced refraction and the frequency
+    ! shift of the action balance, which act here where the uniform current
+    ! meets the land at the edges of the domain.
     type(test_result) :: res
     type(domain_type) :: domain
     logical :: ok
@@ -34,18 +35,18 @@ contains
     ! The drag coefficient is ill-conditioned in the calm vortex center and
     ! varies by ~2e-4 between optimized and unoptimized builds.
     associate(n => domain % grid % im)
-      ok = matches(domain % ht, n, 3.812282324, 6.315677166, 1e-4) &
-           .and. matches(domain % mwp, n, 5.527106762, 6.883029938, 1e-4) &
-           .and. matches(domain % mss, n, 5.120752752e-02, 6.678935140e-02, 1e-4) &
-           .and. matches(domain % cd, n, 5.035856273e-03, 4.888859093e-01, 1e-3) &
-           .and. matches(domain % ustar, n, 9.779282808e-01, 1.610207081, 1e-4) &
-           .and. matches(domain % dwp, n, 7.720907211, 10.06773663, 1e-4) &
-           .and. matches(domain % taux_form, n, -2.226014249e-02, 2.233480215, 1e-4) &
-           .and. matches(domain % taux_ocntop, n, -2.504688315e-02, 2.160749435, 1e-4) &
-           .and. matches(domain % epsx_ocn, n, -3.639729321e-02, 4.056354523, 1e-4) &
-           .and. matches(domain % epsy_atm, n, 1.483405083e-01, 1.229360199e+01, 1e-4) &
-           .and. matches(domain % stokes % us(:,1), n, -5.592743866e-03, 3.101237714e-01, 1e-4) &
-           .and. matches(domain % stokes % vs(:,1), n, -5.817468278e-03, 3.947935998e-01, 1e-4)
+      ok = matches(domain % ht, n, 3.811700821, 6.315617085, 1e-4) &
+           .and. matches(domain % mwp, n, 5.526701450, 6.882987022, 1e-4) &
+           .and. matches(domain % mss, n, 5.120731890e-02, 6.678894162e-02, 1e-4) &
+           .and. matches(domain % cd, n, 4.989048932e-03, 4.808749259e-01, 1e-3) &
+           .and. matches(domain % ustar, n, 9.779363275e-01, 1.610171556, 1e-4) &
+           .and. matches(domain % dwp, n, 7.718040943, 10.06773663, 1e-4) &
+           .and. matches(domain % taux_form, n, -2.226837166e-02, 2.233541965, 1e-4) &
+           .and. matches(domain % taux_ocntop, n, -2.457904629e-02, 2.165972948, 1e-4) &
+           .and. matches(domain % epsx_ocn, n, -3.290932626e-02, 4.102433681, 1e-4) &
+           .and. matches(domain % epsy_atm, n, 1.479409933e-01, 1.229280758e+01, 1e-4) &
+           .and. matches(domain % stokes % us(:,1), n, -5.562203936e-03, 3.102710545e-01, 1e-4) &
+           .and. matches(domain % stokes % vs(:,1), n, -5.914379377e-03, 3.947870731e-01, 1e-4)
     end associate
 
     call domain % finalize()
