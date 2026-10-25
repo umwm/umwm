@@ -6,7 +6,7 @@ module umwm_advection
   implicit none
 
   private
-  public :: max_rotation_rate, propagation, refraction
+  public :: current_rotation_rate, depth_rotation_rate, propagation, refraction
 
 contains
 
@@ -77,53 +77,99 @@ contains
   end subroutine propagation
 
 
-  pure real function rotation_rate(dcp_dx, dcp_dy, curl, cth, sth) result(res)
-    ! Rate of rotation of wave rays [rad/s] due to bottom- and
-    ! current-induced refraction.
-    real, intent(in) :: dcp_dx, dcp_dy ! phase speed gradient, halved
-    real, intent(in) :: curl ! current vorticity, halved
-    real, intent(in) :: cth, sth
-    res = dcp_dx * sth - dcp_dy * cth + curl
-  end function rotation_rate
+  pure real function depth_rotation_rate(cgdlncp_dx, cgdlncp_dy, cth, sth) result(res)
+    ! Rate of anti-clockwise rotation [rad/s] of the wavenumber direction th
+    ! due to depth-induced refraction, -(cg/cp) dcp/dn, where n is the
+    ! coordinate normal to th, to its left, and cp the phase speed at fixed
+    ! frequency: Snell's law, dth/ds = -(1/cp) dcp/dn, along the ray s that
+    ! the energy travels at the group speed cg.
+    real, intent(in) :: cgdlncp_dx, cgdlncp_dy ! (cg/cp) grad(cp)
+    real, intent(in) :: cth, sth ! cos(th), sin(th)
+    res = cgdlncp_dx * sth - cgdlncp_dy * cth
+  end function depth_rotation_rate
 
 
-  pure real function max_rotation_rate(nf, nd, no, dcp_dx, dcp_dy, curl, cth, sth) result(res)
-    ! Largest anti-clockwise ray rotation rate over frequencies 1:no, or 0.
-    integer, intent(in) :: nf, nd, no
-    real, intent(in) :: dcp_dx(nf), dcp_dy(nf), curl
-    real, intent(in) :: cth(nd), sth(nd)
-    integer :: o, p
-    res = 0
-    do p = 1, nd
-      do o = 1, no
-        res = max(res, rotation_rate(dcp_dx(o), dcp_dy(o), curl, cth(p), sth(p)))
-      end do
-    end do
-  end function max_rotation_rate
+  pure real function current_rotation_rate(du_dx, du_dy, dv_dx, dv_dy, cth, sth) result(res)
+    ! Rate of anti-clockwise rotation [rad/s] of the wavenumber direction th
+    ! due to current-induced refraction, -(k/|k|).dU/dn, from dk/dt = -grad(k.U),
+    ! where n is the coordinate normal to th, to its left. It is half the
+    ! vorticity, (dv/dx - du/dy)/2, plus a part from the strain of the
+    ! current that varies with direction.
+    real, intent(in) :: du_dx, du_dy, dv_dx, dv_dy ! current velocity gradient
+    real, intent(in) :: cth, sth ! cos(th), sin(th)
+    res = sth**2 * dv_dx - cth**2 * du_dy + sth * cth * (du_dx - dv_dy)
+  end function current_rotation_rate
 
 
-  pure subroutine refraction(nf, nd, no, e, dcp_dx, dcp_dy, curl, cth, sth, dtr, oneovdth, ef)
+  pure subroutine refraction(nf, nd, no, e, cgdlncp_dx, cgdlncp_dy, du_dx, du_dy, dv_dx, dv_dy, &
+                             cth, sth, dt, dth, ef)
     ! Advects the spectrum e of a cell in directional space for frequencies
-    ! 1:no and integrates the tendency into ef.
+    ! 1:no over the time step dt and integrates the change into ef. The
+    ! time step is split into as many equal substeps as the upstream scheme
+    ! needs in this cell to stay stable and positive.
     integer, intent(in) :: nf, nd, no
     real, intent(in) :: e(nf,nd)
-    real, intent(in) :: dcp_dx(nf), dcp_dy(nf), curl
-    real, intent(in) :: cth(nd), sth(nd)
-    real, intent(in) :: dtr, oneovdth
+    real, intent(in) :: cgdlncp_dx(nf), cgdlncp_dy(nf) ! (cg/cp) grad(cp)
+    real, intent(in) :: du_dx, du_dy, dv_dx, dv_dy ! current velocity gradient
+    real, intent(in) :: cth(nd), sth(nd) ! ray directions in the grid frame
+    real, intent(in) :: dt, dth
     real, intent(inout) :: ef(nf,nd)
 
     real :: rot(no,0:nd+1) ! ray rotation rate, periodic in direction
-    real :: rotl, rotr, flux
-    integer :: o, p, pl, pr
+    real :: en(no,nd), en_next(no,nd) ! spectrum at the start and end of a substep
+    real :: rot_current, rot_depth, rot_vorticity, rot_strain, outflow
+    integer :: o, p, n, nsub
 
     do p = 1, nd
+      rot_current = current_rotation_rate(du_dx, du_dy, dv_dx, dv_dy, cth(p), sth(p))
       do o = 1, no
-        rot(o,p) = rotation_rate(dcp_dx(o), dcp_dy(o), curl, cth(p), sth(p))
+        rot(o,p) = depth_rotation_rate(cgdlncp_dx(o), cgdlncp_dy(o), cth(p), sth(p)) + rot_current
       end do
     end do
     rot(:,0) = rot(:,nd)
     rot(:,nd+1) = rot(:,1)
 
+    ! The upstream scheme is stable and positive if the fraction of a bin
+    ! that leaves it through both faces in a substep does not exceed 1. Over
+    ! direction, the rotation rate is a sinusoid in th from the depth, of
+    ! amplitude rot_depth, plus half the vorticity, plus a sinusoid in 2 th
+    ! from the strain of the current, of amplitude rot_strain. Per unit time,
+    ! a bin loses at most the largest rotation rate through one face, and,
+    ! where the rotation diverges, at most dth times the largest derivative
+    ! of the rotation rate over th through both faces.
+    rot_vorticity = 0.5 * abs(dv_dx - du_dy)
+    rot_strain = 0.5 * sqrt((du_dx - dv_dy)**2 + (dv_dx + du_dy)**2)
+    outflow = 0
+    do o = 1, no
+      rot_depth = sqrt(cgdlncp_dx(o)**2 + cgdlncp_dy(o)**2)
+      outflow = max(outflow, rot_depth + rot_vorticity + rot_strain, &
+                    dth * (rot_depth + 2 * rot_strain))
+    end do
+    nsub = max(1, ceiling(dt * outflow / dth))
+
+    if (nsub == 1) then
+      call upstream(nf, nd, no, rot, e, dt / dth, ef)
+    else
+      en = e(1:no,:)
+      do n = 1, nsub
+        en_next = en
+        call upstream(no, nd, no, rot, en, dt / (nsub * dth), en_next)
+        en = en_next
+      end do
+      ef(1:no,:) = ef(1:no,:) + en - e(1:no,:)
+    end if
+
+  end subroutine refraction
+
+
+  pure subroutine upstream(n1, nd, no, rot, e, dt_over_dth, ef)
+    ! Integrates the upstream advection of e in directional space for
+    ! frequencies 1:no over dt_over_dth into ef, given the rotation rate rot.
+    integer, intent(in) :: n1, nd, no
+    real, intent(in) :: rot(no,0:nd+1), e(n1,nd), dt_over_dth
+    real, intent(inout) :: ef(n1,nd)
+    real :: rotl, rotr
+    integer :: o, p, pl, pr
     do p = 1, nd
       pl = modulo(p, nd) + 1     ! anti-clockwise neighbor
       pr = modulo(p - 2, nd) + 1 ! clockwise neighbor
@@ -131,15 +177,10 @@ contains
         ! rotation at cell edges
         rotl = 0.5 * (rot(o,p) + rot(o,p+1))
         rotr = 0.5 * (rot(o,p) + rot(o,p-1))
-        flux = 0.5 * ((rotl + abs(rotl)) * e(o,p)  &
-                    + (rotl - abs(rotl)) * e(o,pl) &
-                    - (rotr + abs(rotr)) * e(o,pr) &
-                    - (rotr - abs(rotr)) * e(o,p)) &
-             * oneovdth
-        ef(o,p) = ef(o,p) - dtr * flux
+        ef(o,p) = ef(o,p) - dt_over_dth * (max(rotl, 0.) * e(o,p) + min(rotl, 0.) * e(o,pl) &
+                                         - max(rotr, 0.) * e(o,pr) - min(rotr, 0.) * e(o,p))
       end do
     end do
-
-  end subroutine refraction
+  end subroutine upstream
 
 end module umwm_advection

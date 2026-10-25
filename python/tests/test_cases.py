@@ -146,6 +146,38 @@ def test_case_runs(library, tmp_path, name):
         assert umwm.output_files(domain.workdir)
 
 
+def test_refraction_gradients(library, tmp_path):
+    """Refraction turns the waves over the seamount at the phase speed
+    gradient at fixed frequency times cg/cp, the rate at which the energy
+    crosses it, and through the eddy field at the velocity gradient of the
+    current, both by centered differences, away from the land rows."""
+    def centered(field, axis, spacing):
+        return (np.roll(field, -1, axis) - np.roll(field, 1, axis)) / (2 * spacing)
+
+    def assert_matches(actual, expected):
+        rows = slice(2, -2)
+        scale = np.nanmax(np.abs(expected[rows]))
+        assert scale > 0
+        np.testing.assert_allclose(actual[rows], expected[rows], rtol=1e-4, atol=1e-6 * scale)
+
+    with umwm.get_case("seamount").domain(tmp_path / "seamount", quiet=True) as domain:
+        domain.initialize()
+        grid = domain.config.grid
+        cp = domain.remap(domain.field("cp0").T, lbound=domain.bounds("cp0")[1])  # (y, x, frequency)
+        cg = domain.remap(domain.field("cg0").T, lbound=domain.bounds("cg0")[1])
+        assert_matches(domain.remap(domain.field("cgdlncp_dx").T), cg / cp * centered(cp, 1, grid.delx))
+        assert_matches(domain.remap(domain.field("cgdlncp_dy").T), cg / cp * centered(cp, 0, grid.dely))
+
+    with umwm.get_case("eddy-field").domain(tmp_path / "eddy-field", quiet=True) as domain:
+        domain.advance()  # the current gradients are evaluated in the time steps
+        grid = domain.config.grid
+        uc, vc = domain.grid_field("uc"), domain.grid_field("vc")
+        assert_matches(domain.grid_field("du_dx"), centered(uc, 1, grid.delx))
+        assert_matches(domain.grid_field("du_dy"), centered(uc, 0, grid.dely))
+        assert_matches(domain.grid_field("dv_dx"), centered(vc, 1, grid.delx))
+        assert_matches(domain.grid_field("dv_dy"), centered(vc, 0, grid.dely))
+
+
 def test_wave_tank_cutoff(library, tmp_path):
     """In the tank, the raised prognostic cutoff lets the waves grow along the
     fetch; with the default cutoff the whole spectrum is diagnostic and the

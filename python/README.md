@@ -231,7 +231,7 @@ exist (`swh`, `mwp`, `cd`, `ust`, `taux_form`, `u_stokes`, `F`, `Sin`,
 - `domain.sizes` holds the grid and spectrum sizes, `domain.shape` the grid
   shape `(ny, nx)`, `domain.time` the model time, `domain.finished` whether
   the stop time is reached, and `domain.attribute("dts")` the current source
-  time step (also `sumt`, `dtamin`, `dtr`, `dth`, `dlnf`).
+  time step (also `sumt`, `dtamin`, `dth`, `dlnf`).
 
 ### Output files
 

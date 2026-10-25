@@ -232,7 +232,7 @@ with a width (the standard deviation of the Gaussian) of 20 km, at 2.5 km
 resolution. The bathymetry is read from `input/umwm.gridtopo`
 (`topoFromFile`). After about 8 hours the waves over the seamount are
 steady. Over its top, where the 10 s waves feel the bottom, the significant
-wave height is 4.7 m, 8% lower than the 5.1 m away from it, and downwind the
+wave height is 4.7 m, 7% lower than the 5.1 m away from it, and downwind the
 seamount casts a weak shadow, 2% lower 20 km beyond its top. With the broad
 directional spread of a wind sea, refraction over the seamount does not
 focus the waves into a higher sea in its lee. Spectra are written upwind of,
@@ -245,7 +245,7 @@ speeds up to 0.7 m/s (rms 0.3 m/s), which do not evolve in time. The
 currents are read once, from `input/umwmin.nc`, and held constant
 (`currents` and `steady` in `&FORCING`). The currents refract and advect
 the waves: across the eddies, the significant wave height varies
-by -9% to +11% around its mean at each fetch (standard deviation 3%), in
+by -8% to +11% around its mean at each fetch (standard deviation 3%), in
 streaks downwind of the eddies, where it would be uniform without currents.
 After 15 hours the pattern is steady, while the waves at the far end are
 still growing slowly. Spectra are written upwind of the eddies and across

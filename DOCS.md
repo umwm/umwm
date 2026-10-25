@@ -878,32 +878,87 @@ smallest phase and group speed over all sea cells.
 
 ## Refraction
 
-The directional rotation rate is
+Refraction turns the wavenumber direction $\phi$ along the rays. For the
+dispersion relation $\omega = \sigma(k, d) + \mathbf{k}\cdot\mathbf{u}$,
+the ray equation $\dot{\mathbf{k}} = -\nabla\omega$ gives the rotation
+rate
 
 $$
 \dot{\phi}
 =
-\frac{\partial(c\sin\phi+v)}{\partial x}
--
-\frac{\partial(c\cos\phi+u)}{\partial y}.
+-\frac{c_g}{c}\frac{\partial c}{\partial n}
+-\hat{\mathbf{k}}\cdot\frac{\partial\mathbf{u}}{\partial n},
 $$
+
+where $\hat{\mathbf{k}}=(\cos\phi,\sin\phi)$, $n$ is the coordinate normal
+to $\hat{\mathbf{k}}$, to its left, with
+$\partial/\partial n = -\sin\phi\,\partial/\partial x + \cos\phi\,\partial/\partial y$,
+and $c$ and $c_g$ are the intrinsic phase and group speeds at the fixed
+frequency of the bin. In components,
+
+$$
+\dot{\phi}
+=
+\frac{c_g}{c}\left(\sin\phi\frac{\partial c}{\partial x}
+- \cos\phi\frac{\partial c}{\partial y}\right)
++ \sin^2\phi\frac{\partial v}{\partial x}
+- \cos^2\phi\frac{\partial u}{\partial y}
++ \sin\phi\cos\phi\left(\frac{\partial u}{\partial x}
+- \frac{\partial v}{\partial y}\right).
+$$
+
+The depth term is Snell's law, $d\phi/ds = -c^{-1}\,\partial c/\partial n$,
+along the ray $s$ that the wave energy travels at the group speed: the
+phase speed gradient sets the direction in which the waves turn, and the
+group speed how fast they cross it. Over straight and parallel depth
+contours it keeps $\sin\phi/c$ constant along the ray. The group speed at
+fixed frequency is not monotonic in depth, largest at $kd \approx 1.2$,
+so its gradient does not give the direction of refraction.
+
+The current term is half the vorticity,
+$\frac{1}{2}(\partial v/\partial x - \partial u/\partial y)$, plus a part
+from the strain of the current that varies with direction. A current in
+solid-body rotation turns the waves of all directions at half its
+vorticity; a shear current $u(y)$ turns the waves along it at
+$-\partial u/\partial y$, and does not turn the waves across it. The ray
+path, in the direction of $\mathbf{c}_g + \mathbf{u}$, turns at the full
+vorticity to first order in $u/c_g$ (Kenyon, 1971), from $\dot\phi$
+together with the advection of the waves by the current.
 
 Positive $\dot{\phi}$ rotates wave energy counter-clockwise; negative
 $\dot{\phi}$ rotates it clockwise.
 
+The gradients are centered differences: the phase speed gradient times
+$c_g/c$ (`cgdlncp_dx`, `cgdlncp_dy`) of each frequency at
+initialization, and the current velocity gradient (`du_dx`, `du_dy`,
+`dv_dx`, `dv_dy`) at the first time step and each time step with currents
+from file. The direction $\phi$ is taken in the frame of the grid, as in
+the propagation.
+
 Refraction is discretized with the same upstream-flux form, replacing
-$x$ by $\phi$. Directional space is periodic, so no directional boundary
-condition is required.
+$x$ by $\phi$, with the rotation rate at the faces between directions the
+mean of the rates of the two directions. Directional space is periodic,
+so no directional boundary condition is required.
 
-The stability condition is
+The scheme is stable and keeps the spectrum positive if the fraction of a
+bin that leaves it through both of its faces in a time step does not
+exceed 1:
 
 $$
-\frac{\dot{\phi}\Delta t}{\Delta\phi} < 1.
+\frac{\Delta t}{\Delta\phi}
+\left(\max(\dot{\phi}_{p+1/2}, 0) - \min(\dot{\phi}_{p-1/2}, 0)\right)
+\le 1.
 $$
 
-The implementation computes a refraction timestep `dtr` no larger than
-`dts`; if needed, the directional rotation is effectively limited to the
-stable step.
+Refraction splits the time step `dts` of each cell into as many equal
+substeps as this condition needs, so that every cell is refracted over
+the whole time step. The condition is evaluated with an upper bound from
+the amplitudes of the depth term, $a$, and of the strain term, $b$, which
+vary over direction as $\phi$ and $2\phi$, and from half the vorticity,
+$\zeta/2$: a bin loses at most $a + |\zeta|/2 + b$ through one face, and
+at most $\Delta\phi\,(a + 2b)$ through both faces where the rotation
+diverges, per unit time. One substep is usually enough; the cells next to
+land, whose phase speed is the smallest of all sea cells, may need more.
 
 ## Wind Stress and Drag
 
@@ -1417,7 +1472,8 @@ The current focused tests are:
 | `test_dispersion` | Wavenumber/frequency round-trip accuracy and positive finite group speed for the capillary-gravity dispersion module. |
 | `test_spectrum` | Spectrum constructor metadata, endpoint frequencies, legacy log-space frequency equivalence, direction-grid equivalence, `dlnf`, and `dth`. |
 | `test_source_functions` | Mean-squared slope moments against the direct sum over directions, the vectorized power function against the intrinsic, and the wind input against a step-by-step evaluation. |
-| `test_domain` | One-hour integration of the idealized hurricane case by `domain_type` with gridded and spectrum output and Stokes drift, compared with the mean and maximum of output fields, ocean stress, and Stokes drift from UMWM before the domain refactor. |
+| `test_advection` | Current-induced ray rotation against the ray equation and in a solid-body eddy, depth-induced ray rotation against Snell's law along a ray over a slope, and the conservation, positivity, and rotation of the spectrum by refraction in several substeps. |
+| `test_domain` | One-hour integration of the idealized hurricane case by `domain_type` with gridded and spectrum output and Stokes drift, compared with the mean and maximum of output fields, ocean stress, and Stokes drift from UMWM before the domain refactor, updated for the corrected current-induced refraction. |
 
 The Python package has its own test suite in `python/tests`, run with
 `python -m pytest python/tests`, which includes the same idealized
@@ -1436,6 +1492,7 @@ sections 1 through 4 and 9. The cited references are:
 - Donelan, M. A., M. Curcic, S. S. Chen, and A. K. Magnusson, 2012: Modeling waves and wind stress. *Journal of Geophysical Research*, 117, C00J23. https://doi.org/10.1029/2011JC007787.
 - Jeffreys, H., 1924: On the formation of waves by wind. *Proceedings of the Royal Society A*, 107, 189-206.
 - Jeffreys, H., 1925: On the formation of waves by wind, II. *Proceedings of the Royal Society A*, 110, 341-347.
+- Kenyon, K. E., 1971: Wave refraction in ocean currents. *Deep Sea Research and Oceanographic Abstracts*, 18, 1023-1034. https://doi.org/10.1016/0011-7471(71)90006-4.
 - Komen, G. J., L. Cavaleri, M. Donelan, K. Hasselmann, S. Hasselmann, and P. A. E. M. Janssen, 1994: *Dynamics and Modelling of Ocean Waves*. Cambridge University Press, 532 pp.
 - Pierson, W. L., and L. Moskowitz, 1964: A proposed spectral form for fully developed wind seas based on the similarity theory of S. A. Kitaigorodskii. *Journal of Geophysical Research*, 69, 5181-5190.
 - Shemdin, O. H., K. Hasselmann, S. V. Hsiao, and K. Herterich, 1978: Non-linear and linear bottom interaction effects in shallow water. In A. Favre and K. Hasselmann (eds.), *Turbulent Fluxes Through the Sea Surface, Wave Dynamics, and Prediction*, Plenum, New York, 347-372.

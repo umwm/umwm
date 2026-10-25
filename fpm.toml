@@ -65,6 +65,11 @@ source-dir = "tests"
 main = "test_source_functions.f90"
 
 [[test]]
+name = "test_advection"
+source-dir = "tests"
+main = "test_advection.f90"
+
+[[test]]
 name = "test_domain"
 source-dir = "tests"
 main = "test_domain.f90"

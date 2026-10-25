@@ -8,20 +8,20 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 
 # Reference domain mean and maximum of output fields of the one-hour idealized
 # hurricane case, and the tolerances relative to the larger of the two, from
-# tests/test_domain.f90 (UMWM before the domain refactor).
+# tests/test_domain.f90.
 RANKINE_REFERENCE = {
-    "swh": (3.812207232, 6.315393925, 1e-4),
-    "mwp": (5.526470696, 6.882972240, 1e-4),
-    "mss": (5.120974732e-02, 6.678850949e-02, 1e-4),
-    "cd": (5.015606267e-03, 4.854240119e-01, 1e-3),
-    "ust": (9.779266109e-01, 1.610196948, 1e-4),
-    "dwp": (7.726010769, 10.06773663, 1e-4),
-    "taux_form": (-2.219776792e-02, 2.233852386, 1e-4),
-    "taux_ocn": (-2.461001024e-02, 2.166157484, 1e-4),
-    "epsx_ocn": (-3.314319944e-02, 4.064507008, 1e-4),
-    "epsy_atm": (1.481968960e-01, 1.229311371e+01, 1e-4),
-    "u_stokes": (-5.597803407e-03, 3.102434874e-01, 1e-4),
-    "v_stokes": (-5.990615025e-03, 3.947814107e-01, 1e-4),
+    "swh": (3.812282324, 6.315677166, 1e-4),
+    "mwp": (5.527106762, 6.883029938, 1e-4),
+    "mss": (5.120752752e-02, 6.678935140e-02, 1e-4),
+    "cd": (5.035856273e-03, 4.888859093e-01, 1e-3),
+    "ust": (9.779282808e-01, 1.610207081, 1e-4),
+    "dwp": (7.720907211, 10.06773663, 1e-4),
+    "taux_form": (-2.226014249e-02, 2.233480215, 1e-4),
+    "taux_ocn": (-2.504688315e-02, 2.160749435, 1e-4),
+    "epsx_ocn": (-3.639729321e-02, 4.056354523, 1e-4),
+    "epsy_atm": (1.483405083e-01, 1.229360199e+01, 1e-4),
+    "u_stokes": (-5.592743866e-03, 3.101237714e-01, 1e-4),
+    "v_stokes": (-5.817468278e-03, 3.947935998e-01, 1e-4),
 }
 
 # Parameters of the forcing of that case, as in tests/Makefile.
