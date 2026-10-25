@@ -13,6 +13,19 @@ def test_forcing_filename():
     assert umwm.forcing_filename("2026-01-02 03:04:05") == "umwmin_2026-01-02_03:04:05.nc"
 
 
+def test_forcing_files():
+    config = umwm.Config()
+    config.domain.stoptimestr = "2026-01-01 02:00:00"
+    assert umwm.forcing_files(config) == []
+    config.forcing.steady = True
+    assert umwm.forcing_files(config) == []  # no forcing from file
+    config.forcing.currents = True
+    assert umwm.forcing_files(config) == ["umwmin.nc"]
+    config.forcing.steady = False
+    assert umwm.forcing_files(config) == [umwm.forcing_filename(time) for time in config.step_times(include_start=True)]
+    assert len(umwm.forcing_files(config)) == 3
+
+
 def test_write_forcing(tmp_path):
     ny, nx = 5, 7
     uw = np.arange(ny * nx, dtype=np.float64).reshape(ny, nx)

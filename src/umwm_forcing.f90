@@ -146,7 +146,8 @@ contains
 
 
   subroutine forcing_update(self, config, timestr, grid)
-    ! Advance forcing snapshots and load the next file-backed snapshot.
+    ! Advance forcing snapshots and load the next file-backed snapshot;
+    ! steady forcing, read once from umwmin.nc, keeps its snapshot.
     class(forcing_type), intent(inout) :: self
     type(config_type), intent(in) :: config
     character(len=19), intent(in) :: timestr
@@ -168,7 +169,7 @@ contains
 
     self % readfile = any([config % winds, config % currents, config % air_density, &
                            config % water_density, config % seaice])
-    if (self % readfile) call self % load(config, timestr, grid)
+    if (self % readfile .and. .not. config % steady) call self % load(config, timestr, grid)
 
   end subroutine forcing_update
 
@@ -180,18 +181,22 @@ contains
     character(len=19), intent(in) :: timestr
     type(grid_type), intent(in) :: grid
 
-    character(999) :: nc_infile
+    character(:), allocatable :: nc_infile
     character(19) :: readstr
     integer :: ncid, varid
 
     readstr = timestr
     readstr(11:11) = '_'
 
-    nc_infile = 'input/umwmin_' // readstr // '.nc'
+    if (config % steady) then
+      nc_infile = config % input_path('umwmin.nc') ! no time: read once
+    else
+      nc_infile = config % input_path('umwmin_' // readstr // '.nc')
+    end if
     self % readfile = any([config % winds, config % currents, config % air_density, &
                            config % water_density, config % seaice])
 
-    if (self % readfile) call forcing_nc_check(nf90_open(trim(nc_infile), nf90_nowrite, ncid))
+    if (self % readfile) call forcing_nc_check(nf90_open(nc_infile, nf90_nowrite, ncid))
 
     if (config % winds) then
       call forcing_nc_check(nf90_inq_varid(ncid, 'uw', varid))

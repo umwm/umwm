@@ -8,12 +8,14 @@ module umwm_config
   public :: config_type
 
   integer, parameter :: max_stokes_depths = 100
+  integer, parameter :: max_path = 4096 ! the longest path, PATH_MAX of Linux
   integer, parameter :: allowedoutputtimes(10) = [-1, 0, 1, 2, 3, 4, 6, 8, 12, 24]
 
   type :: config_type
     logical :: read_ok = .false.
-    character(len=256) :: path = ''
-    character(len=256) :: read_error = ''
+    character(len=max_path) :: path = ''
+    character(len=max_path+256) :: read_error = ''
+    character(len=max_path) :: input_dir = 'input' ! directory of the input files
 
     logical :: isglobal = .false.
     integer :: mm = 0
@@ -48,6 +50,7 @@ module umwm_config
     real :: sdt_fac = 0.
     real :: sbf_fac = 0.
     real :: sbp_fac = 0.
+    real :: fcut_fac = 0.53 ! default for namelists that do not set it
 
     logical :: gridfromfile = .false.
     real :: delx = 0.
@@ -62,6 +65,7 @@ module umwm_config
     logical :: air_density = .false.
     logical :: water_density = .false.
     logical :: seaice = .false.
+    logical :: steady = .false.
 
     real :: wspd0 = 0.
     real :: wdir0 = 0.
@@ -83,6 +87,8 @@ module umwm_config
     real, allocatable :: stokes_depths(:)
 
   contains
+    procedure :: input_path
+    procedure :: sibling_path
     procedure :: validate
   end type config_type
 
@@ -117,11 +123,11 @@ contains
       res%sfct, res%kappa, res%z, res%gustiness, res%dmin, res%explim, &
       res%sin_fac, res%sin_diss1, res%sin_diss2, res%sds_fac, &
       res%sds_power, res%mss_fac, res%snl_fac, res%sdt_fac, res%sbf_fac, &
-      res%sbp_fac, stat, iomsg)
+      res%sbp_fac, res%fcut_fac, stat, iomsg)
     if (stat == 0) call read_grid(unit, res%gridfromfile, res%delx, res%dely, &
       res%topofromfile, res%dpt, res%fillestuaries, res%filllakes, stat, iomsg)
     if (stat == 0) call read_forcing(unit, res%winds, res%currents, &
-      res%air_density, res%water_density, res%seaice, stat, iomsg)
+      res%air_density, res%water_density, res%seaice, res%steady, stat, iomsg)
     if (stat == 0) call read_forcing_constant(unit, res%wspd0, res%wdir0, &
       res%uc0, res%vc0, res%rhoa0, res%rhow0, res%fice0, res%fice_lth, &
       res%fice_uth, stat, iomsg)
@@ -169,18 +175,18 @@ contains
   subroutine read_physics(unit, g, nu_air, nu_water, sfct, kappa, z, &
                           gustiness, dmin, explim, sin_fac, sin_diss1, &
                           sin_diss2, sds_fac, sds_power, mss_fac, snl_fac, &
-                          sdt_fac, sbf_fac, sbp_fac, stat, iomsg)
+                          sdt_fac, sbf_fac, sbp_fac, fcut_fac, stat, iomsg)
     integer, intent(in) :: unit
     real, intent(inout) :: g, nu_air, nu_water, sfct, kappa, z
     real, intent(inout) :: gustiness, dmin, explim, sin_fac, sin_diss1
     real, intent(inout) :: sin_diss2, sds_fac, sds_power, mss_fac, snl_fac
-    real, intent(inout) :: sdt_fac, sbf_fac, sbp_fac
+    real, intent(inout) :: sdt_fac, sbf_fac, sbp_fac, fcut_fac
     integer, intent(out) :: stat
     character(len=*), intent(out) :: iomsg
 
     namelist /physics/ g, nu_air, nu_water, sfct, kappa, z, &
       gustiness, dmin, explim, sin_fac, sin_diss1, sin_diss2, &
-      sds_fac, sds_power, mss_fac, snl_fac, sdt_fac, sbf_fac, sbp_fac
+      sds_fac, sds_power, mss_fac, snl_fac, sdt_fac, sbf_fac, sbp_fac, fcut_fac
 
     read(unit, nml=physics, iostat=stat, iomsg=iomsg)
   end subroutine read_physics
@@ -203,13 +209,14 @@ contains
 
 
   subroutine read_forcing(unit, winds, currents, air_density, water_density, &
-                          seaice, stat, iomsg)
+                          seaice, steady, stat, iomsg)
     integer, intent(in) :: unit
     logical, intent(inout) :: winds, currents, air_density, water_density, seaice
+    logical, intent(inout) :: steady
     integer, intent(out) :: stat
     character(len=*), intent(out) :: iomsg
 
-    namelist /forcing/ winds, currents, air_density, water_density, seaice
+    namelist /forcing/ winds, currents, air_density, water_density, seaice, steady
 
     read(unit, nml=forcing, iostat=stat, iomsg=iomsg)
   end subroutine read_forcing
@@ -281,6 +288,27 @@ contains
       end if
     end do
   end subroutine set_stokes_depths
+
+
+  function input_path(self, name) result(res)
+    ! The path of the input file name, in the input directory of the run.
+    class(config_type), intent(in) :: self
+    character(len=*), intent(in) :: name
+    character(len=:), allocatable :: res
+
+    res = trim(self%input_dir) // '/' // name
+  end function input_path
+
+
+  function sibling_path(self, name) result(res)
+    ! The path of the file name in the directory of the main namelist, such
+    ! as the spectrum.nml and exclude.nml namelists that accompany it.
+    class(config_type), intent(in) :: self
+    character(len=*), intent(in) :: name
+    character(len=:), allocatable :: res
+
+    res = self%path(1:index(self%path, '/', back=.true.)) // name
+  end function sibling_path
 
 
   function validate(self, stop_on_error, rank) result(ok)
@@ -378,6 +406,10 @@ contains
     if (self%dmin <= 0) &
       call diagnostic('error', &
         'bad value in main.nml: dmin must be > 0', ok, rank_value)
+
+    if (self%fcut_fac <= 0) &
+      call diagnostic('error', &
+        'bad value in main.nml: fcut_fac must be > 0', ok, rank_value)
 
     if (.not. self%gridfromfile) then
       if (self%delx <= 0 .or. self%dely <= 0) &

@@ -18,7 +18,8 @@ program test_forcing
     test(interpolation_snapshot), &
     test(wind_speed_floor), &
     test(stored_wind_speed_floor), &
-    test(file_backed_rankine_forcing) &
+    test(file_backed_rankine_forcing), &
+    test(steady_eddy_forcing) &
   ])
 
 #ifdef MPI
@@ -254,6 +255,42 @@ contains
 
     res = test('file_backed_rankine_forcing', ok)
   end function file_backed_rankine_forcing
+
+  function steady_eddy_forcing() result(res)
+    ! Steady forcing, the currents of the eddy-field example case, is read
+    ! once from umwmin.nc in the input directory of the configuration and
+    ! kept through the following updates.
+    type(test_result) :: res
+    type(config_type) :: config
+    type(grid_type) :: grid
+    type(forcing_type) :: forcing
+    real, allocatable :: uc0(:,:), vc0(:,:)
+    logical :: ok
+
+    config = config_type('../examples/eddy-field/main.nml')
+    config % input_dir = '../examples/eddy-field/input'
+
+    call grid % initialize(config)
+    call forcing % initialize(config, grid)
+
+    call forcing % load(config, config % starttimestr, grid)
+    uc0 = forcing % ucf
+    vc0 = forcing % vcf
+
+    call forcing % update(config, '2026-01-01 01:00:00', grid)
+    call forcing % interpolate(config, grid, 0.5 * config % dtg)
+
+    ok = config % steady .and. config % currents .and. maxval(abs(uc0)) > 0.3 .and. &
+         all_nearly_equal(reshape(forcing % ucf, [size(uc0)]), reshape(uc0, [size(uc0)])) .and. &
+         all_nearly_equal(reshape(forcing % vcb, [size(vc0)]), reshape(vc0, [size(vc0)])) .and. &
+         all_nearly_equal(reshape(forcing % uc_2d, [size(uc0)]), reshape(uc0, [size(uc0)])) .and. &
+         all_nearly_equal(reshape(forcing % vc_2d, [size(vc0)]), reshape(vc0, [size(vc0)]))
+
+    call forcing % finalize()
+    call grid % finalize()
+
+    res = test('steady_eddy_forcing', ok)
+  end function steady_eddy_forcing
 
   function valid_config() result(config)
     type(config_type) :: config

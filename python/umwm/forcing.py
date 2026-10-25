@@ -1,7 +1,8 @@
 """Writing of UMWM input files: forcing fields and grids.
 
 The model reads, for each global time step, a file ``input/umwmin_<time>.nc``
-with the forcing fields on the native grid, and optionally the grid geometry
+with the forcing fields on the native grid, or once a file ``input/umwmin.nc``
+of steady forcing (``forcing.steady``), and optionally the grid geometry
 from ``input/umwm.grid`` or ``input/umwm.gridtopo``. These functions write
 such files from NumPy arrays of shape ``(ny, nx)``.
 """
@@ -16,8 +17,8 @@ import xarray as xr
 
 from .config import format_time, parse_time
 
-__all__ = ["forcing_filename", "write_forcing", "write_forcing_dataset", "write_grid", "rankine_vortex",
-           "write_rankine_forcing"]
+__all__ = ["forcing_filename", "forcing_files", "write_forcing", "write_forcing_dataset", "write_grid",
+           "rankine_vortex", "write_rankine_forcing", "STEADY_FORCING_FILE"]
 
 FORCING_VARIABLES = {
     "uw": ("wind x-component", "m s-1"),
@@ -31,10 +32,28 @@ FORCING_VARIABLES = {
 """Forcing variables of the input files, with description and units."""
 
 
-def forcing_filename(time) -> str:
-    """The input file name for a forcing time: ``umwmin_YYYY-MM-DD_HH:MM:SS.nc``."""
+STEADY_FORCING_FILE = "umwmin.nc"
+"""The input file of steady forcing (``forcing.steady``), read once."""
+
+
+def forcing_filename(time, steady: bool = False) -> str:
+    """The input file name for a forcing time: ``umwmin_YYYY-MM-DD_HH:MM:SS.nc``,
+    or ``umwmin.nc`` for steady forcing (``forcing.steady``), whatever the time."""
+    if steady:
+        return STEADY_FORCING_FILE
     time = time if isinstance(time, datetime) else parse_time(time)
     return f"umwmin_{time:%Y-%m-%d_%H:%M:%S}.nc"
+
+
+def forcing_files(config) -> list[str]:
+    """The names of the forcing input files that the model reads for a
+    configuration: one for the start time and for the end of each global time
+    step, or the steady forcing file; none if it reads no forcing from file."""
+    if not config.forcing_from_file:
+        return []
+    if config.forcing.steady:
+        return [STEADY_FORCING_FILE]
+    return [forcing_filename(time) for time in config.step_times(include_start=True)]
 
 
 def _as_field(name, value, shape, dtype=np.float32):
@@ -47,11 +66,12 @@ def _as_field(name, value, shape, dtype=np.float32):
 
 
 def write_forcing(path, time, *, uw=None, vw=None, uc=None, vc=None, rhoa=None, rhow=None,
-                  fice=None, lon=None, lat=None, x=None, y=None, attrs=None) -> Path:
+                  fice=None, lon=None, lat=None, x=None, y=None, attrs=None, steady=False) -> Path:
     """Write a forcing input file for one time.
 
     ``path`` is the input directory, in which case the file is named after
-    the time, or the path of the file to write. Fields are arrays of shape
+    the time, or ``umwmin.nc`` for steady forcing (``steady``, for
+    ``forcing.steady``), or the path of the file to write. Fields are arrays of shape
     ``(ny, nx)`` or scalars; the fields that the configuration reads from
     file (``forcing.winds``: ``uw`` and ``vw``; ``forcing.currents``: ``uc``
     and ``vc``; ``forcing.air_density``: ``rhoa``; ``forcing.water_density``:
@@ -88,7 +108,7 @@ def write_forcing(path, time, *, uw=None, vw=None, uc=None, vc=None, rhoa=None, 
     dataset = xr.Dataset(data_vars=data_vars, coords=coords, attrs=dict(attrs or {}, valid_time=format_time(time)))
     path = Path(path)
     if path.is_dir() or path.suffix != ".nc":
-        path = path / forcing_filename(time)
+        path = path / forcing_filename(time, steady)
     path.parent.mkdir(parents=True, exist_ok=True)
     encoding = {name: {"dtype": "float32"} for name in dataset.data_vars}
     dataset.to_netcdf(path, engine="netcdf4", format="NETCDF4", encoding=encoding, unlimited_dims=("time",))

@@ -49,8 +49,8 @@ OBJS = datetime_module.o \
 all: umwm
 
 # Main target
-umwm: umwm.o $(OBJS)
-	$(FC) $(FCFLAGS) $(LDFLAGS) -o $@ umwm.o $(OBJS) $(NETCDF_FLIBS) $(LDLIBS)
+umwm: umwm.o umwm_cli.o $(OBJS)
+	$(FC) $(FCFLAGS) $(LDFLAGS) -o $@ umwm.o umwm_cli.o $(OBJS) $(NETCDF_FLIBS) $(LDLIBS)
 	cp $@ ../.
 	$(AR) rcs libumwm.a $(OBJS)
 
@@ -71,7 +71,8 @@ $(SHARED_LIB): $(OBJS)
 	$(FC) -shared $(FCFLAGS) $(LDFLAGS) -o $@ $^ $(NETCDF_FLIBS) $(SHARED_RPATH) $(LDLIBS)
 
 # Object            Source              Dependencies
-umwm.o:             umwm.f90            umwm_domain.o umwm_env.o
+umwm.o:             umwm.f90            umwm_cli.o umwm_domain.o umwm_env.o
+umwm_cli.o:         umwm_cli.f90        umwm_env.o
 datetime_module.o:  datetime_module.f90
 umwm_domain.o:      umwm_domain.f90     datetime_module.o umwm_advection.o umwm_config.o umwm_constants.o umwm_dispersion.o umwm_env.o umwm_forcing.o umwm_grid.o umwm_io.o umwm_mpi.o umwm_physics.o umwm_restart.o umwm_sheltering.o umwm_source_functions.o umwm_spectrum.o umwm_stokes.o umwm_stress.o umwm_util.o
 umwm_domain_output.o: umwm_domain_output.f90 umwm_domain.o umwm_io.o

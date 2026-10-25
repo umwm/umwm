@@ -18,14 +18,18 @@ This file is a technical reference for the physics implemented in the University
 | Dispersion | `src/umwm_dispersion.f90` | Capillary-gravity dispersion relation, wavenumber solve, angular frequency, and group speed. |
 | Initialization and precomputed factors | `src/umwm_domain.f90` | Runtime allocation, spectral coordinates, wave kinematics, integration weights, dissipation constants, CFL limits. |
 | Parallel environment and halo exchange | `src/umwm_env.f90`, `src/umwm_mpi.f90` | Process rank and count; halo exchange and gathering of tile fields. |
+| Command line | `src/umwm_cli.f90` | Arguments of the `umwm` executable: the main namelist to run, by path or as an example case of `examples/` (`--case`), and the check of the run directory. |
 | C API | `src/umwm_capi.f90` | `bind(c)` procedures for foreign-language callers: the domain lifecycle through an opaque handle, and access to the domain fields by name as pointers into the model memory. Used by the Python package in `python/`. |
 
 The main program instantiates one `domain_type` from `src/umwm_domain.f90`
-and calls its `initialize`, `run`, and `finalize` procedures. `run` loops
-over `advance`, which integrates one global time step `dtg`: the forcing
-update, the inner loop of source time steps, and the output due at the
-new time; `advance` and `finished` are public so that a driver, such as
-the Python package, can step the model and inspect it between steps. The
+and calls its `initialize`, `run`, and `finalize` procedures, with the
+main namelist given on the command line (`namelists/main.nml` by default);
+the `spectrum.nml` and `exclude.nml` namelists are read from the directory
+of the main namelist. `run` loops over `advance`, which integrates one
+global time step `dtg`: the forcing update, the inner loop of source time
+steps, and the output due at the new time; `advance` and `finished` are
+public so that a driver, such as the Python package, can step the model
+and inspect it between steps. The
 domain is constructed from `config_type`, `spectrum_type`, `grid_type`,
 `forcing_type`, and `stokes_type` components, and owns the wave spectrum
 and all fields derived from it; there is no global model state.
@@ -778,11 +782,14 @@ diagnostic spectrum is initialized.
 The prognostic/diagnostic cutoff frequency is
 
 $$
-f_c = 4f_{PM} = \frac{0.53g}{U_{10}},
+f_c = \texttt{fcut\_fac}\,\frac{g}{U_{10}},
 $$
 
-limited by `fprog`. The local cutoff bin `oc(i)` marks the highest
-prognostic bin.
+by default with `fcut_fac = 0.53`, so that $f_c \approx 4f_{PM}$, and
+limited by `fprog`. Where waves are far younger than a fully developed
+sea, as in a laboratory tank, their spectral peak lies above this default
+cutoff, and a larger `fcut_fac` keeps them in the prognostic range. The
+local cutoff bin `oc(i)` marks the highest prognostic bin.
 
 For bins above `oc(i)`, UMWM assumes a wind-aligned equilibrium range.
 When the numerator is nonnegative, the diagnostic spectrum is assigned
@@ -1305,6 +1312,7 @@ are from `namelists/main.nml`.
 | `sdt_fac` | `0.002` | nondimensional | Turbulent dissipation factor $A_4$. |
 | `sbf_fac` | `0.003` | `m/s` | Bottom friction coefficient $G_f$. |
 | `sbp_fac` | `0.003` | `m/s` | Bottom percolation coefficient $G_p$. |
+| `fcut_fac` | `0.53` | nondimensional | Factor of the prognostic cutoff frequency $f_c$ = `fcut_fac`$\,g/U_{10}$, about 4 times the Pierson-Moskowitz peak frequency by default. |
 
 Physics-related `DOMAIN` controls:
 
@@ -1313,7 +1321,7 @@ Physics-related `DOMAIN` controls:
 | `om` | Number of frequency/wavenumber bins. |
 | `pm` | Number of direction bins. The manual requires divisibility by `4`; the CFL optimization is best when divisible by `8`. |
 | `fmin`, `fmax` | Lowest and highest frequency bins. |
-| `fprog` | Upper cap on the prognostic frequency range. The local cutoff is `min(0.53*g/U10, fprog)`. |
+| `fprog` | Upper cap on the prognostic frequency range. The local cutoff is `min(fcut_fac*g/U10, fprog)`. |
 | `dtg` | Global forcing/output step and maximum source-loop interval. |
 
 Sea-ice controls:

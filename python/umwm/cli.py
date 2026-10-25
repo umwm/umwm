@@ -5,6 +5,7 @@ Subcommands::
     umwm init [WORKDIR]            create a run directory with default namelists
     umwm config [NAMELIST]         show, check, describe, compare, or write a configuration
     umwm run [NAMELIST|WORKDIR]    run the model in a run directory
+    umwm cases [NAME]              list the example cases, or describe one
     umwm forcing rankine           write idealized hurricane forcing files
     umwm output [SOURCE]           summarize or plot the output files
     umwm clean [WORKDIR]           remove the output and restart files of a run
@@ -12,7 +13,8 @@ Subcommands::
 
 Each subcommand accepts ``--help``. ``umwm run`` works per process under
 ``mpiexec`` when the library is built with MPI, and ``umwm run -n N``
-launches it under ``mpiexec`` itself.
+launches it under ``mpiexec`` itself. ``init``, ``config`` and ``run`` take
+``--case NAME`` to start from an example case instead of a namelist file.
 """
 
 from __future__ import annotations
@@ -50,7 +52,30 @@ def _apply_settings(config: Config, settings) -> Config:
     return config
 
 
-def _load_config(namelist, settings) -> Config:
+def _add_case_option(parser, action):
+    parser.add_argument("-c", "--case", metavar="NAME",
+                        help=f"{action} the example case NAME (see 'umwm cases'); a unique prefix of the name is enough")
+
+
+def _source_case(namelist, case):
+    """The example case given with --case, or None."""
+    if case is None:
+        return None
+    if namelist is not None:
+        raise ValueError("give either a namelist or --case, not both")
+    from .cases import get_case
+
+    return get_case(case)
+
+
+def _source_namelist(namelist, case):
+    """The namelist file given by a path or by an example case, or None for the defaults."""
+    case = _source_case(namelist, case)
+    return namelist if case is None else case.namelist
+
+
+def _load_config(namelist, settings, case=None) -> Config:
+    namelist = _source_namelist(namelist, case)
     config = Config() if namelist is None else Config.from_namelist(namelist)
     return _apply_settings(config, settings)
 
@@ -90,28 +115,35 @@ def _relaunch_under_mpi(processes: int, argv) -> None:
 # ---- subcommands -------------------------------------------------------------
 
 def command_init(args) -> int:
+    case = _source_case(args.from_namelist, args.case)
+    source = args.from_namelist if case is None else case.namelist
+    if args.workdir is None:
+        args.workdir = "." if case is None else case.name
     workdir = Path(args.workdir).resolve()
     namelist = workdir / "namelists" / "main.nml"
     if namelist.exists() and not args.force:
         raise FileExistsError(f"{namelist} exists; use --force to overwrite it")
-    config = _load_config(args.from_namelist, args.settings)
+    config = _load_config(source, args.settings)
     for name in ("namelists", "input", "output", "restart"):
         (workdir / name).mkdir(parents=True, exist_ok=True)
-    config.write(namelist)
+    config.write(namelist, source=source)
     print(f"umwm: wrote {namelist}")
+    if case is not None:
+        for path in case.copy_inputs(workdir / "input", overwrite=args.force):
+            print(f"umwm: copied {path.name} into {path.parent}")
     print(f"umwm: run directory {workdir} is ready; put input files in {workdir / 'input'} and run 'umwm run {workdir}'")
     return 0
 
 
 def command_config(args) -> int:
-    config = _load_config(args.namelist, args.settings)
+    config = _load_config(args.namelist, args.settings, args.case)
     if args.check:
         config.validate()
         print("umwm: configuration is valid")
     if args.diff is not None:
-        other = Config.from_namelist(args.diff)
+        other = Config() if args.diff == "defaults" and not Path(args.diff).exists() else Config.from_namelist(args.diff)
         differences = config.diff(other)
-        this = args.namelist or "defaults"
+        this = args.namelist or args.case or "defaults"
         if not differences:
             print(f"umwm: {this} and {args.diff} do not differ")
         else:
@@ -141,6 +173,8 @@ def command_run(args) -> int:
 
     from .domain import Domain
 
+    if args.case:
+        return _run_case(args)
     workdir = Path(args.workdir).resolve() if args.workdir else None
     if args.target and Path(args.target).is_dir():
         if workdir is None:
@@ -161,8 +195,42 @@ def command_run(args) -> int:
         config = Config.from_namelist(namelist)
     _apply_settings(config, args.settings)
     domain = Domain(config, workdir, input_dir=args.input_dir, log=args.log, quiet=args.quiet)
+    return _run_domain(domain, args)
+
+
+def _run_case(args) -> int:
+    """Run an example case in the run directory given as the target or with
+    --workdir, by default a directory named after the case, which must not
+    hold another namelist or other input files unless --force."""
+    from .cases import get_case
+
+    case = get_case(args.case)
+    if args.target and args.workdir:
+        raise ValueError("with --case, give the run directory either as the target or with --workdir")
+    workdir = Path(args.target or args.workdir or case.name)
+    if workdir.is_file():
+        raise ValueError(f"with --case, the target is the run directory, not a file: {workdir}")
+    workdir = workdir.resolve()
+    namelist = workdir / "namelists" / "main.nml"
+    if namelist.is_file() and not args.force:
+        try:
+            same = Config.from_namelist(namelist) == _apply_settings(case.config(), args.settings)
+        except (ConfigError, NamelistError):
+            same = False
+        if not same:
+            raise FileExistsError(
+                f"{namelist} holds another configuration than the case {case.name}; run it with "
+                f"'umwm run {workdir}', run the case in another directory, or pass --force to replace it")
+    domain = case.domain(workdir, overwrite=args.force, input_dir=args.input_dir, log=args.log, quiet=args.quiet)
+    _apply_settings(domain.config, args.settings)
+    if domain.rank == 0 and not args.check:
+        print(f"umwm: running example case {case.name} in {domain.workdir}")
+    return _run_domain(domain, args)
+
+
+def _run_domain(domain, args) -> int:
     if args.check:
-        config.validate()
+        domain.config.validate()
         domain.check_inputs()
         if domain.rank == 0:
             print(domain.summary())
@@ -172,6 +240,25 @@ def command_run(args) -> int:
     if domain.rank == 0:
         print(f"umwm: run finished at {domain.time:%Y-%m-%d %H:%M:%S}; output in {domain.output_dir}")
     domain.finalize()
+    return 0
+
+
+def command_cases(args) -> int:
+    from .cases import examples_dir, get_case, list_cases
+
+    if args.name:
+        case = get_case(args.name)
+        print(case.notes())
+        print(f"\numwm: the namelists of {case.name} are in {case.directory}")
+        print(f"umwm: run it with 'umwm run --case {case.name}', or create a run directory "
+              f"from it with 'umwm init --case {case.name}'")
+        return 0
+    cases = list_cases()
+    width = max(len(case.name) for case in cases)
+    for case in cases:
+        print(f"{case.name:<{width}}  {case.description}")
+    print(f"\numwm: example cases in {examples_dir()}; 'umwm cases NAME' describes one, and "
+          "'umwm run --case NAME' runs it")
     return 0
 
 
@@ -295,16 +382,20 @@ def build_parser() -> argparse.ArgumentParser:
     init = subparsers.add_parser("init", help="create a run directory with the default namelists",
                                  description="Create a run directory with the namelists, input, output and "
                                              "restart subdirectories and a main.nml namelist.")
-    init.add_argument("workdir", nargs="?", default=".", help="the run directory (default: current directory)")
+    init.add_argument("workdir", nargs="?",
+                      help="the run directory (default: current directory, or the name of the case with --case)")
     init.add_argument("--from", dest="from_namelist", metavar="NAMELIST", help="start from this namelist file instead of the defaults")
+    _add_case_option(init, "start from")
     _add_set_option(init)
-    init.add_argument("-f", "--force", action="store_true", help="overwrite an existing main.nml")
+    init.add_argument("-f", "--force", action="store_true",
+                      help="overwrite an existing main.nml, and with --case, input files that differ from those of the case")
     init.set_defaults(func=command_init)
 
     config = subparsers.add_parser("config", help="show, check, describe, compare, or write a configuration",
                                    description="Print the configuration as a namelist (or JSON), after applying "
                                                "overrides; without a namelist file, the defaults are shown.")
     config.add_argument("namelist", nargs="?", help="a main.nml file or a run directory (default: the built-in defaults)")
+    _add_case_option(config, "use")
     _add_set_option(config)
     config.add_argument("-o", "--output", metavar="FILE", help="write the configuration to this file instead of printing it")
     config.add_argument("--json", action="store_true", help="use JSON instead of the namelist format")
@@ -312,7 +403,9 @@ def build_parser() -> argparse.ArgumentParser:
     config.add_argument("--show", action="store_true", help="with --check, also print the configuration")
     config.add_argument("--describe", nargs="?", const="", metavar="GROUP",
                         help="list the variables with their descriptions and units, optionally of one group")
-    config.add_argument("--diff", metavar="NAMELIST", help="show the variables that differ from this namelist file or run directory")
+    config.add_argument("--diff", metavar="NAMELIST",
+                        help="show the variables that differ from this namelist file or run directory, or from the "
+                             "defaults with 'defaults' (unless a file or directory of that name exists)")
     config.set_defaults(func=command_config)
 
     run = subparsers.add_parser("run", help="run the model",
@@ -322,6 +415,7 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("target", nargs="?", metavar="NAMELIST|WORKDIR",
                      help="the main.nml file, or the run directory (default: WORKDIR/namelists/main.nml)")
     run.add_argument("-w", "--workdir", help="the run directory with input, output and restart (default: current directory)")
+    _add_case_option(run, "run")
     run.add_argument("-i", "--input-dir", metavar="DIR", help="link this directory as WORKDIR/input if that does not exist")
     _add_set_option(run)
     run.add_argument("-n", "--processes", type=int, metavar="N",
@@ -331,7 +425,19 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("-q", "--quiet", action="store_true", help="discard the output of the model")
     run.add_argument("--defaults", action="store_true", help="use the default configuration if there is no namelist file")
     run.add_argument("--check", action="store_true", help="only validate the configuration and check the input files")
+    run.add_argument("-f", "--force", action="store_true",
+                     help="with --case, replace a namelist and input files in the run directory that differ from those of the case")
+    run.epilog = ("With --case, the run directory is the target or WORKDIR, by default a directory named after "
+                  "the case in the current directory, and the input files of the case are copied into its input "
+                  "directory.")
     run.set_defaults(func=command_run)
+
+    cases = subparsers.add_parser("cases", help="list the example cases, or describe one",
+                                  description="List the example cases, idealized configurations with constant "
+                                              "forcing, or describe one; run one with 'umwm run --case NAME', "
+                                              "which copies the input files of the cases that have them.")
+    cases.add_argument("name", nargs="?", help="the case to describe; a unique prefix of its name is enough")
+    cases.set_defaults(func=command_cases)
 
     forcing = subparsers.add_parser("forcing", help="write input forcing files")
     forcing_commands = forcing.add_subparsers(dest="forcing_command", metavar="KIND")
