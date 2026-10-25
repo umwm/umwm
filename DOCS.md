@@ -841,7 +841,14 @@ $$
 E^* = \frac{E^n + E_s^{n+1}}{2}
 $$
 
-for propagation and refraction.
+for propagation, refraction, and the frequency shift. Each computes its
+change from $E^*$, and the changes are added to $E_s^{n+1}$. Each is
+stable and keeps the spectrum positive on its own, propagation by the
+time step limit `dtamin`, and refraction and the frequency shift by
+their substeps; their sum is not guaranteed to keep it positive where the
+outflows of several of them from one bin are large. In coupled mode
+(ESMF), refraction and the frequency shift compute their changes from
+the propagated spectrum instead.
 
 ## Geographic Propagation
 
@@ -954,21 +961,27 @@ together with the advection of the waves by the current.
 Positive $\dot{\phi}$ rotates wave energy counter-clockwise; negative
 $\dot{\phi}$ rotates it clockwise.
 
-The gradients are centered differences: the phase speed gradient times
-$c_g/c$ (`cgdlncp_dx`, `cgdlncp_dy`) of each frequency at
-initialization, and the current velocity gradient (`du_dx`, `du_dy`,
-`dv_dx`, `dv_dy`) at the first time step and each time step with currents
-from file. The direction $\phi$ is taken in the frame of the grid, as in
-the propagation.
+The gradients are differences over the sea neighbors of a cell: the
+phase speed gradient times $c_g/c$ (`cgdlncp_dx`, `cgdlncp_dy`) of each
+frequency at initialization, and the current velocity gradient (`du_dx`,
+`du_dy`, `dv_dx`, `dv_dy`) at the first time step and each time step with
+currents from file. They are centered between two sea neighbors,
+one-sided next to land, and zero between two land neighbors, so that the
+values of land cells do not enter: the current, set to zero on land, and
+the phase speed, the smallest of all sea cells. A uniform current over a
+flat bottom then neither refracts the waves nor shifts their frequency,
+also at the coast, while over a resolved slope next to the coast the
+waves turn toward the shore. The direction $\phi$ is taken in the frame of
+the grid, as in the propagation.
 
 Refraction is discretized with the same upstream-flux form, replacing
 $x$ by $\phi$, with the rotation rate at the faces between directions the
 mean of the rates of the two directions. Directional space is periodic,
 so no directional boundary condition is required.
 
-The scheme is stable and keeps the spectrum positive if the fraction of a
-bin that leaves it through both of its faces in a time step does not
-exceed 1:
+On its own, the scheme is stable and keeps the spectrum positive if the
+fraction of a bin that leaves it through both of its faces in a time step
+does not exceed 1:
 
 $$
 \frac{\Delta t}{\Delta\phi}
@@ -983,8 +996,7 @@ the amplitudes of the depth term, $a$, and of the strain term, $b$, which
 vary over direction as $\phi$ and $2\phi$, and from half the vorticity,
 $\zeta/2$: a bin loses at most $a + |\zeta|/2 + b$ through one face, and
 at most $\Delta\phi\,(a + 2b)$ through both faces where the rotation
-diverges, per unit time. One substep is usually enough; the cells next to
-land, whose phase speed is the smallest of all sea cells, may need more.
+diverges, per unit time. One substep is usually enough.
 
 ## Frequency Shift
 
@@ -1536,7 +1548,7 @@ The current focused tests are:
 | `test_spectrum` | Spectrum constructor metadata, endpoint frequencies, legacy log-space frequency equivalence, direction-grid equivalence, `dlnf`, and `dth`. |
 | `test_source_functions` | Mean-squared slope moments against the direct sum over directions, the vectorized power function against the intrinsic, and the wind input against a step-by-step evaluation. |
 | `test_advection` | Current-induced ray rotation against the ray equation and in a solid-body eddy, depth-induced ray rotation against Snell's law along a ray over a slope, the conservation, positivity, and rotation of the spectrum by refraction in several substeps, the conservation of action and the shift of the spectrum by the frequency shift, steady shoaling against linear theory, and the steady variance of waves against a strengthening current against ray theory. |
-| `test_domain` | One-hour integration of the idealized hurricane case by `domain_type` with gridded and spectrum output and Stokes drift, compared with the mean and maximum of output fields, ocean stress, and Stokes drift from UMWM before the domain refactor, updated for the corrected current-induced refraction and the frequency shift of the action balance. |
+| `test_domain` | One-hour integration of the idealized hurricane case by `domain_type` with gridded and spectrum output and Stokes drift, compared with the mean and maximum of output fields, ocean stress, and Stokes drift from UMWM before the domain refactor without the refraction by its spurious current gradients against land; the uniform current over the flat bottom neither refracts the waves nor shifts their frequency. |
 
 The Python package has its own test suite in `python/tests`, run with
 `python -m pytest python/tests`, which includes the same idealized

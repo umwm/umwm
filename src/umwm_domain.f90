@@ -380,12 +380,14 @@ contains
     end do
 
     ! phase speed gradients at fixed frequency, times cg/cp, for the
-    ! bottom-induced refraction:
+    ! bottom-induced refraction, over the sea neighbors of each cell:
     do i = is, ie
-      self % cgdlncp_dx(:,i) = cg0(:,i) * self % invcp0(:,i) &
-        * 0.5 * (cp0(:,grid % ie(i)) - cp0(:,grid % iw(i))) * grid % oneovdx(i)
-      self % cgdlncp_dy(:,i) = cg0(:,i) * self % invcp0(:,i) &
-        * 0.5 * (cp0(:,grid % in(i)) - cp0(:,grid % is(i))) * grid % oneovdy(i)
+      self % cgdlncp_dx(:,i) = cg0(:,i) * self % invcp0(:,i) * grid % oneovdx(i) &
+        * sea_difference(cp0(:,i), cp0(:,grid % ie(i)), cp0(:,grid % iw(i)), &
+                         grid % iie(i) <= grid % im, grid % iiw(i) <= grid % im)
+      self % cgdlncp_dy(:,i) = cg0(:,i) * self % invcp0(:,i) * grid % oneovdy(i) &
+        * sea_difference(cp0(:,i), cp0(:,grid % in(i)), cp0(:,grid % is(i)), &
+                         grid % iin(i) <= grid % im, grid % iis(i) <= grid % im)
     end do
 
     mindelx = min(minval(grid % dx_2d, grid % mask == 1), minval(grid % dy_2d, grid % mask == 1))
@@ -908,22 +910,53 @@ contains
 
 
   subroutine update_current_gradients(self)
-    ! Updates the current velocity gradient for the current-induced refraction.
+    ! Updates the current velocity gradient for the current-induced
+    ! refraction and frequency shift, over the sea neighbors of each cell.
     class(domain_type), intent(inout) :: self
+    logical :: sea_e, sea_w, sea_n, sea_s
     integer :: i
 
     associate(grid => self % grid, uc => self % forcing % uc, vc => self % forcing % vc)
 
     do i = grid % istart, grid % iend
-      self % du_dx(i) = 0.5 * (uc(grid % iie(i)) - uc(grid % iiw(i))) * grid % oneovdx(i)
-      self % du_dy(i) = 0.5 * (uc(grid % iin(i)) - uc(grid % iis(i))) * grid % oneovdy(i)
-      self % dv_dx(i) = 0.5 * (vc(grid % iie(i)) - vc(grid % iiw(i))) * grid % oneovdx(i)
-      self % dv_dy(i) = 0.5 * (vc(grid % iin(i)) - vc(grid % iis(i))) * grid % oneovdy(i)
+      sea_e = grid % iie(i) <= grid % im
+      sea_w = grid % iiw(i) <= grid % im
+      sea_n = grid % iin(i) <= grid % im
+      sea_s = grid % iis(i) <= grid % im
+      self % du_dx(i) = sea_difference(uc(i), uc(grid % iie(i)), uc(grid % iiw(i)), sea_e, sea_w) &
+                      * grid % oneovdx(i)
+      self % du_dy(i) = sea_difference(uc(i), uc(grid % iin(i)), uc(grid % iis(i)), sea_n, sea_s) &
+                      * grid % oneovdy(i)
+      self % dv_dx(i) = sea_difference(vc(i), vc(grid % iie(i)), vc(grid % iiw(i)), sea_e, sea_w) &
+                      * grid % oneovdx(i)
+      self % dv_dy(i) = sea_difference(vc(i), vc(grid % iin(i)), vc(grid % iis(i)), sea_n, sea_s) &
+                      * grid % oneovdy(i)
     end do
 
     end associate
 
   end subroutine update_current_gradients
+
+
+  pure elemental real function sea_difference(f, f_plus, f_minus, sea_plus, sea_minus) result(res)
+    ! Difference per cell width of a field across a cell, from its value f
+    ! at the cell and f_plus and f_minus at the neighbors in the positive
+    ! and negative directions: centered between two sea neighbors, one-sided
+    ! next to land, and zero between two land neighbors. Land values, such
+    ! as a current set to zero or the phase speed of land cells, do not
+    ! enter.
+    real, intent(in) :: f, f_plus, f_minus
+    logical, intent(in) :: sea_plus, sea_minus
+    if (sea_plus .and. sea_minus) then
+      res = 0.5 * (f_plus - f_minus)
+    else if (sea_plus) then
+      res = f_plus - f
+    else if (sea_minus) then
+      res = f - f_minus
+    else
+      res = 0
+    end if
+  end function sea_difference
 
 
   subroutine wind_stress(self, i)

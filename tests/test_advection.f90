@@ -25,6 +25,7 @@ program test_advection
     test(refraction_substeps_conserve_and_stay_positive), &
     test(refraction_substeps_rotate_by_the_whole_step), &
     test(frequency_shift_conserves_action_and_shifts_by_the_whole_step), &
+    test(frequency_shift_exchanges_action_with_the_diagnostic_tail), &
     test(propagation_shoals_by_linear_theory), &
     test(action_flux_is_conserved_on_opposing_current) &
   ])
@@ -224,6 +225,51 @@ contains
     if (.not. res % ok) write(stderr, '(a,2f10.6)') &
       'test_advection: action ratio and shift in bins: ', sum(a_new) / sum(a), shift
   end function frequency_shift_conserves_action_and_shifts_by_the_whole_step
+
+
+  function frequency_shift_exchanges_action_with_the_diagnostic_tail() result(res)
+    ! With 6 prognostic bins of 10, deep-water waves against a current that
+    ! strengthens along them, du/dx = -1e-4 1/s, shorten at d(ln f)/dt =
+    ! 5e-5 1/s: in a time step of 0.2 bins, the highest prognostic bin loses
+    ! 0.2 of its action to the diagnostic tail. With the current reversed,
+    ! the waves lengthen, and it gains 0.2 of the action of the lowest bin
+    ! of the tail. The bins of the tail are left unchanged.
+    type(test_result) :: res
+    integer, parameter :: nf = 10, no = 6
+    real, parameter :: dlnf = 0.05, rate = 5e-5
+    real :: e(nf,1), ef(nf,1), kovcg(nf), invcp(nf), cg(nf), zero(nf), sigma, k, dt
+    integer :: o
+    logical :: ok
+    do o = 1, nf
+      sigma = twopi * 0.1 * exp((o - 1) * dlnf)
+      k = sigma**2 / 9.81
+      invcp(o) = k / sigma
+      cg(o) = 0.5 * sigma / k
+      kovcg(o) = k / cg(o)
+    end do
+    zero = 0
+    dt = 0.2 * dlnf / rate
+
+    ! shortening: out of bin no into the tail
+    e = 0
+    e(no,1) = 1
+    ef = e
+    call frequency_shift(nf, 1, no, e, kovcg, invcp, cg, zero, zero, 0., 0., -2 * rate, 0., &
+                         0., 0., [1.], [0.], dt, dlnf, ef)
+    ok = abs(ef(no,1) - 0.8) < 1e-5 .and. all(ef(1:no-1,1) == 0) .and. all(ef(no+1:,1) == 0)
+
+    ! lengthening: into bin no from the tail
+    e = 0
+    e(no+1:,1) = 1
+    ef = e
+    call frequency_shift(nf, 1, no, e, kovcg, invcp, cg, zero, zero, 0., 0., 2 * rate, 0., &
+                         0., 0., [1.], [0.], dt, dlnf, ef)
+    ok = ok .and. abs(ef(no,1) * kovcg(no) / kovcg(no+1) - 0.2) < 1e-5 &
+         .and. all(ef(1:no-1,1) == 0) .and. all(ef(no+1:,1) == e(no+1:,1))
+
+    res = test('frequency_shift_exchanges_action_with_the_diagnostic_tail', ok)
+    if (.not. res % ok) write(stderr, '(a,10es11.3)') 'test_advection: spectrum: ', ef(:,1)
+  end function frequency_shift_exchanges_action_with_the_diagnostic_tail
 
 
   function propagation_shoals_by_linear_theory() result(res)
