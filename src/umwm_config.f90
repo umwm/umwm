@@ -253,7 +253,8 @@ contains
 
   subroutine read_stokes_depths(path, depths, stat, iomsg)
     character(len=*), intent(in) :: path
-    real, intent(out) :: depths(:)
+    ! explicit shape, because nvfortran does not read assumed-shape namelist items
+    real, intent(out) :: depths(max_stokes_depths)
     integer, intent(out) :: stat
     character(len=*), intent(out) :: iomsg
 

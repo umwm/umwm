@@ -90,6 +90,31 @@ Executable `umwm` will be built in the top-level directory and auxiliary tool
 executables will be built in `tools/`.
 PDF documentation can be built separately with `make docs`.
 
+### Building for NVIDIA GPUs
+
+Build for NVIDIA GPUs by setting `GPU=yes`. This needs the
+[NVIDIA HPC SDK](https://developer.nvidia.com/hpc-sdk), for `nvfortran` with
+OpenACC and its CUDA-aware HPC-X Open MPI, and a netCDF-Fortran built with
+`nvfortran`:
+
+```
+module load nvhpc-hpcx-cuda13
+unset FC
+make GPU=yes MPI=yes NF_CONFIG=/path/to/nvfortran/netcdf-fortran/bin/nf-config
+```
+
+Load the HPC-X module of the SDK rather than `nvhpc`, so that MPI uses the
+UCX of the SDK, which transfers GPU memory, and unset the `FC` that the module
+exports, which would take precedence over `mpif90`. `GPU=yes` selects
+`nvfortran` (or `mpif90` with `MPI=yes`) with the default `FCFLAGS`
+`-O3 -fast`, and adds the OpenACC flags `-acc=gpu
+-gpu=$(GPU_ARCH),mem:$(GPU_MEM)` also when `FCFLAGS` is set. `GPU_ARCH` is the
+compute capability of the GPU, `cc120` (Blackwell RTX PRO) by default, and
+`GPU_MEM` the memory model, `unified` (default) or `separate`.
+
+The model time step does not run on the GPU yet; until it does, the GPU build
+runs on the CPU.
+
 ### Running tests
 
 Run the test suite from the top-level directory:
