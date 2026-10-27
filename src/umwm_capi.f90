@@ -306,10 +306,8 @@ contains
 
     select case (fortran_string(name))
     case ('dts'); value = domain % dts
-    case ('dtr'); value = domain % dtr
     case ('sumt'); value = domain % sumt
     case ('dtamin'); value = domain % dtamin
-    case ('dtr_max'); value = domain % dtr_max
     case ('dth'); value = domain % dth
     case ('dlnf'); value = domain % spectrum % dlnf
     case default; stat = unknown_name
@@ -355,12 +353,13 @@ contains
     case ('wavenumber', 'k'); call real2(domain % k)
     case ('cp0'); call real2(domain % cp0)
     case ('cg0'); call real2(domain % cg0)
+    case ('kovcg'); call real2(domain % kovcg)
     case ('kdk'); call real2(domain % kdk)
     case ('k3dk'); call real2(domain % k3dk)
     case ('cothkd'); call real2(domain % cothkd)
     case ('logl2overz'); call real2(domain % logl2overz)
-    case ('dcp_dx'); call real2(domain % dcp_dx)
-    case ('dcp_dy'); call real2(domain % dcp_dy)
+    case ('cgdlncp_dx'); call real2(domain % cgdlncp_dx)
+    case ('cgdlncp_dy'); call real2(domain % cgdlncp_dy)
 
     ! wave spectrum and source functions
     case ('F', 'e'); call real3(domain % e)
@@ -374,8 +373,10 @@ contains
     case ('Sice', 'sice'); call real2(domain % sice)
     case ('mss_moments'); call real3(domain % mss_moments)
     case ('oc'); call int1(domain % oc)
-    case ('oc_rot'); call int1(domain % oc_rot)
-    case ('curl'); call real1(domain % curl)
+    case ('du_dx'); call real1(domain % du_dx)
+    case ('du_dy'); call real1(domain % du_dy)
+    case ('dv_dx'); call real1(domain % dv_dx)
+    case ('dv_dy'); call real1(domain % dv_dy)
     case ('shelt'); call real1(domain % shelt)
     case ('physics_time_step'); call real1(domain % physics_time_step)
     case ('psim'); call real1(domain % psim)
@@ -602,7 +603,10 @@ contains
     select case (fortran_string(name))
     case ('shelt'); field => domain % shelt
     case ('physics_time_step'); field => domain % physics_time_step
-    case ('curl'); field => domain % curl
+    case ('du_dx'); field => domain % du_dx
+    case ('du_dy'); field => domain % du_dy
+    case ('dv_dx'); field => domain % dv_dx
+    case ('dv_dy'); field => domain % dv_dy
     case ('cd'); field => domain % cd
     case ('ust', 'ustar'); field => domain % ustar
     case ('taux'); field => domain % taux

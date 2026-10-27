@@ -123,10 +123,16 @@ def test_run_until_and_restart_run(library, short_config, tmp_path):
 
 
 def test_rankine_regression(rankine_domain):
-    """The idealized hurricane case reproduces the reference values of tests/test_domain.f90."""
+    """The idealized hurricane case reproduces the reference values of tests/test_domain.f90.
+    Its uniform current over a flat bottom has no gradient, also next to the land at the
+    edges of the domain, so the waves are neither refracted nor shifted in frequency."""
     domain = rankine_domain
     assert domain.missing_inputs() == []
     domain.run()
+    sea = domain.grid_field("seamask") == 1
+    for name in ("du_dx", "du_dy", "dv_dx", "dv_dy"):
+        assert np.all(domain.grid_field(name)[sea] == 0), name
+    assert np.all(domain.field("cgdlncp_dx") == 0) and np.all(domain.field("cgdlncp_dy") == 0)
     mismatches = []
     for name, (mean, maximum, tolerance) in RANKINE_REFERENCE.items():
         values = domain.grid_field(name)

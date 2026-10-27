@@ -7,7 +7,7 @@ module umwm_domain
   use mpi
 #endif
   use datetime_module, only: datetime, strptime, timedelta
-  use umwm_advection, only: max_rotation_rate, propagation, refraction
+  use umwm_advection, only: frequency_shift, propagation, refraction
   use umwm_config, only: config_type
   use umwm_constants, only: pi, rk, twopi
   use umwm_dispersion, only: group_speed, wavenumber
@@ -48,15 +48,13 @@ module umwm_domain
     logical :: first = .true. ! .true. during the first time step
     real :: sumt = 0          ! time integrated in the current global time step [s]
     real :: dts = 0           ! source (and advection) time step [s]
-    real :: dtr = 0           ! refraction time step [s]
-    real :: dtr_max = 0       ! refraction stability limit [s]
     real :: dtamin = 0        ! advection stability limit [s]
 
     ! grid cell and process for the screen output
     integer :: iip = 0, nproc_plot = 0
 
     ! derived constants
-    real :: dth, dthg, oneovdth, bf1, bf2
+    real :: dth, dthg, bf1, bf2
     real :: twopisds_fac, fieldscale1, fieldscale2, inv_sds_power
 
     ! spectral coordinates (o) and (p)
@@ -65,10 +63,11 @@ module umwm_domain
 
     ! wave kinematics and derived factors (o,i)
     real, allocatable :: k(:,:), cp0(:,:), cg0(:,:) ! cp0 and cg0 include halo
+    real, allocatable :: kovcg(:,:) ! k/cg, action per unit ln(f) over e; includes halo
     real, allocatable :: invcp0(:,:), kdk(:,:), k3dk(:,:), k4(:,:), oneoverk4(:,:)
     real, allocatable :: fkovg(:,:), cothkd(:,:), logl2overz(:,:), psiml2(:,:)
     real, allocatable :: sbf(:,:), sdv(:,:), snl_arg(:,:), bf1_renorm(:,:), bf2_renorm(:,:)
-    real, allocatable :: dcp_dx(:,:), dcp_dy(:,:) ! halved phase speed gradients
+    real, allocatable :: cgdlncp_dx(:,:), cgdlncp_dy(:,:) ! (cg/cp) grad(cp), for refraction
 
     ! wave spectrum (o,p,i); ef is the spectrum forward in time
     real, allocatable :: e(:,:,:), ef(:,:,:)
@@ -81,9 +80,8 @@ module umwm_domain
     integer, allocatable :: oc(:)            ! highest prognostic frequency bin
     real, allocatable :: shelt(:), physics_time_step(:), psim(:)
 
-    ! refraction
-    integer, allocatable :: oc_rot(:) ! oc at the last rotation rate update
-    real, allocatable :: curl(:)      ! halved current vorticity
+    ! current velocity gradient, for refraction
+    real, allocatable :: du_dx(:), du_dy(:), dv_dx(:), dv_dy(:)
 
     ! pipelining of integration and advection over cells
     integer :: lag = 0                    ! largest distance to a neighbor in the tile
@@ -126,7 +124,7 @@ module umwm_domain
     procedure, private :: wind_input
     procedure, private :: integrate_column
     procedure, private :: advect_column
-    procedure, private :: update_rotation
+    procedure, private :: update_current_gradients
     procedure, private :: wind_stress
     procedure :: output_grid_nc
     procedure :: output_spectrum_nc
@@ -217,19 +215,21 @@ contains
              self % fkovg(om,is:ie), self % cothkd(om,is:ie), self % logl2overz(om,is:ie), &
              self % sbf(om,is:ie), self % sdv(om,is:ie), self % snl_arg(om,is:ie), &
              self % bf1_renorm(om,is:ie), self % bf2_renorm(om,is:ie), &
-             self % dcp_dx(om,is:ie), self % dcp_dy(om,is:ie), &
+             self % cgdlncp_dx(om,is:ie), self % cgdlncp_dy(om,is:ie), &
              self % psiml2(om,is:ie), self % sdt(om,is:ie), self % sice(om,is:ie), &
              self % mss_moments(om,3,is:ie), source=0.)
-    allocate(self % cp0(om,iis:iie), self % cg0(om,iis:iie), source=tiny(1.))
+    allocate(self % cp0(om,iis:iie), self % cg0(om,iis:iie), self % kovcg(om,iis:iie), &
+             source=tiny(1.))
 
     allocate(self % e(om,pm,iis:iie), self % ef(om,pm,iis:iie), source=tiny(1.))
     allocate(self % ssin(om,pm,is:ie), self % sds(om,pm,is:ie), self % snl(om,pm,is:ie), &
              source=0.)
 
-    allocate(self % oc(is:ie), self % oc_rot(is:ie), source=0)
+    allocate(self % oc(is:ie), source=0)
     allocate(self % psim(self % grid % imm), source=0.)
 
-    allocate(self % shelt(is:ie), self % physics_time_step(is:ie), self % curl(is:ie), &
+    allocate(self % shelt(is:ie), self % physics_time_step(is:ie), &
+             self % du_dx(is:ie), self % du_dy(is:ie), self % dv_dx(is:ie), self % dv_dy(is:ie), &
              self % cd(is:ie), self % ustar(is:ie), self % taux(is:ie), self % tauy(is:ie), &
              self % taux_form(is:ie), self % tauy_form(is:ie), &
              self % taux_skin(is:ie), self % tauy_skin(is:ie), &
@@ -283,7 +283,6 @@ contains
     self % sth2 = sin(2 * self % th)
 
     self % dthg = self % dth * config % g
-    self % oneovdth = 1. / self % dth
     self % twopisds_fac = twopi * config % sds_fac
     self % fieldscale1 = config % sin_diss1 / config % sin_fac
     self % fieldscale2 = config % sin_diss2 / config % sin_diss1
@@ -374,10 +373,21 @@ contains
                        MPI_COMM_WORLD, ierr)
 #endif
 
-    ! phase speed gradients for the bottom-induced refraction:
+    ! k/cg, the Jacobian from the variance spectrum to the action per unit
+    ! ln(f), on the sea cells, the halo, and land:
+    do concurrent (o = 1:om, i = grid % iistart-1:grid % iiend)
+      self % kovcg(o,i) = twopi * f(o) / (cp0(o,i) * cg0(o,i))
+    end do
+
+    ! phase speed gradients at fixed frequency, times cg/cp, for the
+    ! bottom-induced refraction, over the sea neighbors of each cell:
     do i = is, ie
-      self % dcp_dx(:,i) = 0.5 * (cp0(:,grid % ie(i)) - cp0(:,grid % iw(i))) * grid % oneovdx(i)
-      self % dcp_dy(:,i) = 0.5 * (cp0(:,grid % in(i)) - cp0(:,grid % is(i))) * grid % oneovdy(i)
+      self % cgdlncp_dx(:,i) = cg0(:,i) * self % invcp0(:,i) * grid % oneovdx(i) &
+        * sea_difference(cp0(:,i), cp0(:,grid % ie(i)), cp0(:,grid % iw(i)), &
+                         grid % iie(i) <= grid % im, grid % iiw(i) <= grid % im)
+      self % cgdlncp_dy(:,i) = cg0(:,i) * self % invcp0(:,i) * grid % oneovdy(i) &
+        * sea_difference(cp0(:,i), cp0(:,grid % in(i)), cp0(:,grid % is(i)), &
+                         grid % iin(i) <= grid % im, grid % iis(i) <= grid % im)
     end do
 
     mindelx = min(minval(grid % dx_2d, grid % mask == 1), minval(grid % dy_2d, grid % mask == 1))
@@ -634,7 +644,7 @@ contains
     ! spectrum, and evaluates the wind stress.
     class(domain_type), intent(inout) :: self
     real, allocatable :: e_old(:,:,:)
-    logical :: store, currents, update_rotation
+    logical :: store, currents, update_gradients
     integer :: i
 #ifdef MPI
     real :: dts_local
@@ -659,17 +669,16 @@ contains
     self % sumt = self % sumt + self % dts
 
     ! Sin, Snl, and the diagnostic range of Sds are kept for output only, and
-    ! the rotation rate of rays is updated for varying currents or first step;
-    ! both always in coupled mode.
+    ! the current velocity gradients are updated for varying currents or
+    ! first step; both always in coupled mode.
 #ifdef ESMF
     store = .true.
-    update_rotation = .true.
+    update_gradients = .true.
 #else
     store = self % first .or. self % sumt >= config % dtg
-    update_rotation = config % currents .or. self % first
+    update_gradients = config % currents .or. self % first
 #endif
-    if (update_rotation) call self % update_rotation()
-    self % dtr = min(self % dtr_max, self % dts)
+    if (update_gradients) call self % update_current_gradients()
 
     ! check if currents are non-zero:
     if (.not. config % isglobal) then
@@ -829,9 +838,10 @@ contains
 
 
   subroutine advect_column(self, i, currents)
-    ! Propagates and refracts the spectrum at cell i and integrates into ef,
-    ! and evaluates the wind stress from the updated spectrum. Advection by
-    ! ocean currents is included if currents is .true.
+    ! Propagates and refracts the spectrum at cell i, and with currents
+    ! shifts it in frequency, conserving the wave action, and integrates
+    ! into ef; evaluates the wind stress from the updated spectrum. Advection
+    ! by ocean currents is included if currents is .true.
     class(domain_type), intent(inout) :: self
     integer, intent(in) :: i
     logical, intent(in) :: currents
@@ -841,8 +851,9 @@ contains
 
     associate(config => self % config, grid => self % grid, &
               om => self % spectrum % num_frequencies, pm => self % spectrum % num_directions, &
-              e => self % e, ef => self % ef, cg0 => self % cg0, uc => self % forcing % uc, &
-              vc => self % forcing % vc, ie => self % grid % ie(i), iw => self % grid % iw(i), &
+              e => self % e, ef => self % ef, cg0 => self % cg0, kovcg => self % kovcg, &
+              uc => self % forcing % uc, vc => self % forcing % vc, &
+              ie => self % grid % ie(i), iw => self % grid % iw(i), &
               in => self % grid % in(i), is => self % grid % is(i))
 
     if (self % forcing % fice(i) > config % fice_uth) then
@@ -851,6 +862,7 @@ contains
 
       call propagation(om, pm, self % oc(i), e(:,:,i), e(:,:,ie), e(:,:,iw), e(:,:,in), &
                        e(:,:,is), cg0(:,i), cg0(:,ie), cg0(:,iw), cg0(:,in), cg0(:,is), &
+                       kovcg(:,i), kovcg(:,ie), kovcg(:,iw), kovcg(:,in), kovcg(:,is), &
                        grid % cth_curv(:,i), grid % sth_curv(:,i), grid % dxn(i), grid % dxs(i), &
                        grid % dye(i), grid % dyw(i), currents, &
                        uc(i) + uc(grid % iie(i)), uc(i) + uc(grid % iiw(i)), &
@@ -858,15 +870,34 @@ contains
                        0.25 * self % dts * grid % oneovar(i), ef(:,:,i))
 
 #ifdef ESMF
-      ! in coupled mode, refraction acts on the propagated spectrum
+      ! in coupled mode, refraction and the frequency shift act on the
+      ! propagated spectrum
       e_propagated = ef(:,:,i)
-      call refraction(om, pm, min(self % oc(i), self % oc_rot(i)), e_propagated, &
-                      self % dcp_dx(:,i), self % dcp_dy(:,i), self % curl(i), &
-                      self % cth, self % sth, self % dtr, self % oneovdth, ef(:,:,i))
+      call refraction(om, pm, self % oc(i), e_propagated, &
+                      self % cgdlncp_dx(:,i), self % cgdlncp_dy(:,i), &
+                      self % du_dx(i), self % du_dy(i), self % dv_dx(i), self % dv_dy(i), &
+                      grid % cth_curv(:,i), grid % sth_curv(:,i), self % dts, self % dth, &
+                      ef(:,:,i))
+      if (currents) &
+        call frequency_shift(om, pm, self % oc(i), e_propagated, kovcg(:,i), &
+                             self % invcp0(:,i), cg0(:,i), &
+                             self % cgdlncp_dx(:,i), self % cgdlncp_dy(:,i), uc(i), vc(i), &
+                             self % du_dx(i), self % du_dy(i), self % dv_dx(i), self % dv_dy(i), &
+                             grid % cth_curv(:,i), grid % sth_curv(:,i), self % dts, &
+                             real(self % spectrum % dlnf), ef(:,:,i))
 #else
-      call refraction(om, pm, min(self % oc(i), self % oc_rot(i)), e(:,:,i), &
-                      self % dcp_dx(:,i), self % dcp_dy(:,i), self % curl(i), &
-                      self % cth, self % sth, self % dtr, self % oneovdth, ef(:,:,i))
+      call refraction(om, pm, self % oc(i), e(:,:,i), &
+                      self % cgdlncp_dx(:,i), self % cgdlncp_dy(:,i), &
+                      self % du_dx(i), self % du_dy(i), self % dv_dx(i), self % dv_dy(i), &
+                      grid % cth_curv(:,i), grid % sth_curv(:,i), self % dts, self % dth, &
+                      ef(:,:,i))
+      if (currents) &
+        call frequency_shift(om, pm, self % oc(i), e(:,:,i), kovcg(:,i), &
+                             self % invcp0(:,i), cg0(:,i), &
+                             self % cgdlncp_dx(:,i), self % cgdlncp_dy(:,i), uc(i), vc(i), &
+                             self % du_dx(i), self % du_dy(i), self % dv_dx(i), self % dv_dy(i), &
+                             grid % cth_curv(:,i), grid % sth_curv(:,i), self % dts, &
+                             real(self % spectrum % dlnf), ef(:,:,i))
 #endif
 
     end if
@@ -878,43 +909,54 @@ contains
   end subroutine advect_column
 
 
-  subroutine update_rotation(self)
-    ! Updates the current-induced ray rotation and the refraction time step limit.
+  subroutine update_current_gradients(self)
+    ! Updates the current velocity gradient for the current-induced
+    ! refraction and frequency shift, over the sea neighbors of each cell.
     class(domain_type), intent(inout) :: self
-    real :: rmax
+    logical :: sea_e, sea_w, sea_n, sea_s
     integer :: i
-#ifdef MPI
-    real :: rmax_local
-    integer :: ierr
-#endif
 
     associate(grid => self % grid, uc => self % forcing % uc, vc => self % forcing % vc)
 
-    rmax = 0
     do i = grid % istart, grid % iend
-      self % curl(i) = 0.5 * ((vc(grid % iie(i)) - vc(grid % iiw(i))) * grid % oneovdx(i) &
-                            - (uc(grid % iin(i)) - uc(grid % iis(i))) * grid % oneovdy(i))
-      self % oc_rot(i) = self % oc(i)
-      rmax = max(rmax, max_rotation_rate(self % spectrum % num_frequencies, &
-                                         self % spectrum % num_directions, self % oc(i), &
-                                         self % dcp_dx(:,i), self % dcp_dy(:,i), self % curl(i), &
-                                         self % cth, self % sth))
+      sea_e = grid % iie(i) <= grid % im
+      sea_w = grid % iiw(i) <= grid % im
+      sea_n = grid % iin(i) <= grid % im
+      sea_s = grid % iis(i) <= grid % im
+      self % du_dx(i) = sea_difference(uc(i), uc(grid % iie(i)), uc(grid % iiw(i)), sea_e, sea_w) &
+                      * grid % oneovdx(i)
+      self % du_dy(i) = sea_difference(uc(i), uc(grid % iin(i)), uc(grid % iis(i)), sea_n, sea_s) &
+                      * grid % oneovdy(i)
+      self % dv_dx(i) = sea_difference(vc(i), vc(grid % iie(i)), vc(grid % iiw(i)), sea_e, sea_w) &
+                      * grid % oneovdx(i)
+      self % dv_dy(i) = sea_difference(vc(i), vc(grid % iin(i)), vc(grid % iis(i)), sea_n, sea_s) &
+                      * grid % oneovdy(i)
     end do
-
-#ifdef MPI
-    rmax_local = rmax
-    call mpi_allreduce(rmax_local, rmax, 1, MPI_REAL, MPI_MAX, MPI_COMM_WORLD, ierr)
-#endif
-
-    if (rmax <= tiny(rmax)) then
-      self % dtr_max = self % dts
-    else
-      self % dtr_max = self % dth / rmax
-    end if
 
     end associate
 
-  end subroutine update_rotation
+  end subroutine update_current_gradients
+
+
+  pure elemental real function sea_difference(f, f_plus, f_minus, sea_plus, sea_minus) result(res)
+    ! Difference per cell width of a field across a cell, from its value f
+    ! at the cell and f_plus and f_minus at the neighbors in the positive
+    ! and negative directions: centered between two sea neighbors, one-sided
+    ! next to land, and zero between two land neighbors. Land values, such
+    ! as a current set to zero or the phase speed of land cells, do not
+    ! enter.
+    real, intent(in) :: f, f_plus, f_minus
+    logical, intent(in) :: sea_plus, sea_minus
+    if (sea_plus .and. sea_minus) then
+      res = 0.5 * (f_plus - f_minus)
+    else if (sea_plus) then
+      res = f_plus - f
+    else if (sea_minus) then
+      res = f - f_minus
+    else
+      res = 0
+    end if
+  end function sea_difference
 
 
   subroutine wind_stress(self, i)

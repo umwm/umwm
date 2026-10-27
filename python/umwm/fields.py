@@ -104,6 +104,7 @@ KINEMATICS_FIELDS = OrderedDict([
     ("wavenumber", ("wavenumber", "rad/m")),
     ("cp0", ("intrinsic phase speed", "m/s")),
     ("cg0", ("intrinsic group speed", "m/s")),
+    ("kovcg", ("k/cg, wave action per unit ln(frequency) over the variance spectrum", "rad s/m^2")),
     ("kdk", ("spectral weight k dk", "rad^2/m^2")),
     ("k3dk", ("spectral weight k^3 dk", "rad^4/m^4")),
     ("cothkd", ("plunging breaker factor coth(0.2 k d)", "non-dimensional")),

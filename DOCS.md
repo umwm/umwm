@@ -11,7 +11,7 @@ This file is a technical reference for the physics implemented in the University
 | Forcing state | `src/umwm_forcing.f90` | `forcing_type` owns mutable wind, current, density, sea-ice, remapped, and interpolation-scratch fields. |
 | Source functions | `src/umwm_source_functions.f90` | Wind input, wave breaking, nonlinear downshifting, turbulence, and sea-ice attenuation. |
 | Source integration | `src/umwm_physics.f90` | Exponential source update, diagnostic spectral tail, physics time step limit. |
-| Propagation and refraction | `src/umwm_advection.f90` | First-order upstream advection in geographic and directional space. |
+| Propagation, refraction, and frequency shift | `src/umwm_advection.f90` | First-order upstream advection of the wave action in geographic, directional, and frequency space. |
 | Stress | `src/umwm_stress.f90` | Form/skin drag, drag coefficient, stress tail, and spectral stress integrals. The domain evaluates the atmospheric stress each time step, and the ocean-top and ocean-bottom momentum fluxes (`ocean_stress` in `src/umwm_domain_output.f90`) at gridded output times, or each time step when coupled with ESMF. |
 | Stokes drift | `src/umwm_stokes.f90` | `stokes_type` with wave-induced Stokes drift and e-folding depth. |
 | Spectral grid | `src/umwm_spectrum.f90` | `spectrum_type`, frequency and direction coordinates, and spectral spacings. |
@@ -58,8 +58,8 @@ Within each global forcing/output time step `dtg`, UMWM repeatedly runs:
 4. Find the dynamic physics time step `dts`, the minimum over all cells.
 5. Integrate source terms over `dts`, including `Snl`.
 6. Exchange MPI halos when enabled.
-7. Propagate wave variance geographically.
-8. Refract wave variance directionally.
+7. Propagate wave action geographically.
+8. Refract wave action directionally and, with currents, shift it in frequency.
 9. Compute atmospheric stress and drag.
 10. At output times, compute Stokes drift, diagnostics, ocean stress, spectra, grid output, and restart output.
     When coupled with ESMF, ocean stress is computed each time step.
@@ -235,32 +235,55 @@ $$
 
 ## Governing Equation
 
-The model solves the wave energy balance equation:
+The model solves the wave action balance equation. The spectral grid is
+fixed in the intrinsic frequency $\sigma = 2\pi f$, and each cell has the
+wavenumbers $k(\sigma, d)$ of its depth. The action density per unit
+$\ln\sigma$ and $\phi$ is
 
 $$
-\frac{\partial E'}{\partial t}
-+ \frac{\partial(\dot{\mathbf{x}}E')}{\partial \mathbf{x}}
-+ \frac{\partial(\dot{k}E')}{\partial k}
-+ \frac{\partial(\dot{\phi}E')}{\partial \phi}
+A = \frac{E_\sigma}{\sigma}\,\frac{d\sigma}{d\ln\sigma} = E\,\frac{k}{c_g},
+$$
+
+where $E(k,\phi)$ is the variance spectrum and
+$E_\sigma = E\,k\,dk/d\sigma = E\,k/c_g$ the variance per unit $\sigma$.
+In $(\mathbf{x}, \ln\sigma, \phi)$,
+
+$$
+\frac{\partial A}{\partial t}
++ \nabla\cdot(\dot{\mathbf{x}}A)
++ \frac{\partial(\dot{\varsigma} A)}{\partial \ln\sigma}
++ \frac{\partial(\dot{\phi}A)}{\partial \phi}
 =
-\rho_w g \sum_{i=1}^{n} S_i.
+\frac{k}{c_g}\sum_{i=1}^{n} S_i,
 $$
 
-The geographic propagation velocity is
+where $\dot{\varsigma} = d\ln\sigma/dt$, and $S_i$ are the source terms
+of $E$. The geographic propagation velocity is
 
 $$
 \dot{\mathbf{x}} = \mathbf{c}_g + \mathbf{u},
 $$
 
 where $\mathbf{u}=(u,v)$ is the current in the wave boundary layer.
+Directional-space advection is refraction, nonzero for spatially varying
+depth and/or inhomogeneous currents. Frequency-space advection is nonzero
+where a current flows across depth contours or varies along the waves; it
+neglects the change of depth in time.
 
-Wavenumber-space advection $\dot{k}$ is nonzero for changing currents
-or moving bottoms. The implemented model treats currents as
-quasi-stationary on wave growth/decay time scales and neglects this
-term.
+Without currents, $\sigma$ is constant along the rays, and the action
+balance is the energy balance at a fixed frequency. Even then, the
+conserved density of a frequency bin is $E\,k/c_g$, not $E$: $k/c_g$
+varies with depth at a fixed frequency, and its ratio between cells gives
+the shoaling of the waves. With currents, the waves exchange energy with
+the current, and the action, not the energy, is conserved; and the
+intrinsic frequency changes along the rays, with the absolute frequency
+$\sigma + \mathbf{k}\cdot\mathbf{u}$ conserved in a steady flow.
 
-Directional-space advection is refraction. It is nonzero for spatially
-varying depth and/or inhomogeneous currents.
+The factor $k/c_g$ (`kovcg`) of each cell and frequency is the same for
+all directions and fixed in time, so the prognostic variable remains $E$:
+the source terms act on $E$, refraction of $E$ is that of $A$, and
+propagation and the frequency shift convert between $E$ and $A$ by
+`kovcg`.
 
 For the variance spectrum, the local source terms are written as signed
 rates or tendencies acting on $E$.
@@ -818,25 +841,35 @@ $$
 E^* = \frac{E^n + E_s^{n+1}}{2}
 $$
 
-for propagation and refraction.
+for propagation, refraction, and the frequency shift. Each computes its
+change from $E^*$, and the changes are added to $E_s^{n+1}$. Each is
+stable and keeps the spectrum positive on its own, propagation by the
+time step limit `dtamin`, and refraction and the frequency shift by
+their substeps; their sum is not guaranteed to keep it positive where the
+outflows of several of them from one bin are large. In coupled mode
+(ESMF), refraction and the frequency shift compute their changes from
+the propagated spectrum instead.
 
 ## Geographic Propagation
 
 The advection equation in Cartesian projection is
 
 $$
-\frac{\partial E}{\partial t}
+\frac{\partial A}{\partial t}
 =
--\frac{\partial[(c_g\cos\phi+u)E]}{\partial x}
--\frac{\partial[(c_g\sin\phi+v)E]}{\partial y}
--\frac{\partial(\dot{\phi}E)}{\partial \phi}.
+-\frac{\partial[(c_g\cos\phi+u)A]}{\partial x}
+-\frac{\partial[(c_g\sin\phi+v)A]}{\partial y},
 $$
+
+with $A = E\,k/c_g$ in each cell. In terms of $E$, the flux into a cell
+from a neighbor carries the spectrum of the neighbor times the ratio of
+its $k/c_g$ to that of the cell; the flux out of the cell is unchanged.
 
 Geographic propagation uses first-order upstream differencing. For one
 dimension,
 
 $$
-\frac{\partial(\dot{x}E)}{\partial x}
+\frac{\partial(\dot{x}A)}{\partial x}
 \approx
 \frac{\Phi_{i+1/2}-\Phi_{i-1/2}}{\Delta x},
 $$
@@ -846,17 +879,17 @@ with
 $$
 \Phi_{i+1/2}
 =
-\frac{\dot{x}_{i+1/2}+|\dot{x}_{i+1/2}|}{2}E_i
+\frac{\dot{x}_{i+1/2}+|\dot{x}_{i+1/2}|}{2}A_i
 +
-\frac{\dot{x}_{i+1/2}-|\dot{x}_{i+1/2}|}{2}E_{i+1},
+\frac{\dot{x}_{i+1/2}-|\dot{x}_{i+1/2}|}{2}A_{i+1},
 $$
 
 $$
 \Phi_{i-1/2}
 =
-\frac{\dot{x}_{i-1/2}+|\dot{x}_{i-1/2}|}{2}E_{i-1}
+\frac{\dot{x}_{i-1/2}+|\dot{x}_{i-1/2}|}{2}A_{i-1}
 +
-\frac{\dot{x}_{i-1/2}-|\dot{x}_{i-1/2}|}{2}E_i,
+\frac{\dot{x}_{i-1/2}-|\dot{x}_{i-1/2}|}{2}A_i,
 $$
 
 and
@@ -878,32 +911,129 @@ smallest phase and group speed over all sea cells.
 
 ## Refraction
 
-The directional rotation rate is
+Refraction turns the wavenumber direction $\phi$ along the rays. For the
+dispersion relation $\omega = \sigma(k, d) + \mathbf{k}\cdot\mathbf{u}$,
+the ray equation $\dot{\mathbf{k}} = -\nabla\omega$ gives the rotation
+rate
 
 $$
 \dot{\phi}
 =
-\frac{\partial(c\sin\phi+v)}{\partial x}
--
-\frac{\partial(c\cos\phi+u)}{\partial y}.
+-\frac{c_g}{c}\frac{\partial c}{\partial n}
+-\hat{\mathbf{k}}\cdot\frac{\partial\mathbf{u}}{\partial n},
 $$
+
+where $\hat{\mathbf{k}}=(\cos\phi,\sin\phi)$, $n$ is the coordinate normal
+to $\hat{\mathbf{k}}$, to its left, with
+$\partial/\partial n = -\sin\phi\,\partial/\partial x + \cos\phi\,\partial/\partial y$,
+and $c$ and $c_g$ are the intrinsic phase and group speeds at the fixed
+frequency of the bin. In components,
+
+$$
+\dot{\phi}
+=
+\frac{c_g}{c}\left(\sin\phi\frac{\partial c}{\partial x}
+- \cos\phi\frac{\partial c}{\partial y}\right)
++ \sin^2\phi\frac{\partial v}{\partial x}
+- \cos^2\phi\frac{\partial u}{\partial y}
++ \sin\phi\cos\phi\left(\frac{\partial u}{\partial x}
+- \frac{\partial v}{\partial y}\right).
+$$
+
+The depth term is Snell's law, $d\phi/ds = -c^{-1}\,\partial c/\partial n$,
+along the ray $s$ that the wave energy travels at the group speed: the
+phase speed gradient sets the direction in which the waves turn, and the
+group speed how fast they cross it. Over straight and parallel depth
+contours it keeps $\sin\phi/c$ constant along the ray. The group speed at
+fixed frequency is not monotonic in depth, largest at $kd \approx 1.2$,
+so its gradient does not give the direction of refraction.
+
+The current term is half the vorticity,
+$\frac{1}{2}(\partial v/\partial x - \partial u/\partial y)$, plus a part
+from the strain of the current that varies with direction. A current in
+solid-body rotation turns the waves of all directions at half its
+vorticity; a shear current $u(y)$ turns the waves along it at
+$-\partial u/\partial y$, and does not turn the waves across it. The ray
+path, in the direction of $\mathbf{c}_g + \mathbf{u}$, turns at the full
+vorticity to first order in $u/c_g$ (Kenyon, 1971), from $\dot\phi$
+together with the advection of the waves by the current.
 
 Positive $\dot{\phi}$ rotates wave energy counter-clockwise; negative
 $\dot{\phi}$ rotates it clockwise.
 
+The gradients are differences over the sea neighbors of a cell: the
+phase speed gradient times $c_g/c$ (`cgdlncp_dx`, `cgdlncp_dy`) of each
+frequency at initialization, and the current velocity gradient (`du_dx`,
+`du_dy`, `dv_dx`, `dv_dy`) at the first time step and each time step with
+currents from file. They are centered between two sea neighbors,
+one-sided next to land, and zero between two land neighbors, so that the
+values of land cells do not enter: the current, set to zero on land, and
+the phase speed, the smallest of all sea cells. A uniform current over a
+flat bottom then neither refracts the waves nor shifts their frequency,
+also at the coast, while over a resolved slope next to the coast the
+waves turn toward the shore. The direction $\phi$ is taken in the frame of
+the grid, as in the propagation.
+
 Refraction is discretized with the same upstream-flux form, replacing
-$x$ by $\phi$. Directional space is periodic, so no directional boundary
-condition is required.
+$x$ by $\phi$, with the rotation rate at the faces between directions the
+mean of the rates of the two directions. Directional space is periodic,
+so no directional boundary condition is required.
 
-The stability condition is
+On its own, the scheme is stable and keeps the spectrum positive if the
+fraction of a bin that leaves it through both of its faces in a time step
+does not exceed 1:
 
 $$
-\frac{\dot{\phi}\Delta t}{\Delta\phi} < 1.
+\frac{\Delta t}{\Delta\phi}
+\left(\max(\dot{\phi}_{p+1/2}, 0) - \min(\dot{\phi}_{p-1/2}, 0)\right)
+\le 1.
 $$
 
-The implementation computes a refraction timestep `dtr` no larger than
-`dts`; if needed, the directional rotation is effectively limited to the
-stable step.
+Refraction splits the time step `dts` of each cell into as many equal
+substeps as this condition needs, so that every cell is refracted over
+the whole time step. The condition is evaluated with an upper bound from
+the amplitudes of the depth term, $a$, and of the strain term, $b$, which
+vary over direction as $\phi$ and $2\phi$, and from half the vorticity,
+$\zeta/2$: a bin loses at most $a + |\zeta|/2 + b$ through one face, and
+at most $\Delta\phi\,(a + 2b)$ through both faces where the rotation
+diverges, per unit time. One substep is usually enough.
+
+## Frequency Shift
+
+With currents, the intrinsic frequency changes along the rays at
+
+$$
+\dot{\varsigma}
+=
+\frac{d\ln\sigma}{dt}
+=
+\frac{1}{\sigma}\frac{\partial\sigma}{\partial d}\,\mathbf{u}\cdot\nabla d
+- \frac{c_g}{c}\,\hat{\mathbf{k}}\cdot(\hat{\mathbf{k}}\cdot\nabla)\mathbf{u},
+$$
+
+from the ray equations for $\omega = \sigma(k, d) + \mathbf{k}\cdot\mathbf{u}$
+with a steady depth. At a fixed frequency,
+$(\partial\sigma/\partial d)\nabla d = k\,(c_g/c)\nabla c$, so the first
+term is $\mathbf{u}\cdot(c_g/c)\nabla c\,/\,c$, from the same phase speed
+gradient as refraction. In components,
+$\hat{\mathbf{k}}\cdot(\hat{\mathbf{k}}\cdot\nabla)\mathbf{u}
+= \cos^2\phi\,\partial u/\partial x
++ \sin\phi\cos\phi\,(\partial u/\partial y + \partial v/\partial x)
++ \sin^2\phi\,\partial v/\partial y$.
+Against a current that strengthens along the waves, the waves shorten:
+their intrinsic frequency rises.
+
+The action $A$ is advected in $\ln\sigma$, whose bins are uniformly
+spaced by `dlnf`, with the same upstream-flux form as refraction, for the
+prognostic frequencies of each cell. Action leaves the lowest bin through
+its lower face, with none below it, and flows between the highest
+prognostic bin and the diagnostic tail above it. The time step of each
+cell is split into as many equal substeps as the upstream scheme needs to
+stay stable and positive, from an upper bound of $|\dot{\varsigma}|$ over
+frequency and direction: the strain rate
+$\hat{\mathbf{k}}\cdot(\hat{\mathbf{k}}\cdot\nabla)\mathbf{u}$ is half
+the divergence of the current plus a sinusoid in $2\phi$. The frequency
+shift is evaluated only when the current is nonzero.
 
 ## Wind Stress and Drag
 
@@ -1417,7 +1547,8 @@ The current focused tests are:
 | `test_dispersion` | Wavenumber/frequency round-trip accuracy and positive finite group speed for the capillary-gravity dispersion module. |
 | `test_spectrum` | Spectrum constructor metadata, endpoint frequencies, legacy log-space frequency equivalence, direction-grid equivalence, `dlnf`, and `dth`. |
 | `test_source_functions` | Mean-squared slope moments against the direct sum over directions, the vectorized power function against the intrinsic, and the wind input against a step-by-step evaluation. |
-| `test_domain` | One-hour integration of the idealized hurricane case by `domain_type` with gridded and spectrum output and Stokes drift, compared with the mean and maximum of output fields, ocean stress, and Stokes drift from UMWM before the domain refactor. |
+| `test_advection` | Current-induced ray rotation against the ray equation and in a solid-body eddy, depth-induced ray rotation against Snell's law along a ray over a slope, the conservation, positivity, and rotation of the spectrum by refraction in several substeps, the conservation of action and the shift of the spectrum by the frequency shift, steady shoaling against linear theory, and the steady variance of waves against a strengthening current against ray theory. |
+| `test_domain` | One-hour integration of the idealized hurricane case by `domain_type` with gridded and spectrum output and Stokes drift, compared with the mean and maximum of output fields, ocean stress, and Stokes drift from UMWM before the domain refactor without the refraction by its spurious current gradients against land; the uniform current over the flat bottom neither refracts the waves nor shifts their frequency. |
 
 The Python package has its own test suite in `python/tests`, run with
 `python -m pytest python/tests`, which includes the same idealized
@@ -1436,6 +1567,7 @@ sections 1 through 4 and 9. The cited references are:
 - Donelan, M. A., M. Curcic, S. S. Chen, and A. K. Magnusson, 2012: Modeling waves and wind stress. *Journal of Geophysical Research*, 117, C00J23. https://doi.org/10.1029/2011JC007787.
 - Jeffreys, H., 1924: On the formation of waves by wind. *Proceedings of the Royal Society A*, 107, 189-206.
 - Jeffreys, H., 1925: On the formation of waves by wind, II. *Proceedings of the Royal Society A*, 110, 341-347.
+- Kenyon, K. E., 1971: Wave refraction in ocean currents. *Deep Sea Research and Oceanographic Abstracts*, 18, 1023-1034. https://doi.org/10.1016/0011-7471(71)90006-4.
 - Komen, G. J., L. Cavaleri, M. Donelan, K. Hasselmann, S. Hasselmann, and P. A. E. M. Janssen, 1994: *Dynamics and Modelling of Ocean Waves*. Cambridge University Press, 532 pp.
 - Pierson, W. L., and L. Moskowitz, 1964: A proposed spectral form for fully developed wind seas based on the similarity theory of S. A. Kitaigorodskii. *Journal of Geophysical Research*, 69, 5181-5190.
 - Shemdin, O. H., K. Hasselmann, S. V. Hsiao, and K. Herterich, 1978: Non-linear and linear bottom interaction effects in shallow water. In A. Favre and K. Hasselmann (eds.), *Turbulent Fluxes Through the Sea Surface, Wave Dynamics, and Prediction*, Plenum, New York, 347-372.

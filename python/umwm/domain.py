@@ -513,7 +513,7 @@ class Domain:
 
     def attribute(self, name: str) -> float:
         """A scalar attribute of the domain: ``dts`` (current source time step), ``sumt``,
-        ``dtamin`` (advection stability limit), ``dtr``, ``dtr_max``, ``dth``, ``dlnf``."""
+        ``dtamin`` (advection stability limit), ``dth``, ``dlnf``."""
         return self._lib.domain_real(self._require_handle(), name)
 
     def field(self, name: str, copy: bool = True) -> np.ndarray:
