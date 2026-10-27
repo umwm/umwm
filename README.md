@@ -110,10 +110,29 @@ exports, which would take precedence over `mpif90`. `GPU=yes` selects
 `-O3 -fast`, and adds the OpenACC flags `-acc=gpu
 -gpu=$(GPU_ARCH),mem:$(GPU_MEM)` also when `FCFLAGS` is set. `GPU_ARCH` is the
 compute capability of the GPU, `cc120` (Blackwell RTX PRO) by default, and
-`GPU_MEM` the memory model, `unified` (default) or `separate`.
+`GPU_MEM` the memory model, `unified` (default) or `separate`. The kernels of
+the time step, in `src/umwm_domain_acc.f90`, are compiled with
+`ACC_KERNEL_FLAGS`, which inline the functions of the spectral bins and limit
+the registers of a thread.
 
-The model time step does not run on the GPU yet; until it does, the GPU build
-runs on the CPU.
+In the GPU build, the source time step, the forcing interpolation, the
+diagnostics, the ocean stress, the Stokes drift, and most of the
+initialization run on the GPU, in unified memory, and the input and output on
+the CPU. It supports at most 128 frequencies and 128 directions. Its results
+differ from those of the CPU build at the level of single-precision rounding,
+because the GPU raises to the dissipation power in single precision, where the
+CPU uses double precision, and sums over the spectrum in another order. Run it
+on one GPU as in serial, selecting the GPU with `CUDA_VISIBLE_DEVICES`:
+
+```
+CUDA_VISIBLE_DEVICES=0 ./umwm
+```
+
+The GPU build is fast for large grids, of the order of 100,000 sea cells and
+more; small grids, such as most example cases, use a small part of the GPU.
+With MPI, the GPU build gives the same results, but all processes use the
+first visible GPU and exchange the halo through the CPU; running on several
+GPUs is not supported yet.
 
 ### Running tests
 

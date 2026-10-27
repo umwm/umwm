@@ -15,6 +15,7 @@ contains
   real(rk) pure elemental function drag_coefficient(taux, tauy, rhoa, wspd) result(cd)
     !! Computes drag coefficient from stress vector (taux, tauy, N/m^2),
     !! air density (rhoa, kg/m^3), and wind speed (wspd, m/s).
+    !$acc routine seq
     real(rk), intent(in) :: taux, tauy, rhoa, wspd
     cd = sqrt(taux**2 + tauy**2) / (rhoa * wspd**2)
   end function drag_coefficient
@@ -24,6 +25,7 @@ contains
     !! Computes the skin drag coefficient attenuated by from drag,
     !! given input absolute (wspd) and relative (wspdrel) wind speed (m/s),
     !! height z (m), air viscosity (m^2/s), and Von Karman constant.
+    !$acc routine seq
     real(rk), intent(in) :: cd_form, wspd, wspdrel, z, air_viscosity, von_karman
     cd = friction_velocity_skin(wspdrel, z, air_viscosity, von_karman)**2 / wspd**2
     cd = cd * (1 + 2 * cd / (cd + cd_form + tiny(cd))) / 3
@@ -35,6 +37,7 @@ contains
     !! given input wind speed (m/s), height z (m), air viscosity (m^2/s),
     !! and Von Karman constant. Input wind speed should relative to the
     !! water surface.
+    !$acc routine seq
     real(rk), intent(in) :: wspd, z, air_viscosity, von_karman
     real(rk) :: z0
     integer :: n
@@ -48,6 +51,7 @@ contains
   pure elemental real(rk) function stress_tail(wspd, kmax) result(tail)
     !! Computes the wind speed-dependent stress tail
     !! from kmax (highest wavenumber bin) to capillary.
+    !$acc routine seq
     real(rk), intent(in) :: wspd, kmax
     real(rk) :: kmax_pow_tail
     real(rk), parameter :: kcap = 1e3 ! capillary wavenumber
@@ -77,6 +81,7 @@ contains
     !! Computes the wind speed and direction relative to the water surface,
     !! given input absolute wind speed and direction, and u- and v- components
     !! of the surface velocity.
+    !$acc routine seq
     real(rk), intent(in) :: wspd, wdir, us, vs
     real(rk), intent(out) :: wspdrel, wdirrel
     real(rk) :: urel, vrel

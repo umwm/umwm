@@ -18,6 +18,11 @@ contains
     real :: m0, m2, xcomp, ycomp, mag, ekdkovcp, rhow_dthg
     integer :: i, o, p, opeak, ppeak, peak(2)
 
+#ifdef _OPENACC
+    call diagnostics_acc(self)
+    return
+#endif
+
     associate(e => self % e, kdk => self % kdk, f => self % f, cth => self % cth, &
               sth => self % sth, forcing => self % forcing, &
               om => self % spectrum % num_frequencies, pm => self % spectrum % num_directions)
@@ -110,6 +115,11 @@ contains
     real, dimension(self % spectrum % num_frequencies) :: taux_util, tauy_util, snl_cp
     real :: tail, rhow_dthg, form
     integer :: i, o, p
+
+#ifdef _OPENACC
+    call ocean_stress_acc(self)
+    return
+#endif
 
     associate(e => self % e, ssin => self % ssin, sds => self % sds, snl => self % snl, &
               cothkd => self % cothkd, cp0 => self % cp0, invcp0 => self % invcp0, kdk => self % kdk, &

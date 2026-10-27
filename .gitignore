@@ -2,6 +2,7 @@
 *.o
 *.mod
 *.smod
+umwm_inline.lib/
 
 src/datetime_module.f90
 

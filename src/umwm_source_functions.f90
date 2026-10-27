@@ -2,13 +2,22 @@ module umwm_source_functions
   ! Wave source functions of Donelan et al. (2012), evaluated for one
   ! spectral column (all frequencies and directions of one grid cell).
   ! The prognostic range of frequencies is 1:oc; higher bins are diagnostic.
+  ! The elemental functions with the suffix _bin evaluate one spectral bin,
+  ! for the column routines and for the GPU kernels.
 
   use, intrinsic :: iso_fortran_env, only: real64
 
   implicit none
 
   private
-  public :: mss_moments, power, sin_d12, sds_coefficient, sds_d12, snl_d12, s_ice
+  public :: mss_moments, power, power_bin, power_threshold, sin_d12, sin_d12_bin, &
+            sds_coefficient, sds_coefficient_bin, sds_d12, snl_d12, snl_d12_bin, &
+            s_ice, s_ice_bin
+
+  ! sea ice attenuation, Kohout et al. (2014)
+  real, parameter :: H_th = 3.0       ! [m]
+  real, parameter :: C1   = -5.35e-6  ! [m-1]
+  real, parameter :: C2   = C1 * H_th ! []
 
 contains
 
@@ -28,7 +37,6 @@ contains
     real, intent(in) :: fkovg(nf)         ! f * k / g
     real, intent(inout) :: ssin(nf,nd)
     real :: lower(no) ! no negative input for the diagnostic tail
-    real :: s, overrun
     integer :: o, p
 
     do o = 1, no
@@ -36,18 +44,30 @@ contains
     end do
 
     do p = 1, nd
-      overrun = merge(fieldscale2, 1., cosd(p) > 0)
       do o = 1, no
-        s = wind(o) * cosd(p) - cp(o) - uc * cth(p) - vc * sth(p)
-        s = sin_fac * abs(s) * s
-        ! variable sheltering coefficient for following winds; damping of
-        ! opposing winds, further reduced for swell overrunning the wind
-        s = merge(s * shelt / sin_fac, s * fieldscale1 * overrun, s > 0)
-        ssin(o,p) = max(scale * s * fkovg(o), lower(o))
+        ssin(o,p) = sin_d12_bin(wind(o), cosd(p), cp(o), uc, vc, cth(p), sth(p), shelt, &
+                                sin_fac, fieldscale1, fieldscale2, scale, fkovg(o), lower(o))
       end do
     end do
 
   end subroutine sin_d12
+
+
+  pure elemental real function sin_d12_bin(wind, cosd, cp, uc, vc, cth, sth, shelt, sin_fac, &
+                                           fieldscale1, fieldscale2, scale, fkovg, lower) &
+    result(res)
+    ! Wind input of one spectral bin (see sin_d12), not less than lower.
+    !$acc routine seq
+    real, intent(in) :: wind, cosd, cp, uc, vc, cth, sth, shelt
+    real, intent(in) :: sin_fac, fieldscale1, fieldscale2, scale, fkovg, lower
+    real :: s
+    s = wind * cosd - cp - uc * cth - vc * sth
+    s = sin_fac * abs(s) * s
+    ! variable sheltering coefficient for following winds; damping of
+    ! opposing winds, further reduced for swell overrunning the wind
+    s = merge(s * shelt / sin_fac, s * fieldscale1 * merge(fieldscale2, 1., cosd > 0), s > 0)
+    res = max(scale * s * fkovg, lower)
+  end function sin_d12_bin
 
 
   pure subroutine mss_moments(nf, nd, e, k3dk, cth2, sth2, dth, moments)
@@ -97,11 +117,21 @@ contains
     fac = max(mss_fac, 0.)
     do p = 1, nd
       do o = o1, o2
-        sds_coef(o,p) = twopisds_fac * f(o) * (1 + fac &
-          * (moments(o,1) + cth2(p) * moments(o,2) + sth2(p) * moments(o,3)))**2
+        sds_coef(o,p) = sds_coefficient_bin(f(o), cth2(p), sth2(p), fac, twopisds_fac, &
+                                            moments(o,1), moments(o,2), moments(o,3))
       end do
     end do
   end subroutine sds_coefficient
+
+
+  pure elemental real function sds_coefficient_bin(f, cth2, sth2, fac, twopisds_fac, &
+                                                   moment1, moment2, moment3) result(res)
+    ! Wave breaking dissipation coefficient of one spectral bin (see
+    ! sds_coefficient), with fac = max(mss_fac, 0).
+    !$acc routine seq
+    real, intent(in) :: f, cth2, sth2, fac, twopisds_fac, moment1, moment2, moment3
+    res = twopisds_fac * f * (1 + fac * (moment1 + cth2 * moment2 + sth2 * moment3))**2
+  end function sds_coefficient_bin
 
 
   pure subroutine sds_d12(nf, nd, o1, o2, e, k4, f, cth2, sth2, mss_fac, twopisds_fac, &
@@ -137,9 +167,27 @@ contains
     real, intent(inout) :: x(n)
     real, intent(in) :: a
     real :: xmin
-    xmin = max(tiny(x)**(1 / a), tiny(x))
+    xmin = power_threshold(a)
     x = merge(real(exp(a * log(real(max(x, xmin), real64)))), 0., x > xmin)
   end subroutine power
+
+
+  pure real function power_threshold(a) result(xmin)
+    ! The input of power below which the input or the result would be
+    ! subnormal in single precision.
+    real, intent(in) :: a
+    xmin = max(tiny(xmin)**(1 / a), tiny(xmin))
+  end function power_threshold
+
+
+  pure elemental real function power_bin(x, a, xmin) result(res)
+    ! Raises x to the positive power a in single precision, zero for x not
+    ! above xmin = power_threshold(a); for the GPU, where double precision
+    ! is slow.
+    !$acc routine seq
+    real, intent(in) :: x, a, xmin
+    res = merge(max(x, xmin)**a, 0., x > xmin)
+  end function power_bin
 
 
   pure subroutine snl_d12(nf, nd, oc, e, bf1_renorm, bf2_renorm, snl_fac, sds, snl)
@@ -155,14 +203,23 @@ contains
 
     do p = 1, nd
       do o = 1, oc
-        snl(o,p) = bf1_renorm(o) * sds(o+1,p) * e(o+1,p) &
-                 + bf2_renorm(o) * sds(o+2,p) * e(o+2,p) &
-                 - snl_fac * sds(o,p) * e(o,p)
+        snl(o,p) = snl_d12_bin(bf1_renorm(o), bf2_renorm(o), snl_fac, sds(o,p), e(o,p), &
+                               sds(o+1,p), e(o+1,p), sds(o+2,p), e(o+2,p))
       end do
       snl(oc+1:nf,p) = 0
     end do
 
   end subroutine snl_d12
+
+
+  pure elemental real function snl_d12_bin(bf1_renorm, bf2_renorm, snl_fac, sds, e, &
+                                           sds1, e1, sds2, e2) result(res)
+    ! Nonlinear downshifting of one spectral bin (see snl_d12), from the
+    ! dissipation and spectrum of the bin and of the next two frequencies.
+    !$acc routine seq
+    real, intent(in) :: bf1_renorm, bf2_renorm, snl_fac, sds, e, sds1, e1, sds2, e2
+    res = bf1_renorm * sds1 * e1 + bf2_renorm * sds2 * e2 - snl_fac * sds * e
+  end function snl_d12_bin
 
 
   pure subroutine s_ice(nf, nd, e, kdk, cg, dth, fice, fice_lth, sice)
@@ -171,10 +228,6 @@ contains
     real, intent(in) :: e(nf,nd), kdk(nf), cg(nf)
     real, intent(in) :: dth, fice, fice_lth
     real, intent(out) :: sice(nf)
-
-    real, parameter :: H_th = 3.0       ! [m]
-    real, parameter :: C1   = -5.35e-6  ! [m-1]
-    real, parameter :: C2   = C1 * H_th ! []
 
     real :: swh
     integer :: p
@@ -188,13 +241,21 @@ contains
     end do
     swh = 4 * sqrt(swh * dth)
 
-    ! wave attenuation from sea ice in the two SWH regimes
-    if (swh < H_th) then
-      sice = 2 * cg * (C1 * swh)
-    else
-      sice = 2 * cg * C2
-    end if
+    sice = s_ice_bin(cg, swh)
 
   end subroutine s_ice
+
+
+  pure elemental real function s_ice_bin(cg, swh) result(res)
+    ! Wave attenuation by sea ice of one frequency with group speed cg,
+    ! given the significant wave height swh, in its two regimes.
+    !$acc routine seq
+    real, intent(in) :: cg, swh
+    if (swh < H_th) then
+      res = 2 * cg * (C1 * swh)
+    else
+      res = 2 * cg * C2
+    end if
+  end function s_ice_bin
 
 end module umwm_source_functions

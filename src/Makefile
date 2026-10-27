@@ -28,6 +28,7 @@ OBJS = datetime_module.o \
        umwm_diagnostics.o \
        umwm_dispersion.o \
        umwm_domain.o \
+       umwm_domain_acc.o \
        umwm_domain_output.o \
        umwm_env.o \
        umwm_forcing.o \
@@ -76,6 +77,7 @@ umwm_cli.o:         umwm_cli.f90        umwm_env.o
 datetime_module.o:  datetime_module.f90
 umwm_domain.o:      umwm_domain.f90     datetime_module.o umwm_advection.o umwm_config.o umwm_constants.o umwm_dispersion.o umwm_env.o umwm_forcing.o umwm_grid.o umwm_io.o umwm_mpi.o umwm_physics.o umwm_restart.o umwm_sheltering.o umwm_source_functions.o umwm_spectrum.o umwm_stokes.o umwm_stress.o umwm_util.o
 umwm_domain_output.o: umwm_domain_output.f90 umwm_domain.o umwm_io.o
+umwm_domain_acc.o:  umwm_domain_acc.f90 umwm_advection.o umwm_domain.o umwm_physics.o umwm_source_functions.o
 umwm_capi.o:        umwm_capi.f90       umwm_domain.o umwm_env.o umwm_io.o
 umwm_constants.o:   umwm_constants.f90
 umwm_config.o:      umwm_config.f90     umwm_constants.o
@@ -96,6 +98,21 @@ umwm_stokes.o:      umwm_stokes.f90     umwm_constants.o
 umwm_stress.o:      umwm_stress.f90     umwm_constants.o
 umwm_source_functions.o: umwm_source_functions.f90
 
+# In the GPU build, the elemental functions of the spectral bins are inlined
+# into the kernels of umwm_domain_acc from a library extracted from their
+# modules; nvfortran does not inline them across files otherwise. The
+# kernels run faster with fewer registers for more threads at a time.
+INLINE_SRC = umwm_advection.f90 umwm_physics.f90 umwm_sheltering.f90 \
+             umwm_source_functions.f90 umwm_stress.f90
+ACC_KERNEL_FLAGS ?= -Minline=lib:umwm_inline.lib -gpu=maxregcount:64
+ifneq ($(UMWM_GPU_ENABLED),)
+umwm_inline.lib: $(INLINE_SRC) | $(INLINE_SRC:.f90=.o)
+	$(RM) -r $@
+	$(FC) $(CPPFLAGS) $(FCFLAGS) -Mextract=lib:$@ $^
+umwm_domain_acc.o: umwm_domain_acc.f90 umwm_inline.lib
+	$(FC) $(CPPFLAGS) $(FCFLAGS) $(ACC_KERNEL_FLAGS) $(NETCDF_FFLAGS) -c $<
+endif
+
 test:
 	$(MAKE) --directory=../tests test
 
@@ -104,6 +121,7 @@ datetime_module.f90:
 
 clean:
 	$(RM) umwm *.o *.mod *.smod libumwm.a $(SHARED_LIB)
+	$(RM) -r umwm_inline.lib
 	$(RM) -r $(SHARED_DIR)
 
 clean_all:
