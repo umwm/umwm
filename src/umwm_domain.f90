@@ -164,6 +164,12 @@ module umwm_domain
       class(domain_type), intent(inout) :: self
     end subroutine ocean_stress_acc
 
+    module function screen_values_acc(self, i) result(res)
+      class(domain_type), intent(in) :: self
+      integer, intent(in) :: i
+      real :: res(6)
+    end function screen_values_acc
+
   end interface
 
 contains
@@ -631,9 +637,13 @@ contains
       ! diagnostic output on screen
       if (nproc == self % nproc_plot) then
         associate(i => self % iip)
+#ifdef _OPENACC
+          write(*,fmt=100) self % sumt / config % dtg, self % dts, screen_values_acc(self, i)
+#else
           write(*,fmt=100) self % sumt / config % dtg, self % dts, forcing % wspd(i), &
                            forcing % wdir(i), sigwaveheight(self, i), &
                            meanwaveperiod(self, i), self % cd(i) * 1e3, self % f(self % oc(i))
+#endif
         end associate
       end if
 

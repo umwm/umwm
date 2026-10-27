@@ -10,6 +10,7 @@ submodule (umwm_domain) umwm_domain_acc
   ! in device code. In the tile, i1:i2 are the sea cells and h1:h2 the cells
   ! with the halo and the land cell h1.
 
+  use, intrinsic :: iso_c_binding, only: c_f_pointer, c_loc, c_ptr, c_size_t
   use umwm_advection, only: current_rotation_rate, depth_rotation_rate, frequency_outflow, &
                             frequency_rate, propagation_flux, refraction_outflow, upstream_flux
   use umwm_physics, only: equilibrium_bin, integrate_bin, source_rate
@@ -25,13 +26,41 @@ submodule (umwm_domain) umwm_domain_acc
   ! threads in a thread block of a spectral column
   integer, parameter :: vl = 64
 
+  ! queue of the source integration, which runs during the halo exchange
+  integer, parameter :: integrate_queue = 1
+
+  ! The values that kernels return to the CPU, such as the results of
+  ! reductions, in GPU memory, from which the CPU copies them
+  ! (copy_results). Kernels write host variables in place, and unified
+  ! memory shares pages with the small allocations of the CPU; their pages
+  ! would migrate between the CPU and the GPU, each time at the cost of a
+  ! page fault of 0.2-0.3 ms.
+  integer, parameter :: num_results = 6
+  real, pointer, contiguous :: results(:) => null()
+
+#ifdef _OPENACC
+  ! the routines of the OpenACC C interface, whose device pointers are C
+  ! pointers
+  interface
+    type(c_ptr) function device_malloc(bytes) bind(c, name='acc_malloc')
+      import :: c_ptr, c_size_t
+      integer(c_size_t), value :: bytes
+    end function device_malloc
+    subroutine memcpy_from_device(dest, src, bytes) bind(c, name='acc_memcpy_from_device')
+      import :: c_ptr, c_size_t
+      type(c_ptr), value :: dest, src
+      integer(c_size_t), value :: bytes
+    end subroutine memcpy_from_device
+  end interface
+#endif
+
 contains
 
   module subroutine step_acc(self)
     ! Advances the wave spectrum by one source time step on the GPU, as step.
     class(domain_type), intent(inout) :: self
     real, allocatable :: e_old(:,:,:)
-    real :: dts_min
+    real :: dts_min(1), current(1)
     logical :: store, currents
 #ifdef MPI
     real :: dts_local
@@ -45,6 +74,7 @@ contains
 
     if (self % first .and. (om > max_bins .or. pm > max_bins)) &
       error stop 'umwm: step_acc: the GPU build supports at most 128 frequencies and directions'
+    call allocate_results()
 
     call sources_acc(om, pm, i1, i2, h1, h2, imm, self % e, self % f, self % cth, self % sth, &
                      self % cth2, self % sth2, forcing % wspd, forcing % wdir, forcing % uc, &
@@ -56,10 +86,11 @@ contains
                      config % mss_fac, self % twopisds_fac, config % sds_power, &
                      config % sdt_fac, config % fice_lth, config % explim, self % oc, &
                      self % shelt, self % mss_moments, self % sds, self % sdt, self % sice, &
-                     self % physics_time_step, dts_min)
+                     self % physics_time_step, results)
+    call copy_results(1, dts_min)
 
     ! dynamic time step and in-step model time:
-    self % dts = min(dts_min, self % dtamin, config % dtg - self % sumt)
+    self % dts = min(dts_min(1), self % dtamin, config % dtg - self % sumt)
 #ifdef MPI
     dts_local = self % dts
     call mpi_allreduce(dts_local, self % dts, 1, MPI_REAL, MPI_MIN, MPI_COMM_WORLD, ierr)
@@ -79,17 +110,26 @@ contains
 
     ! check if currents are non-zero:
     if (.not. config % isglobal) then
-      currents = any_current(grid % iistart, grid % iiend, imm, forcing % uc, forcing % vc)
+      call any_current(grid % iistart, grid % iiend, imm, forcing % uc, forcing % vc, results)
     else
-      currents = any_current(1, imm, imm, forcing % uc, forcing % vc)
+      call any_current(1, imm, imm, forcing % uc, forcing % vc, results)
     end if
+    call copy_results(1, current)
+    currents = current(1) > 0
 
 #ifdef MPI
-    ! Integrate the cells in the halo of other tiles first, and exchange the halo.
-    call integrate(.true.)
-    call exchange_halo(self % e, om * pm, grid, config % isglobal)
+    ! Integrate the cells in the halo of other tiles first, and exchange the
+    ! halo while the other cells are integrated.
+    if (mpisize > 1) then
+      call integrate(.true.)
+      !$acc wait(integrate_queue)
+    end if
 #endif
     call integrate(.false.)
+#ifdef MPI
+    call exchange_halo(self % e, om * pm, grid, config % isglobal)
+#endif
+    !$acc wait(integrate_queue)
 
     call advect_acc(om, pm, i1, i2, h1, h2, imm, currents, self % dts, self % dth, &
                     real(self % spectrum % dlnf), self % e, self % ef, self % oc, &
@@ -145,17 +185,45 @@ contains
   end subroutine step_acc
 
 
-  logical function any_current(n1, n2, imm, uc, vc) result(res)
-    ! Whether the current (uc, vc) is non-zero at any of the cells n1:n2.
+  subroutine allocate_results()
+    ! Allocates results, in the GPU build on the GPU only, unless allocated.
+    if (associated(results)) return
+#ifdef _OPENACC
+    call c_f_pointer(device_malloc(int(num_results, c_size_t) * storage_size(1.) / 8), results, &
+                     [num_results])
+#else
+    allocate(results(num_results))
+#endif
+  end subroutine allocate_results
+
+
+  subroutine copy_results(n, res)
+    ! Copies the first n values that kernels returned in results to res.
+    integer, intent(in) :: n
+    real, intent(out), target :: res(n)
+#ifdef _OPENACC
+    call memcpy_from_device(c_loc(res), c_loc(results), int(n, c_size_t) * storage_size(res) / 8)
+#else
+    res = results(:n)
+#endif
+  end subroutine copy_results
+
+
+  subroutine any_current(n1, n2, imm, uc, vc, res)
+    ! Whether the current (uc, vc) is non-zero at any of the cells n1:n2,
+    ! returned in res(1) as 1, and as 0 otherwise.
     integer, intent(in) :: n1, n2, imm
     real, intent(in) :: uc(imm), vc(imm)
+    real, intent(inout) :: res(1)
     integer :: i
-    res = .false.
-    !$acc parallel loop reduction(.or.:res)
+    !$acc serial deviceptr(res)
+    res(1) = 0
+    !$acc end serial
+    !$acc parallel loop reduction(max:res(1)) deviceptr(res)
     do i = n1, n2
-      res = res .or. uc(i) /= 0 .or. vc(i) /= 0
+      res(1) = max(res(1), merge(1., 0., uc(i) /= 0 .or. vc(i) /= 0))
     end do
-  end function any_current
+  end subroutine any_current
 
 
   subroutine sources_acc(om, pm, i1, i2, h1, h2, imm, e, f, cth, sth, cth2, sth2, wspd, &
@@ -163,10 +231,10 @@ contains
                          k3dk, k4, cothkd, snl_arg, sbf, sdv, g, fcut_fac, fprog, sin_fac, &
                          fieldscale1, fieldscale2, dth, mss_fac, twopisds_fac, sds_power, &
                          sdt_fac, fice_lth, explim, oc, shelt, moments, sds, sdt, sice, &
-                         physics_time_step, dts_min)
+                         physics_time_step, res)
     ! Evaluates the source functions, the column-wise sink terms, and the
-    ! largest stable source time step at each cell, as sources, and the
-    ! smallest of these time steps, dts_min.
+    ! largest stable source time step at each cell, as sources, and returns
+    ! the smallest of these time steps in res(1).
     integer, intent(in) :: om, pm, i1, i2, h1, h2, imm
     real, intent(in) :: e(om,pm,h1:h2), f(om), cth(pm), sth(pm), cth2(pm), sth2(pm)
     real, intent(in), dimension(imm) :: wspd, wdir, uc, vc, rhorat, fice
@@ -178,8 +246,7 @@ contains
                         twopisds_fac, sds_power, sdt_fac, fice_lth, explim
     integer, intent(inout) :: oc(i1:i2)
     real, intent(inout) :: shelt(i1:i2), moments(om,3,i1:i2), sds(om,pm,i1:i2), &
-                           sdt(om,i1:i2), sice(om,i1:i2), physics_time_step(i1:i2)
-    real, intent(out) :: dts_min
+                           sdt(om,i1:i2), sice(om,i1:i2), physics_time_step(i1:i2), res(1)
 
     real :: wspd_i, ustar_i, shelt_i, cos_wdir, sin_wdir, scale, fac, xmin, fcutoff
     real :: d0, dc, ds, partial, running, swh, rate
@@ -187,9 +254,8 @@ contains
 
     fac = max(mss_fac, 0.)
     xmin = power_threshold(sds_power)
-    dts_min = huge(dts_min)
 
-    !$acc parallel loop gang vector_length(vl) reduction(min:dts_min) &
+    !$acc parallel loop gang vector_length(vl) &
     !$acc   private(wspd_i, ustar_i, shelt_i, cos_wdir, sin_wdir, scale, fcutoff, no, swh, rate)
     do i = i1, i2
 
@@ -293,8 +359,18 @@ contains
         end do
       end do
       physics_time_step(i) = explim / rate
-      dts_min = min(dts_min, explim / rate)
 
+    end do
+
+    ! the smallest of the time steps, by a kernel of its own: a reduction
+    ! into res(1) in the kernel over the cells takes more shared memory than
+    ! a thread block has
+    !$acc serial deviceptr(res)
+    res(1) = huge(res)
+    !$acc end serial
+    !$acc parallel loop reduction(min:res(1)) deviceptr(res)
+    do i = i1, i2
+      res(1) = min(res(1), physics_time_step(i))
     end do
 
   end subroutine sources_acc
@@ -310,7 +386,8 @@ contains
     ! cells in the halo of other tiles if halo is .true., and at the other
     ! cells otherwise: ef is the updated spectrum, and e becomes the mean of
     ! the old and updated spectrum. If store is .true., Sin, Sds and Snl over
-    ! the whole spectrum are kept for output.
+    ! the whole spectrum are kept for output. The kernel runs asynchronously
+    ! on integrate_queue.
     integer, intent(in) :: om, pm, i1, i2, h1, h2, imm
     logical, intent(in) :: halo, halo_source(i1:i2), store
     real, intent(in) :: dts
@@ -334,7 +411,7 @@ contains
     xmin_sds = power_threshold(sds_power)
     xmin_eq = power_threshold(inv_sds_power)
 
-    !$acc parallel loop gang vector_length(vl) &
+    !$acc parallel loop gang vector_length(vl) async(integrate_queue) &
     !$acc   private(wspd_i, ustar_i, shelt_i, cos_wdir, sin_wdir, scale, no)
     do i = i1, i2
       if (halo_source(i) .eqv. halo) then
@@ -1055,5 +1132,60 @@ contains
     end do
 
   end subroutine ocean_stress_kernel
+
+
+  module function screen_values_acc(self, i) result(res)
+    ! Wind speed and direction, significant wave height, mean wave period,
+    ! drag coefficient times 10^3, and the cut-off frequency at cell i, for
+    ! the screen output of each time step, evaluated on the GPU: the pages
+    ! of the fields that the CPU reads migrate to it and back.
+    class(domain_type), intent(in) :: self
+    integer, intent(in) :: i
+    real :: res(6)
+    call allocate_results()
+    call screen_values_kernel(self % spectrum % num_frequencies, &
+                              self % spectrum % num_directions, i, self % grid % istart, &
+                              self % grid % iend, self % grid % iistart - 1, self % grid % iiend, &
+                              self % grid % imm, self % e, self % f, self % kdk, &
+                              self % forcing % wspd, self % forcing % wdir, self % cd, self % oc, &
+                              self % dth, results)
+    call copy_results(size(res), res)
+  end function screen_values_acc
+
+
+  subroutine screen_values_kernel(om, pm, i, i1, i2, h1, h2, imm, e, f, kdk, wspd, wdir, cd, oc, &
+                                  dth, res)
+    ! The values of screen_values_acc, returned in res, by a thread block
+    ! with threads over direction, summing over frequency first as
+    ! sigwaveheight and meanwaveperiod.
+    integer, intent(in) :: om, pm, i, i1, i2, h1, h2, imm
+    real, intent(in) :: e(om,pm,h1:h2), f(om), kdk(om,i1:i2), wspd(imm), wdir(imm), cd(i1:i2), dth
+    integer, intent(in) :: oc(i1:i2)
+    real, intent(inout) :: res(6)
+    real :: m0, m2, s0, s2
+    integer :: o, p
+    !$acc parallel num_gangs(1) vector_length(vl) deviceptr(res)
+    m0 = 0
+    m2 = 0
+    !$acc loop vector reduction(+:m0, m2) private(s0, s2)
+    do p = 1, pm
+      s0 = 0
+      s2 = 0
+      !$acc loop seq
+      do o = 1, om
+        s0 = s0 + e(o,p,i) * kdk(o,i)
+        s2 = s2 + f(o)**2 * e(o,p,i) * kdk(o,i)
+      end do
+      m0 = m0 + s0
+      m2 = m2 + s2
+    end do
+    res(1) = wspd(i)
+    res(2) = wdir(i)
+    res(3) = 4 * sqrt(m0 * dth)
+    res(4) = sqrt(m0 / m2)
+    res(5) = cd(i) * 1e3
+    res(6) = f(oc(i))
+    !$acc end parallel
+  end subroutine screen_values_kernel
 
 end submodule umwm_domain_acc

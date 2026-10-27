@@ -17,7 +17,9 @@ contains
   subroutine exchange_halo(field, n, grid, isglobal)
     ! Exchange the halo of field(n, iistart-1:iiend), one grid row or column
     ! wide, with the neighboring tiles, and across the east-west seam if the
-    ! domain is global.
+    ! domain is global. In the GPU build, field is in unified memory on the
+    ! GPU, which a CUDA-aware MPI library copies by the GPU, and others
+    ! through the CPU, migrating the pages of the halo.
     integer, intent(in) :: n
     type(grid_type), intent(in) :: grid
     real, intent(inout) :: field(n, grid % iistart-1:grid % iiend)
@@ -45,7 +47,9 @@ contains
     end if
 
     if (isglobal .and. mpisize > 1 .and. (nproc == 0 .or. nproc == last)) then ! periodic seam
-      seam = field(:, grid % i_exchange_indices)
+      allocate(seam(n, size(grid % i_exchange_indices)))
+      call gather_cells(n, grid % iistart - 1, grid % iiend, field, &
+                        size(grid % i_exchange_indices), grid % i_exchange_indices, seam)
       if (nproc == 0) then
         call irecv(field(:, grid % iistart:grid % istart-1), last, seam_tag + last)
         call isend(seam, last, seam_tag)
@@ -75,6 +79,23 @@ contains
     end subroutine isend
 
   end subroutine exchange_halo
+
+
+  subroutine gather_cells(n, i1, i2, field, m, cells, res)
+    ! Gathers the m cells of field(n, i1:i2) into res; on the GPU in the GPU
+    ! build, where the fields reside.
+    integer, intent(in) :: n, i1, i2, m
+    real, intent(in) :: field(n,i1:i2)
+    integer, intent(in) :: cells(m)
+    real, intent(out) :: res(n,m)
+    integer :: i, j
+    !$acc parallel loop collapse(2)
+    do j = 1, m
+      do i = 1, n
+        res(i,j) = field(i,cells(j))
+      end do
+    end do
+  end subroutine gather_cells
 
 
   subroutine gather_array(field, field_all, grid)

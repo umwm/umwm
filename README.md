@@ -130,9 +130,23 @@ CUDA_VISIBLE_DEVICES=0 ./umwm
 
 The GPU build is fast for large grids, of the order of 100,000 sea cells and
 more; small grids, such as most example cases, use a small part of the GPU.
-With MPI, the GPU build gives the same results, but all processes use the
-first visible GPU and exchange the halo through the CPU; running on several
-GPUs is not supported yet.
+
+With MPI, the GPU build runs on several GPUs, with the same results as on
+one. The processes of a node share its visible GPUs, one process per GPU, or
+blocks of consecutive ranks if there are more processes than GPUs, and the
+halo is exchanged while the cells inside the tiles are integrated. Map the
+processes to the NUMA domains in rank order, so that each runs next to its
+GPU on nodes where the GPUs are numbered by NUMA domain; for example, on a
+node with four GPUs, two on each of two NUMA domains:
+
+```
+mpirun -np 4 --map-by ppr:2:numa --bind-to numa ./umwm
+```
+
+The MPI library should be CUDA-aware, as the HPC-X of the SDK, which copies
+the halo from and to the GPU; through other libraries, the halo pages
+migrate to the CPU and back at each time step. On two GPUs, a time step of a
+grid of 360,000 sea cells or more takes half the time of one GPU.
 
 ### Running tests
 
