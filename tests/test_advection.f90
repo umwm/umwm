@@ -12,6 +12,9 @@ program test_advection
 
   integer, parameter :: nf = 3, nd = 36
   real, parameter :: dth = real(twopi) / nd
+  ! The direction of the one-dimensional tests, along x. As named arrays,
+  ! unlike array constructors, they need no temporary at each call.
+  real, parameter :: cth_x(1) = [1.], sth_x(1) = [0.]
 
   type(test_result) :: suite
 
@@ -215,7 +218,7 @@ contains
     zero = 0
     dt = 2.5 * dlnf / (0.5 * abs(du_dx))
     call frequency_shift(nf, 1, nf, e, kovcg, invcp, cg, zero, zero, 0., 0., du_dx, 0., 0., 0., &
-                         [1.], [0.], dt, dlnf, ef)
+                         cth_x, sth_x, dt, dlnf, ef)
     a = kovcg * e(:,1)
     a_new = kovcg * ef(:,1)
     shift = sum([(o * a_new(o), o = 1, nf)]) / sum(a_new) - sum([(o * a(o), o = 1, nf)]) / sum(a)
@@ -255,7 +258,7 @@ contains
     e(no,1) = 1
     ef = e
     call frequency_shift(nf, 1, no, e, kovcg, invcp, cg, zero, zero, 0., 0., -2 * rate, 0., &
-                         0., 0., [1.], [0.], dt, dlnf, ef)
+                         0., 0., cth_x, sth_x, dt, dlnf, ef)
     ok = abs(ef(no,1) - 0.8) < 1e-5 .and. all(ef(1:no-1,1) == 0) .and. all(ef(no+1:,1) == 0)
 
     ! lengthening: into bin no from the tail
@@ -263,7 +266,7 @@ contains
     e(no+1:,1) = 1
     ef = e
     call frequency_shift(nf, 1, no, e, kovcg, invcp, cg, zero, zero, 0., 0., 2 * rate, 0., &
-                         0., 0., [1.], [0.], dt, dlnf, ef)
+                         0., 0., cth_x, sth_x, dt, dlnf, ef)
     ok = ok .and. abs(ef(no,1) * kovcg(no) / kovcg(no+1) - 0.2) < 1e-5 &
          .and. all(ef(1:no-1,1) == 0) .and. all(ef(no+1:,1) == e(no+1:,1))
 
@@ -297,7 +300,7 @@ contains
       do i = 1, n
         call propagation(1, 1, 1, e(:,:,i), e(:,:,i+1), e(:,:,i-1), e(:,:,i), e(:,:,i), &
                          cg(:,i), cg(:,i+1), cg(:,i-1), cg(:,i), cg(:,i), kovcg(:,i), &
-                         kovcg(:,i+1), kovcg(:,i-1), kovcg(:,i), kovcg(:,i), [1.], [0.], &
+                         kovcg(:,i+1), kovcg(:,i-1), kovcg(:,i), kovcg(:,i), cth_x, sth_x, &
                          dx, dx, dx, dx, .false., 0., 0., 0., 0., 0.25 * dt / dx**2, ef(:,:,i))
       end do
       e(:,:,1:n) = ef(:,:,1:n)
@@ -349,11 +352,11 @@ contains
       ef = e
       do i = 1, n
         call propagation(nf, 1, nf, e(:,:,i), e(:,:,i+1), e(:,:,i-1), e(:,:,i), e(:,:,i), &
-                         cg, cg, cg, cg, cg, kovcg, kovcg, kovcg, kovcg, kovcg, [1.], [0.], &
+                         cg, cg, cg, cg, cg, kovcg, kovcg, kovcg, kovcg, kovcg, cth_x, sth_x, &
                          dx, dx, dx, dx, .true., u(i) + u(i+1), u(i) + u(i-1), 0., 0., &
                          0.25 * dt / dx**2, ef(:,:,i))
         call frequency_shift(nf, 1, nf, e(:,:,i), kovcg, invcp, cg, zero, zero, u(i), 0., &
-                             (u(i+1) - u(i-1)) / (2 * dx), 0., 0., 0., [1.], [0.], dt, dlnf, &
+                             (u(i+1) - u(i-1)) / (2 * dx), 0., 0., 0., cth_x, sth_x, dt, dlnf, &
                              ef(:,:,i))
       end do
       e(:,:,1:n) = ef(:,:,1:n)
