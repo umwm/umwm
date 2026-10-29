@@ -83,9 +83,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # the CPU code
+          # the CPU code, with the default FCFLAGS of nvfortran
           - target: cpu
-            make-args: FC=nvfortran FCFLAGS="-O3 -fast"
+            make-args: FC=nvfortran
           # the OpenACC code of the GPU build, on the CPU cores
           - target: openacc-multicore
             make-args: GPU=yes GPU_FLAGS=-acc=multicore ACC_KERNEL_FLAGS=-Minline=lib:umwm_inline.lib

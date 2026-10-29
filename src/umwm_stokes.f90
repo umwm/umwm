@@ -116,6 +116,7 @@ contains
   end subroutine compute
 
 
+#ifdef _OPENACC
   subroutine compute_acc(om, pm, lm, i1, i2, e, cth, sth, weight, depth, us, vs, ds)
     ! Computes the Stokes drift as compute, on the GPU, by a thread block for
     ! each cell, with its threads over the depth levels.
@@ -170,5 +171,6 @@ contains
     end do
 
   end subroutine compute_acc
+#endif
 
 end module umwm_stokes

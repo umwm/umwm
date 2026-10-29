@@ -2,11 +2,13 @@
 
 The library is built from the Fortran sources with the UMWM Makefile
 (``make shared``), so the same build configuration applies: ``FC``,
-``FCFLAGS``, ``MPI=yes``, ``NF_CONFIG``, ``NETCDF``, ``NETCDF_FFLAGS`` and
-``NETCDF_FLIBS`` are read from the environment, for example::
+``FCFLAGS``, ``MPI=yes``, ``GPU=yes``, ``GPU_ARCH``, ``NF_CONFIG``, ``NETCDF``,
+``NETCDF_FFLAGS``, ``NETCDF_FLIBS`` and the others of ``MAKE_VARIABLES`` are
+read from the environment with the prefix ``UMWM_``, for example::
 
-    pip install .                        # serial, gfortran, nf-config
-    MPI=yes FC=mpifort pip install .     # parallel
+    pip install .                                # serial, gfortran, nf-config
+    UMWM_MPI=yes UMWM_FC=mpifort pip install .   # parallel
+    UMWM_GPU=yes pip install .                   # NVIDIA GPU, nvfortran
 
 A prebuilt library can be used instead by setting ``UMWM_LIBRARY`` to its
 path, in which case it is copied into the package. The files of the example
@@ -29,8 +31,9 @@ except ImportError:  # setuptools < 70.1
 
 ROOT = Path(__file__).resolve().parent
 LIBRARY = "libumwm.so"
-MAKE_VARIABLES = ("MPI", "FC", "FCFLAGS", "CPPFLAGS", "LDFLAGS", "LDLIBS", "NF_CONFIG",
-                  "NETCDF", "NETCDF_FFLAGS", "NETCDF_FLIBS")
+MAKE_VARIABLES = ("MPI", "GPU", "GPU_ARCH", "GPU_FLAGS", "ACC_KERNEL_FLAGS", "FC", "FCFLAGS",
+                  "CPPFLAGS", "LDFLAGS", "LDLIBS", "NF_CONFIG", "NETCDF", "NETCDF_FFLAGS",
+                  "NETCDF_FLIBS")
 
 
 def example_patterns():
