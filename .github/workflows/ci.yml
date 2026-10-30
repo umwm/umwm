@@ -1,8 +1,18 @@
 name: CI
 
+# Pull requests are tested on their merge with main. Pushes are tested on
+# main only, whose runs also save the caches that all branches restore; a
+# branch without a pull request runs with workflow_dispatch.
 on:
   push:
+    branches: [main]
   pull_request:
+  workflow_dispatch:
+
+# a new push to a pull request cancels its run in progress
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
 
 jobs:
   make-gnu:
