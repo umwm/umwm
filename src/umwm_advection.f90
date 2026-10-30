@@ -2,13 +2,15 @@ module umwm_advection
 
   ! Wave action advection in geographical (x, y), directional (theta), and
   ! frequency space for one spectral column. 1st order upstream finite
-  ! differences.
+  ! differences. The elemental functions evaluate one spectral bin, for the
+  ! column routines and for the GPU kernels.
 
   implicit none
 
   private
-  public :: current_rotation_rate, depth_rotation_rate, frequency_shift, propagation, &
-            refraction
+  public :: current_rotation_rate, depth_rotation_rate, frequency_outflow, frequency_rate, &
+            frequency_shift, propagation, propagation_flux, refraction, refraction_outflow, &
+            upstream_flux
 
 contains
 
@@ -123,10 +125,20 @@ contains
     real, intent(inout) :: ef(*)
     integer :: o
     do o = 1, oc
-      ef(o) = ef(o) - dt_over_area * (cx * (ax_out(o) * e(o) - ax_in(o) * e_x(o)) &
-                                    + cy * (ay_out(o) * e(o) - ay_in(o) * e_y(o)))
+      ef(o) = ef(o) - dt_over_area * propagation_flux(cx, ax_out(o), ax_in(o), e_x(o), &
+                                                      cy, ay_out(o), ay_in(o), e_y(o), e(o))
     end do
   end subroutine propagate_direction
+
+
+  pure elemental real function propagation_flux(cx, ax_out, ax_in, e_x, cy, ay_out, ay_in, &
+                                                e_y, e) result(res)
+    ! Net outflow of the action of one spectral bin through the cell edges
+    ! in x and y, times 4 (see propagate_direction).
+    !$acc routine seq
+    real, intent(in) :: cx, ax_out, ax_in, e_x, cy, ay_out, ay_in, e_y, e
+    res = cx * (ax_out * e - ax_in * e_x) + cy * (ay_out * e - ay_in * e_y)
+  end function propagation_flux
 
 
   pure real function depth_rotation_rate(cgdlncp_dx, cgdlncp_dy, cth, sth) result(res)
@@ -135,6 +147,7 @@ contains
     ! coordinate normal to th, to its left, and cp the phase speed at fixed
     ! frequency: Snell's law, dth/ds = -(1/cp) dcp/dn, along the ray s that
     ! the energy travels at the group speed cg.
+    !$acc routine seq
     real, intent(in) :: cgdlncp_dx, cgdlncp_dy ! (cg/cp) grad(cp)
     real, intent(in) :: cth, sth ! cos(th), sin(th)
     res = cgdlncp_dx * sth - cgdlncp_dy * cth
@@ -147,6 +160,7 @@ contains
     ! where n is the coordinate normal to th, to its left. It is half the
     ! vorticity, (dv/dx - du/dy)/2, plus a part from the strain of the
     ! current that varies with direction.
+    !$acc routine seq
     real, intent(in) :: du_dx, du_dy, dv_dx, dv_dy ! current velocity gradient
     real, intent(in) :: cth, sth ! cos(th), sin(th)
     res = sth**2 * dv_dx - cth**2 * du_dy + sth * cth * (du_dx - dv_dy)
@@ -169,7 +183,7 @@ contains
 
     real :: rot(no,0:nd+1) ! ray rotation rate, periodic in direction
     real :: en(no,nd), en_next(no,nd) ! spectrum at the start and end of a substep
-    real :: rot_current, rot_depth, rot_vorticity, rot_strain, outflow
+    real :: rot_current, outflow
     integer :: o, p, n, nsub
 
     do p = 1, nd
@@ -181,21 +195,10 @@ contains
     rot(:,0) = rot(:,nd)
     rot(:,nd+1) = rot(:,1)
 
-    ! The upstream scheme is stable and positive if the fraction of a bin
-    ! that leaves it through both faces in a substep does not exceed 1. Over
-    ! direction, the rotation rate is a sinusoid in th from the depth, of
-    ! amplitude rot_depth, plus half the vorticity, plus a sinusoid in 2 th
-    ! from the strain of the current, of amplitude rot_strain. Per unit time,
-    ! a bin loses at most the largest rotation rate through one face, and,
-    ! where the rotation diverges, at most dth times the largest derivative
-    ! of the rotation rate over th through both faces.
-    rot_vorticity = 0.5 * abs(dv_dx - du_dy)
-    rot_strain = 0.5 * sqrt((du_dx - dv_dy)**2 + (dv_dx + du_dy)**2)
     outflow = 0
     do o = 1, no
-      rot_depth = sqrt(cgdlncp_dx(o)**2 + cgdlncp_dy(o)**2)
-      outflow = max(outflow, rot_depth + rot_vorticity + rot_strain, &
-                    dth * (rot_depth + 2 * rot_strain))
+      outflow = max(outflow, refraction_outflow(cgdlncp_dx(o), cgdlncp_dy(o), &
+                                                du_dx, du_dy, dv_dx, dv_dy, dth))
     end do
     nsub = max(1, ceiling(dt * outflow / dth))
 
@@ -214,26 +217,62 @@ contains
   end subroutine refraction
 
 
+  pure elemental real function refraction_outflow(cgdlncp_dx, cgdlncp_dy, du_dx, du_dy, &
+                                                  dv_dx, dv_dy, dth) result(res)
+    ! Largest rate [1/s] at which a directional bin of one frequency loses
+    ! its action by refraction, which limits the substep of the upstream
+    ! scheme: the scheme is stable and positive if the fraction of a bin that
+    ! leaves it through both faces in a substep does not exceed 1. Over
+    ! direction, the rotation rate is a sinusoid in th from the depth, of
+    ! amplitude rot_depth, plus half the vorticity, plus a sinusoid in 2 th
+    ! from the strain of the current, of amplitude rot_strain. Per unit time,
+    ! a bin loses at most the largest rotation rate through one face, and,
+    ! where the rotation diverges, at most dth times the largest derivative
+    ! of the rotation rate over th through both faces.
+    !$acc routine seq
+    real, intent(in) :: cgdlncp_dx, cgdlncp_dy ! (cg/cp) grad(cp)
+    real, intent(in) :: du_dx, du_dy, dv_dx, dv_dy ! current velocity gradient
+    real, intent(in) :: dth
+    real :: rot_depth, rot_vorticity, rot_strain
+    rot_depth = sqrt(cgdlncp_dx**2 + cgdlncp_dy**2)
+    rot_vorticity = 0.5 * abs(dv_dx - du_dy)
+    rot_strain = 0.5 * sqrt((du_dx - dv_dy)**2 + (dv_dx + du_dy)**2)
+    res = max(rot_depth + rot_vorticity + rot_strain, dth * (rot_depth + 2 * rot_strain))
+  end function refraction_outflow
+
+
   pure subroutine upstream(n1, nd, no, rot, e, dt_over_dth, ef)
     ! Integrates the upstream advection of e in directional space for
     ! frequencies 1:no over dt_over_dth into ef, given the rotation rate rot.
     integer, intent(in) :: n1, nd, no
     real, intent(in) :: rot(no,0:nd+1), e(n1,nd), dt_over_dth
     real, intent(inout) :: ef(n1,nd)
-    real :: rotl, rotr
     integer :: o, p, pl, pr
     do p = 1, nd
       pl = modulo(p, nd) + 1     ! anti-clockwise neighbor
       pr = modulo(p - 2, nd) + 1 ! clockwise neighbor
       do o = 1, no
-        ! rotation at cell edges
-        rotl = 0.5 * (rot(o,p) + rot(o,p+1))
-        rotr = 0.5 * (rot(o,p) + rot(o,p-1))
-        ef(o,p) = ef(o,p) - dt_over_dth * (max(rotl, 0.) * e(o,p) + min(rotl, 0.) * e(o,pl) &
-                                         - max(rotr, 0.) * e(o,pr) - min(rotr, 0.) * e(o,p))
+        ef(o,p) = ef(o,p) - dt_over_dth * upstream_flux(rot(o,p-1), rot(o,p), rot(o,p+1), &
+                                                        e(o,pr), e(o,p), e(o,pl))
       end do
     end do
   end subroutine upstream
+
+
+  pure elemental real function upstream_flux(rate_minus, rate, rate_plus, &
+                                             a_minus, a, a_plus) result(res)
+    ! Upstream flux of a quantity a out of a bin through its face towards
+    ! the next bin (plus), less that in through its face towards the
+    ! previous bin (minus), at the rates of the bins averaged to the faces.
+    !$acc routine seq
+    real, intent(in) :: rate_minus, rate, rate_plus, a_minus, a, a_plus
+    real :: rate_up, rate_dn
+    rate_up = 0.5 * (rate + rate_plus)
+    rate_dn = 0.5 * (rate + rate_minus)
+    res = max(rate_up, 0.) * a + min(rate_up, 0.) * a_plus &
+        - max(rate_dn, 0.) * a_minus - min(rate_dn, 0.) * a
+  end function upstream_flux
+
 
   pure subroutine frequency_shift(nf, nd, no, e, kovcg, invcp, cg, cgdlncp_dx, cgdlncp_dy, &
                                   uc, vc, du_dx, du_dy, dv_dx, dv_dy, cth, sth, dt, dlnf, ef)
@@ -265,21 +304,15 @@ contains
     real :: a(0:no+1,nd)    ! action per unit ln(sigma), 0 below the lowest bin
     real :: a_next(no,nd)
     real :: dt_over_dlnf_kovcg(no) ! the substep over the bin width, over k/cg
-    real :: strain, strain_max, outflow, dt_over_dlnf
+    real :: outflow, dt_over_dlnf
     integer :: o, p, n, nsub, nt
 
     nt = min(no + 1, nf) ! the highest bin with a rate, the first of the tail if any
 
-    ! The upstream scheme is stable and positive if the fraction of a bin
-    ! that leaves it through both faces in a substep does not exceed 1. Per
-    ! unit time, a bin loses at most the largest rate over frequency and
-    ! direction: the strain rate (k/|k|).grad(U).(k/|k|) is half the
-    ! divergence plus a sinusoid in 2 th of amplitude strain_max - |div|/2.
-    strain_max = 0.5 * abs(du_dx + dv_dy) + 0.5 * sqrt((du_dx - dv_dy)**2 + (du_dy + dv_dx)**2)
     outflow = 0
     do o = 1, nt
-      outflow = max(outflow, invcp(o) * (abs(uc * cgdlncp_dx(o) + vc * cgdlncp_dy(o)) &
-                                         + cg(o) * strain_max))
+      outflow = max(outflow, frequency_outflow(invcp(o), uc, vc, cgdlncp_dx(o), cgdlncp_dy(o), &
+                                               cg(o), du_dx, du_dy, dv_dx, dv_dy))
     end do
     if (outflow <= 0) return
     nsub = max(1, ceiling(dt * outflow / dlnf))
@@ -291,9 +324,9 @@ contains
     a(0,:) = 0
     a(no+1,:) = 0
     do p = 1, nd
-      strain = cth(p)**2 * du_dx + sth(p) * cth(p) * (du_dy + dv_dx) + sth(p)**2 * dv_dy
       do o = 1, nt
-        rate(o,p) = invcp(o) * (uc * cgdlncp_dx(o) + vc * cgdlncp_dy(o) - cg(o) * strain)
+        rate(o,p) = frequency_rate(invcp(o), uc, vc, cgdlncp_dx(o), cgdlncp_dy(o), cg(o), &
+                                   du_dx, du_dy, dv_dx, dv_dy, cth(p), sth(p))
         a(o,p) = kovcg(o) * e(o,p)
       end do
       rate(0,p) = rate(1,p)
@@ -304,14 +337,18 @@ contains
       dt_over_dlnf_kovcg = dt_over_dlnf / kovcg(1:no)
       do p = 1, nd
         do o = 1, no
-          ef(o,p) = ef(o,p) - dt_over_dlnf_kovcg(o) * face_fluxes(o, p)
+          ef(o,p) = ef(o,p) - dt_over_dlnf_kovcg(o) * upstream_flux(rate(o-1,p), rate(o,p), &
+                                                                    rate(o+1,p), a(o-1,p), &
+                                                                    a(o,p), a(o+1,p))
         end do
       end do
     else
       do n = 1, nsub
         do p = 1, nd
           do o = 1, no
-            a_next(o,p) = a(o,p) - dt_over_dlnf * face_fluxes(o, p)
+            a_next(o,p) = a(o,p) - dt_over_dlnf * upstream_flux(rate(o-1,p), rate(o,p), &
+                                                                rate(o+1,p), a(o-1,p), &
+                                                                a(o,p), a(o+1,p))
           end do
         end do
         a(1:no,:) = a_next
@@ -323,19 +360,39 @@ contains
       end do
     end if
 
-  contains
-
-    pure real function face_fluxes(o, p) result(res)
-      ! Upstream action flux out of bin o through its upper face, less that
-      ! in through its lower face.
-      integer, intent(in) :: o, p
-      real :: rate_up, rate_dn
-      rate_up = 0.5 * (rate(o,p) + rate(o+1,p))
-      rate_dn = 0.5 * (rate(o-1,p) + rate(o,p))
-      res = max(rate_up, 0.) * a(o,p) + min(rate_up, 0.) * a(o+1,p) &
-          - max(rate_dn, 0.) * a(o-1,p) - min(rate_dn, 0.) * a(o,p)
-    end function face_fluxes
-
   end subroutine frequency_shift
+
+
+  pure elemental real function frequency_rate(invcp, uc, vc, cgdlncp_dx, cgdlncp_dy, cg, &
+                                              du_dx, du_dy, dv_dx, dv_dy, cth, sth) result(res)
+    ! Rate of change of ln(sigma) [1/s] of one spectral bin along the rays
+    ! (see frequency_shift), with the strain rate (k/|k|).grad(U).(k/|k|) of
+    ! the current in the direction (cth, sth).
+    !$acc routine seq
+    real, intent(in) :: invcp, uc, vc, cgdlncp_dx, cgdlncp_dy, cg
+    real, intent(in) :: du_dx, du_dy, dv_dx, dv_dy ! current velocity gradient
+    real, intent(in) :: cth, sth ! ray direction in the grid frame
+    real :: strain
+    strain = cth**2 * du_dx + sth * cth * (du_dy + dv_dx) + sth**2 * dv_dy
+    res = invcp * (uc * cgdlncp_dx + vc * cgdlncp_dy - cg * strain)
+  end function frequency_rate
+
+
+  pure elemental real function frequency_outflow(invcp, uc, vc, cgdlncp_dx, cgdlncp_dy, cg, &
+                                                 du_dx, du_dy, dv_dx, dv_dy) result(res)
+    ! Largest rate [1/s] at which a frequency bin loses its action by the
+    ! frequency shift, which limits the substep of the upstream scheme: the
+    ! scheme is stable and positive if the fraction of a bin that leaves it
+    ! through both faces in a substep does not exceed 1. Per unit time, a bin
+    ! loses at most the largest rate over frequency and direction: the strain
+    ! rate (k/|k|).grad(U).(k/|k|) is half the divergence plus a sinusoid in
+    ! 2 th of amplitude strain_max - |div|/2.
+    !$acc routine seq
+    real, intent(in) :: invcp, uc, vc, cgdlncp_dx, cgdlncp_dy, cg
+    real, intent(in) :: du_dx, du_dy, dv_dx, dv_dy ! current velocity gradient
+    real :: strain_max
+    strain_max = 0.5 * abs(du_dx + dv_dy) + 0.5 * sqrt((du_dx - dv_dy)**2 + (du_dy + dv_dx)**2)
+    res = invcp * (abs(uc * cgdlncp_dx + vc * cgdlncp_dy) + cg * strain_max)
+  end function frequency_outflow
 
 end module umwm_advection

@@ -53,8 +53,9 @@ make FC=flang
 ```
 
 The default `FCFLAGS` are aggressive GNU-style optimization flags:
-`-Ofast -march=native -ffast-math -funroll-loops -Wall`. Override `FCFLAGS`
-when using a compiler that needs different optimization options:
+`-Ofast -march=native -ffast-math -funroll-loops -Wall`, or `-O3 -fast` when
+`FC` is `nvfortran` or an MPI wrapper of it. Override `FCFLAGS` when using
+another compiler that needs different optimization options:
 
 ```
 make FC=ifx FCFLAGS="-O3 -xHost -ipo -fp-model fast=2"
@@ -89,6 +90,66 @@ API used by the Python package.
 Executable `umwm` will be built in the top-level directory and auxiliary tool
 executables will be built in `tools/`.
 PDF documentation can be built separately with `make docs`.
+
+### Building for NVIDIA GPUs
+
+Build for NVIDIA GPUs by setting `GPU=yes`. This needs the
+[NVIDIA HPC SDK](https://developer.nvidia.com/hpc-sdk), for `nvfortran` with
+OpenACC and its CUDA-aware HPC-X Open MPI, and a netCDF-Fortran built with
+`nvfortran`:
+
+```
+module load nvhpc-hpcx-cuda13
+unset FC
+make GPU=yes MPI=yes NF_CONFIG=/path/to/nvfortran/netcdf-fortran/bin/nf-config
+```
+
+Load the HPC-X module of the SDK rather than `nvhpc`, so that MPI uses the
+UCX of the SDK, which transfers GPU memory, and unset the `FC` that the module
+exports, which would take precedence over `mpif90`. `GPU=yes` selects
+`nvfortran` (or `mpif90` with `MPI=yes`) with the default `FCFLAGS`
+`-O3 -fast`, and adds the OpenACC flags `-acc=gpu -gpu=$(GPU_ARCH),mem:unified`
+also when `FCFLAGS` is set. `GPU_ARCH` is the compute capability of the GPU,
+`cc120` (Blackwell RTX PRO) by default. The kernels of the time step, in
+`src/umwm_domain_acc.f90`, are compiled with `ACC_KERNEL_FLAGS`, which inline
+the functions of the spectral bins and limit the registers of a thread.
+
+In the GPU build, the source time step, the forcing interpolation, the
+diagnostics, the ocean stress, the Stokes drift, and most of the
+initialization run on the GPU, and the input and output on the CPU. The
+fields are in unified memory, which the CPU and the GPU share, as the code has
+no OpenACC data directives; this needs a system where the GPU can address the
+memory of the CPU, as with heterogeneous memory management (HMM), for which
+`nvidia-smi -q` shows the addressing mode `HMM`. It supports at most 128
+frequencies and 128 directions. Its results differ from those of the CPU
+build at the level of single-precision rounding, because the GPU raises to
+the dissipation power in single precision, where the CPU uses double
+precision, and sums over the spectrum in another order. Run it on one GPU as
+in serial, selecting the GPU with `CUDA_VISIBLE_DEVICES`:
+
+```
+CUDA_VISIBLE_DEVICES=0 ./umwm
+```
+
+The GPU build is fast for large grids, of the order of 100,000 sea cells and
+more; small grids, such as most example cases, use a small part of the GPU.
+
+With MPI, the GPU build runs on several GPUs, with the same results as on
+one. The processes of a node share its visible GPUs, one process per GPU, or
+blocks of consecutive ranks if there are more processes than GPUs, and the
+halo is exchanged while the cells inside the tiles are integrated. Map the
+processes to the NUMA domains in rank order, so that each runs next to its
+GPU on nodes where the GPUs are numbered by NUMA domain; for example, on a
+node with four GPUs, two on each of two NUMA domains:
+
+```
+mpirun -np 4 --map-by ppr:2:numa --bind-to numa ./umwm
+```
+
+The MPI library should be CUDA-aware, as the HPC-X of the SDK, which copies
+the halo from and to the GPU; through other libraries, the halo pages
+migrate to the CPU and back at each time step. On two GPUs, a time step of a
+grid of 360,000 sea cells or more takes half the time of one GPU.
 
 ### Running tests
 
@@ -183,7 +244,8 @@ the model state and the output available as NumPy arrays and xarray
 datasets, and provides the `umwm` command-line tool. The time integration
 runs in the compiled Fortran library, so there is no performance cost.
 Install it from the repository (it builds the library with the same
-Makefile configuration, for example `UMWM_MPI=yes pip install .` for MPI),
+Makefile configuration, for example `UMWM_MPI=yes pip install .` for MPI or
+`UMWM_GPU=yes pip install .` for NVIDIA GPUs),
 or set up an environment with [uv](https://docs.astral.sh/uv/):
 
 ```

@@ -1,12 +1,14 @@
 module umwm_physics
-  ! Integration of the source functions for one spectral column.
+  ! Integration of the source functions for one spectral column. The
+  ! elemental functions evaluate one spectral bin, for the column routines
+  ! and for the GPU kernels.
 
   use umwm_source_functions, only: power
 
   implicit none
 
   private
-  public :: max_source_rate, integrate_sources
+  public :: equilibrium_bin, integrate_bin, integrate_sources, max_source_rate, source_rate
 
 contains
 
@@ -23,12 +25,42 @@ contains
     res = 0
     do p = 1, nd
       do o = 1, oc
-        res = max(res, abs(ssin(o,p) - sds(o,p) * cothkd(o) * snl_arg(o) &
-                           - sbf(o) - sdt(o) - sdv(o) + sice(o)))
+        res = max(res, abs(source_rate(ssin(o,p), sds(o,p) * cothkd(o) * snl_arg(o), &
+                                       sbf(o), sdt(o), sdv(o), sice(o))))
       end do
     end do
 
   end function max_source_rate
+
+
+  pure elemental real function source_rate(ssin, sds, sbf, sdt, sdv, sice) result(res)
+    ! Exponential growth (positive) or decay rate of one spectral bin, from
+    ! the wind input ssin, and the breaking dissipation sds, bottom friction
+    ! and percolation sbf, turbulent and viscous dissipation sdt and sdv, and
+    ! the sea ice attenuation sice (not positive).
+    !$acc routine seq
+    real, intent(in) :: ssin, sds, sbf, sdt, sdv, sice
+    res = ssin - sds - sbf - sdt - sdv + sice
+  end function source_rate
+
+
+  pure elemental real function integrate_bin(e, dts, rate, snl) result(res)
+    ! The spectrum e of one prognostic bin integrated over dts, growing or
+    ! decaying exponentially at rate, with the downshifting snl.
+    !$acc routine seq
+    real, intent(in) :: e, dts, rate, snl
+    res = e * exp(dts * rate) + dts * snl
+  end function integrate_bin
+
+
+  pure elemental real function equilibrium_bin(ssin, sdt, sdv, sice, sds_coef, cothkd) &
+    result(res)
+    ! The saturation spectrum e k^4 of one diagnostic bin in equilibrium of
+    ! wind input and dissipation, raised to the power sds_power.
+    !$acc routine seq
+    real, intent(in) :: ssin, sdt, sdv, sice, sds_coef, cothkd
+    res = max(ssin - sdt - sdv + sice, 0.) / (sds_coef * cothkd)
+  end function equilibrium_bin
 
 
   pure subroutine integrate_sources(nf, nd, oc, dts, e, ssin, sds, snl, sds_coef, &
@@ -52,14 +84,15 @@ contains
 
     do p = 1, nd
       do o = 1, oc
-        eforward = e(o,p) * exp(dts * (ssin(o,p) - sds(o,p) * cothkd(o) &
-                                       - sbf(o) - sdt(o) - sdv(o) + sice(o))) &
-                 + dts * snl(o,p)
+        eforward = integrate_bin(e(o,p), dts, &
+                                 source_rate(ssin(o,p), sds(o,p) * cothkd(o), sbf(o), sdt(o), &
+                                             sdv(o), sice(o)), snl(o,p))
         ef(o,p) = eforward
         e(o,p) = 0.5 * (e(o,p) + eforward)
       end do
       do o = oc + 1, nf
-        equilibrium(o,p) = max(ssin(o,p) - sdt(o) - sdv(o) + sice(o), 0.) / (sds_coef(o,p) * cothkd(o))
+        equilibrium(o,p) = equilibrium_bin(ssin(o,p), sdt(o), sdv(o), sice(o), sds_coef(o,p), &
+                                           cothkd(o))
       end do
     end do
 

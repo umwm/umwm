@@ -120,6 +120,7 @@ module umwm_domain
     procedure, private :: initialize_physics
     procedure, private :: initialize_pipeline
     procedure, private :: step
+    procedure, private :: step_acc
     procedure, private :: sources
     procedure, private :: wind_input
     procedure, private :: integrate_column
@@ -150,6 +151,24 @@ module umwm_domain
       class(domain_type), intent(inout) :: self
       character(19), intent(in) :: timestr
     end subroutine output_spectrum_nc
+
+    module subroutine step_acc(self)
+      class(domain_type), intent(inout) :: self
+    end subroutine step_acc
+
+    module subroutine diagnostics_acc(self)
+      class(domain_type), intent(inout) :: self
+    end subroutine diagnostics_acc
+
+    module subroutine ocean_stress_acc(self)
+      class(domain_type), intent(inout) :: self
+    end subroutine ocean_stress_acc
+
+    module function screen_values_acc(self, i) result(res)
+      class(domain_type), intent(in) :: self
+      integer, intent(in) :: i
+      real :: res(6)
+    end function screen_values_acc
 
   end interface
 
@@ -221,9 +240,15 @@ contains
     allocate(self % cp0(om,iis:iie), self % cg0(om,iis:iie), self % kovcg(om,iis:iie), &
              source=tiny(1.))
 
-    allocate(self % e(om,pm,iis:iie), self % ef(om,pm,iis:iie), source=tiny(1.))
-    allocate(self % ssin(om,pm,is:ie), self % sds(om,pm,is:ie), self % snl(om,pm,is:ie), &
-             source=0.)
+    ! the spectral fields are filled by a loop that runs on the GPU in the GPU
+    ! build, which places their memory there
+    allocate(self % e(om,pm,iis:iie), self % ef(om,pm,iis:iie))
+    allocate(self % ssin(om,pm,is:ie), self % sds(om,pm,is:ie), self % snl(om,pm,is:ie))
+    call fill(size(self % e), self % e, tiny(1.))
+    call fill(size(self % ef), self % ef, tiny(1.))
+    call fill(size(self % ssin), self % ssin, 0.)
+    call fill(size(self % sds), self % sds, 0.)
+    call fill(size(self % snl), self % snl, 0.)
 
     allocate(self % oc(is:ie), source=0)
     allocate(self % psim(self % grid % imm), source=0.)
@@ -253,6 +278,19 @@ contains
     end associate
 
   end subroutine allocate_fields
+
+
+  subroutine fill(n, field, value)
+    ! Sets all n elements of field to value.
+    integer, intent(in) :: n
+    real, intent(out) :: field(n)
+    real, intent(in) :: value
+    integer :: i
+    !$acc parallel loop
+    do i = 1, n
+      field(i) = value
+    end do
+  end subroutine fill
 
 
   subroutine initialize_physics(self)
@@ -307,9 +345,12 @@ contains
     ! wave numbers, phase speeds, and group velocities:
     if (nproc == 0) write(*,'(a)') 'umwm: dispersion: solving for dispersion relationship;'
 
-    do concurrent (o = 1:om, i = is:ie)
-      k(o,i) = real(wavenumber(real(f(o), rk), real(grid % d(i), rk), real(config % rhow0, rk), &
-                               real(config % g, rk), real(config % sfct, rk)), kind(k))
+    !$acc parallel loop collapse(2)
+    do i = is, ie
+      do o = 1, om
+        k(o,i) = real(wavenumber(real(f(o), rk), real(grid % d(i), rk), real(config % rhow0, rk), &
+                                 real(config % g, rk), real(config % sfct, rk)), kind(k))
+      end do
     end do
 
     if (nproc == 0) write(*,'(a)') 'umwm: dispersion: dispersion relationship done;'
@@ -317,38 +358,50 @@ contains
     allocate(kd(om,is:ie), l2(om,is:ie), dwn(om,is:ie))
 
     ! limit kd to avoid floating overflow in transcendental functions:
-    do concurrent (o = 1:om, i = is:ie)
-      kd(o,i) = min(k(o,i) * grid % d(i), 20.)
+    !$acc parallel loop collapse(2)
+    do i = is, ie
+      do o = 1, om
+        kd(o,i) = min(k(o,i) * grid % d(i), 20.)
+      end do
     end do
 
-    do concurrent (o = 1:om, i = is:ie)
-      cp0(o,i) = twopi * f(o) / k(o,i)
-      cg0(o,i) = real(group_speed(real(k(o,i), rk), real(grid % d(i), rk), &
-                                  real(config % rhow0, rk), real(config % g, rk), &
-                                  real(config % sfct, rk)), kind(cg0))
+    !$acc parallel loop collapse(2)
+    do i = is, ie
+      do o = 1, om
+        cp0(o,i) = twopi * f(o) / k(o,i)
+        cg0(o,i) = real(group_speed(real(k(o,i), rk), real(grid % d(i), rk), &
+                                    real(config % rhow0, rk), real(config % g, rk), &
+                                    real(config % sfct, rk)), kind(cg0))
+      end do
     end do
 
     ! frequently used factors:
-    do concurrent (o = 1:om, i = is:ie)
-      dwn(o,i)       = twopi * dlnf * f(o) / abs(cg0(o,i))           ! dk
-      l2(o,i)        = 0.5 * abs(cp0(o,i)) / f(o)                    ! lambda/2
-      self % k4(o,i) = k(o,i)**4.                                    ! k^4
-      self % oneoverk4(o,i) = 1. / self % k4(o,i)                    ! k^-4
-      self % kdk(o,i)  = k(o,i) * dwn(o,i)                           ! k*dk
-      self % k3dk(o,i) = k(o,i)**3. * dwn(o,i)                       ! k*k*k*dk
-      self % fkovg(o,i) = f(o) * k(o,i) / config % g                 ! f*k/g
-      self % cothkd(o,i) = cosh(0.2 * kd(o,i)) / sinh(0.2 * kd(o,i)) ! coth(0.2*kd)
-      self % invcp0(o,i) = 1. / cp0(o,i)                             ! 1/cp
-      self % sbf(o,i) = config % sbf_fac * k(o,i) / (sinh(2. * kd(o,i))) &      ! bottom friction
-                      + config % sbp_fac * k(o,i) / (cosh(kd(o,i)) * cosh(kd(o,i))) ! bottom percolation
-      self % sdv(o,i) = 4. * config % nu_water * k(o,i)**2.          ! viscosity
+    !$acc parallel loop collapse(2)
+    do i = is, ie
+      do o = 1, om
+        dwn(o,i)       = twopi * dlnf * f(o) / abs(cg0(o,i))           ! dk
+        l2(o,i)        = 0.5 * abs(cp0(o,i)) / f(o)                    ! lambda/2
+        self % k4(o,i) = k(o,i)**4.                                    ! k^4
+        self % oneoverk4(o,i) = 1. / self % k4(o,i)                    ! k^-4
+        self % kdk(o,i)  = k(o,i) * dwn(o,i)                           ! k*dk
+        self % k3dk(o,i) = k(o,i)**3. * dwn(o,i)                       ! k*k*k*dk
+        self % fkovg(o,i) = f(o) * k(o,i) / config % g                 ! f*k/g
+        self % cothkd(o,i) = cosh(0.2 * kd(o,i)) / sinh(0.2 * kd(o,i)) ! coth(0.2*kd)
+        self % invcp0(o,i) = 1. / cp0(o,i)                             ! 1/cp
+        self % sbf(o,i) = config % sbf_fac * k(o,i) / (sinh(2. * kd(o,i))) &      ! bottom friction
+                        + config % sbp_fac * k(o,i) / (cosh(kd(o,i)) * cosh(kd(o,i))) ! bottom percolation
+        self % sdv(o,i) = 4. * config % nu_water * k(o,i)**2.          ! viscosity
+      end do
     end do
 
     ! renormalization factors for snl:
-    do concurrent (o = 1:om - 2, i = is:ie)
-      self % bf1_renorm(o,i) = config % snl_fac * self % bf1 * self % kdk(o+1,i) / self % kdk(o,i)
-      self % bf2_renorm(o,i) = config % snl_fac * self % bf2 * self % kdk(o+2,i) / self % kdk(o,i)
-      self % snl_arg(o,i) = 1. - (self % bf1_renorm(o,i) + self % bf2_renorm(o,i))
+    !$acc parallel loop collapse(2)
+    do i = is, ie
+      do o = 1, om - 2
+        self % bf1_renorm(o,i) = config % snl_fac * self % bf1 * self % kdk(o+1,i) / self % kdk(o,i)
+        self % bf2_renorm(o,i) = config % snl_fac * self % bf2 * self % kdk(o+2,i) / self % kdk(o,i)
+        self % snl_arg(o,i) = 1. - (self % bf1_renorm(o,i) + self % bf2_renorm(o,i))
+      end do
     end do
 
     ! half-wavelength over z, limited to 10 m for l/2 > 10 m:
@@ -375,8 +428,11 @@ contains
 
     ! k/cg, the Jacobian from the variance spectrum to the action per unit
     ! ln(f), on the sea cells, the halo, and land:
-    do concurrent (o = 1:om, i = grid % iistart-1:grid % iiend)
-      self % kovcg(o,i) = twopi * f(o) / (cp0(o,i) * cg0(o,i))
+    !$acc parallel loop collapse(2)
+    do i = grid % iistart-1, grid % iiend
+      do o = 1, om
+        self % kovcg(o,i) = twopi * f(o) / (cp0(o,i) * cg0(o,i))
+      end do
     end do
 
     ! phase speed gradients at fixed frequency, times cg/cp, for the
@@ -550,7 +606,11 @@ contains
       call forcing % apply_wind_speed_floor()
 #endif
 
+#if defined(_OPENACC) && !defined(ESMF)
+      call self % step_acc()
+#else
       call self % step()
+#endif
 
       if (self % first) then
 
@@ -577,9 +637,13 @@ contains
       ! diagnostic output on screen
       if (nproc == self % nproc_plot) then
         associate(i => self % iip)
+#ifdef _OPENACC
+          write(*,fmt=100) self % sumt / config % dtg, self % dts, screen_values_acc(self, i)
+#else
           write(*,fmt=100) self % sumt / config % dtg, self % dts, forcing % wspd(i), &
                            forcing % wdir(i), sigwaveheight(self, i), &
                            meanwaveperiod(self, i), self % cd(i) * 1e3, self % f(self % oc(i))
+#endif
         end associate
       end if
 
@@ -913,29 +977,41 @@ contains
     ! Updates the current velocity gradient for the current-induced
     ! refraction and frequency shift, over the sea neighbors of each cell.
     class(domain_type), intent(inout) :: self
+    associate(grid => self % grid)
+    call current_gradients(grid % istart, grid % iend, grid % im, grid % imm, &
+                           self % forcing % uc, self % forcing % vc, grid % iie, grid % iiw, &
+                           grid % iin, grid % iis, grid % oneovdx, grid % oneovdy, &
+                           self % du_dx, self % du_dy, self % dv_dx, self % dv_dy)
+    end associate
+  end subroutine update_current_gradients
+
+
+  subroutine current_gradients(i1, i2, im, imm, uc, vc, iie, iiw, iin, iis, oneovdx, oneovdy, &
+                               du_dx, du_dy, dv_dx, dv_dy)
+    ! Gradient of the current velocity (uc, vc) at the cells i1:i2, over
+    ! their sea neighbors, with true indices iie, iiw, iin, and iis; on the
+    ! GPU in the GPU build.
+    integer, intent(in) :: i1, i2, im, imm
+    real, intent(in) :: uc(imm), vc(imm)
+    integer, intent(in) :: iie(imm), iiw(imm), iin(imm), iis(imm)
+    real, intent(in) :: oneovdx(i1:i2), oneovdy(i1:i2)
+    real, intent(out) :: du_dx(i1:i2), du_dy(i1:i2), dv_dx(i1:i2), dv_dy(i1:i2)
     logical :: sea_e, sea_w, sea_n, sea_s
     integer :: i
 
-    associate(grid => self % grid, uc => self % forcing % uc, vc => self % forcing % vc)
-
-    do i = grid % istart, grid % iend
-      sea_e = grid % iie(i) <= grid % im
-      sea_w = grid % iiw(i) <= grid % im
-      sea_n = grid % iin(i) <= grid % im
-      sea_s = grid % iis(i) <= grid % im
-      self % du_dx(i) = sea_difference(uc(i), uc(grid % iie(i)), uc(grid % iiw(i)), sea_e, sea_w) &
-                      * grid % oneovdx(i)
-      self % du_dy(i) = sea_difference(uc(i), uc(grid % iin(i)), uc(grid % iis(i)), sea_n, sea_s) &
-                      * grid % oneovdy(i)
-      self % dv_dx(i) = sea_difference(vc(i), vc(grid % iie(i)), vc(grid % iiw(i)), sea_e, sea_w) &
-                      * grid % oneovdx(i)
-      self % dv_dy(i) = sea_difference(vc(i), vc(grid % iin(i)), vc(grid % iis(i)), sea_n, sea_s) &
-                      * grid % oneovdy(i)
+    !$acc parallel loop private(sea_e, sea_w, sea_n, sea_s)
+    do i = i1, i2
+      sea_e = iie(i) <= im
+      sea_w = iiw(i) <= im
+      sea_n = iin(i) <= im
+      sea_s = iis(i) <= im
+      du_dx(i) = sea_difference(uc(i), uc(iie(i)), uc(iiw(i)), sea_e, sea_w) * oneovdx(i)
+      du_dy(i) = sea_difference(uc(i), uc(iin(i)), uc(iis(i)), sea_n, sea_s) * oneovdy(i)
+      dv_dx(i) = sea_difference(vc(i), vc(iie(i)), vc(iiw(i)), sea_e, sea_w) * oneovdx(i)
+      dv_dy(i) = sea_difference(vc(i), vc(iin(i)), vc(iis(i)), sea_n, sea_s) * oneovdy(i)
     end do
 
-    end associate
-
-  end subroutine update_current_gradients
+  end subroutine current_gradients
 
 
   pure elemental real function sea_difference(f, f_plus, f_minus, sea_plus, sea_minus) result(res)
@@ -945,6 +1021,7 @@ contains
     ! next to land, and zero between two land neighbors. Land values, such
     ! as a current set to zero or the phase speed of land cells, do not
     ! enter.
+    !$acc routine seq
     real, intent(in) :: f, f_plus, f_minus
     logical, intent(in) :: sea_plus, sea_minus
     if (sea_plus .and. sea_minus) then

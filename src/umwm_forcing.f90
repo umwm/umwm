@@ -269,66 +269,99 @@ contains
 
 
   subroutine forcing_interpolate(self, config, grid, time)
-    ! Interpolate atmospheric and oceanic forcing fields in time.
+    ! Interpolate atmospheric and oceanic forcing fields in time, and remap
+    ! them to the cells; on the GPU in the GPU build, every source time step.
     class(forcing_type), intent(inout) :: self
     type(config_type), intent(in) :: config
     type(grid_type), intent(in) :: grid
     real, intent(in) :: time ! time since the backward snapshot [s]
 
-    real :: alpha
+    real :: alpha, gustiness
+    integer :: i, m, n
 
     alpha = time / config % dtg
+    gustiness = config % gustiness
 
     if (config % winds) then
 
-      self % uw = self % uwb * (1 - alpha) + self % uwf * alpha
-      self % vw = self % vwb * (1 - alpha) + self % vwf * alpha
-
-      if (config % gustiness > 0) then
+      if (gustiness > 0) then
         call random_number(self % gustu)
         call random_number(self % gustv)
-
-        self % gustu = config % gustiness * (2 * self % gustu - 1)
-        self % gustv = config % gustiness * (2 * self % gustv - 1)
-
-        self % uw = self % uw * (1 + self % gustu)
-        self % vw = self % vw * (1 + self % gustv)
       end if
 
-      self % wspd_2d = sqrt(self % uw**2 + self % vw**2)
-      self % wdir_2d = atan2(self % vw, self % uw)
-
-      self % wspd = grid % remap_mn2i(self % wspd_2d)
-      self % wdir = grid % remap_mn2i(self % wdir_2d)
+      !$acc parallel loop collapse(2)
+      do n = 1, grid % nm
+        do m = 1, grid % mm
+          self % uw(m,n) = self % uwb(m,n) * (1 - alpha) + self % uwf(m,n) * alpha
+          self % vw(m,n) = self % vwb(m,n) * (1 - alpha) + self % vwf(m,n) * alpha
+          if (gustiness > 0) then
+            self % gustu(m,n) = gustiness * (2 * self % gustu(m,n) - 1)
+            self % gustv(m,n) = gustiness * (2 * self % gustv(m,n) - 1)
+            self % uw(m,n) = self % uw(m,n) * (1 + self % gustu(m,n))
+            self % vw(m,n) = self % vw(m,n) * (1 + self % gustv(m,n))
+          end if
+          self % wspd_2d(m,n) = sqrt(self % uw(m,n)**2 + self % vw(m,n)**2)
+          self % wdir_2d(m,n) = atan2(self % vw(m,n), self % uw(m,n))
+          self % wspd(grid % ii(m,n)) = self % wspd_2d(m,n)
+          self % wdir(grid % ii(m,n)) = self % wdir_2d(m,n)
+        end do
+      end do
 
     end if
 
     if (config % seaice) then
-      self % fice_2d = self % ficeb * (1 - alpha) + self % ficef * alpha
-      self % fice = grid % remap_mn2i(self % fice_2d)
+      !$acc parallel loop collapse(2)
+      do n = 1, grid % nm
+        do m = 1, grid % mm
+          self % fice_2d(m,n) = self % ficeb(m,n) * (1 - alpha) + self % ficef(m,n) * alpha
+          self % fice(grid % ii(m,n)) = self % fice_2d(m,n)
+        end do
+      end do
     end if
 
     if (config % currents) then
-      self % uc_2d = self % ucb * (1 - alpha) + self % ucf * alpha
-      self % vc_2d = self % vcb * (1 - alpha) + self % vcf * alpha
-
-      self % uc = grid % remap_mn2i(self % uc_2d)
-      self % vc = grid % remap_mn2i(self % vc_2d)
+      !$acc parallel loop collapse(2)
+      do n = 1, grid % nm
+        do m = 1, grid % mm
+          self % uc_2d(m,n) = self % ucb(m,n) * (1 - alpha) + self % ucf(m,n) * alpha
+          self % vc_2d(m,n) = self % vcb(m,n) * (1 - alpha) + self % vcf(m,n) * alpha
+          self % uc(grid % ii(m,n)) = self % uc_2d(m,n)
+          self % vc(grid % ii(m,n)) = self % vc_2d(m,n)
+        end do
+      end do
     end if
 
-    if (config % air_density) self % rhoa = self % rhoab * (1 - alpha) + self % rhoaf * alpha
-    if (config % water_density) self % rhow = self % rhowb * (1 - alpha) + self % rhowf * alpha
+    if (config % air_density) then
+      !$acc parallel loop
+      do i = 1, size(self % rhoa)
+        self % rhoa(i) = self % rhoab(i) * (1 - alpha) + self % rhoaf(i) * alpha
+      end do
+    end if
+    if (config % water_density) then
+      !$acc parallel loop
+      do i = 1, size(self % rhow)
+        self % rhow(i) = self % rhowb(i) * (1 - alpha) + self % rhowf(i) * alpha
+      end do
+    end if
 
     call self % apply_wind_speed_floor()
-    self % rhorat = self % rhoa / self % rhow
+    !$acc parallel loop
+    do i = 1, size(self % rhorat)
+      self % rhorat(i) = self % rhoa(i) / self % rhow(i)
+    end do
 
   end subroutine forcing_interpolate
 
 
   subroutine forcing_apply_wind_speed_floor(self)
     class(forcing_type), intent(inout) :: self
+    integer :: i
 
-    if (allocated(self % wspd)) self % wspd = max(self % wspd, min_wind_speed)
+    if (.not. allocated(self % wspd)) return
+    !$acc parallel loop
+    do i = 1, size(self % wspd)
+      self % wspd(i) = max(self % wspd(i), min_wind_speed)
+    end do
 
   end subroutine forcing_apply_wind_speed_floor
 

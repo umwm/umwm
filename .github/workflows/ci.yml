@@ -76,6 +76,59 @@ jobs:
           make MPI=yes FC=mpiifx FCFLAGS="-O3 -xHost -warn all" umwm
           make FC=ifx FCFLAGS="-O3 -xHost -warn all" test
 
+  make-nvhpc:
+    name: make-nvhpc (${{ matrix.target }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # the CPU code, with the default FCFLAGS of nvfortran
+          - target: cpu
+            make-args: FC=nvfortran
+          # the OpenACC code of the GPU build, on the CPU cores
+          - target: openacc-multicore
+            make-args: GPU=yes GPU_FLAGS=-acc=multicore ACC_KERNEL_FLAGS=-Minline=lib:umwm_inline.lib
+    env:
+      NETCDF_PREFIX: ${{ github.workspace }}/.nvhpc-netcdf
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+      - uses: fortran-lang/setup-fortran@v1
+        with:
+          compiler: nvidia-hpc
+          version: "26.9"
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends cmake curl libnetcdf-dev make
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+      - name: Cache nvfortran netCDF-Fortran
+        id: cache-nvhpc-netcdf
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.NETCDF_PREFIX }}
+          key: nvhpc-netcdf-nvfortran-26.9-fortran-4.6.4
+      - name: Build nvfortran netCDF-Fortran
+        if: steps.cache-nvhpc-netcdf.outputs.cache-hit != 'true'
+        run: .github/scripts/build-nvhpc-netcdf.sh "$NETCDF_PREFIX"
+      - name: Build and test
+        run: |
+          export PATH="$NETCDF_PREFIX/bin:$PATH"
+          export LD_LIBRARY_PATH="$NETCDF_PREFIX/lib:${LD_LIBRARY_PATH:-}"
+          make ${{ matrix.make-args }} print-config
+          make ${{ matrix.make-args }} umwm
+          make ${{ matrix.make-args }} test
+      - name: Run an example case
+        run: |
+          export LD_LIBRARY_PATH="$NETCDF_PREFIX/lib:${LD_LIBRARY_PATH:-}"
+          ./umwm --list-cases
+          ./umwm --case duration-limited
+
   python-gnu:
     runs-on: ubuntu-24.04
     steps:

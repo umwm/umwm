@@ -10,6 +10,9 @@ homepage = "https://github.com/umwm/umwm"
 auto-executables = false
 auto-examples = false
 auto-tests = false
+# Provided by the compiler in the OpenACC build. fpm does not evaluate the
+# preprocessor conditionals around its use when it resolves module dependencies.
+external-modules = ["openacc"]
 
 [dependencies]
 datetime = { git = "https://github.com/wavebitscientific/datetime-fortran.git", rev = "c49fcfcc54364db8235130149c4480b2bd0a72a0" }

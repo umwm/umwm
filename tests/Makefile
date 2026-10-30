@@ -8,7 +8,7 @@ SRC_DIR := ../src
 TESTS := test_dispersion test_spectrum test_config test_grid test_forcing \
          test_source_functions test_advection test_domain
 MODEL_OBJS := datetime_module.o umwm_advection.o umwm_config.o umwm_constants.o \
-              umwm_dispersion.o umwm_domain.o umwm_domain_output.o umwm_env.o \
+              umwm_dispersion.o umwm_domain.o umwm_domain_acc.o umwm_domain_output.o umwm_env.o \
               umwm_forcing.o umwm_grid.o umwm_io.o umwm_mpi.o umwm_physics.o \
               umwm_restart.o umwm_sheltering.o umwm_source_functions.o \
               umwm_spectrum.o umwm_stokes.o umwm_stress.o umwm_util.o
@@ -105,8 +105,22 @@ umwm_domain.o: datetime_module.o umwm_advection.o umwm_config.o umwm_constants.o
                umwm_source_functions.o umwm_spectrum.o umwm_stokes.o umwm_stress.o \
                umwm_util.o
 umwm_domain_output.o: umwm_domain.o umwm_io.o
+umwm_domain_acc.o: umwm_advection.o umwm_domain.o umwm_physics.o umwm_source_functions.o
+
+# the inlining of the GPU build, as in ../src/Makefile
+INLINE_SRC = umwm_advection.f90 umwm_physics.f90 umwm_sheltering.f90 \
+             umwm_source_functions.f90 umwm_stress.f90
+ACC_KERNEL_FLAGS ?= -Minline=lib:umwm_inline.lib -gpu=maxregcount:64
+ifneq ($(UMWM_GPU_ENABLED),)
+umwm_inline.lib: $(addprefix $(SRC_DIR)/,$(INLINE_SRC)) | $(INLINE_SRC:.f90=.o)
+	$(RM) -r $@
+	$(FC) $(CPPFLAGS) $(FCFLAGS) -Mextract=lib:$@ $^
+umwm_domain_acc.o: $(SRC_DIR)/umwm_domain_acc.f90 umwm_inline.lib
+	$(FC) $(CPPFLAGS) $(FCFLAGS) $(ACC_KERNEL_FLAGS) $(NETCDF_FFLAGS) -I. -I$(SRC_DIR) -c $<
+endif
 
 clean:
+	$(RM) -r umwm_inline.lib
 	$(RM) $(TESTS) *.o *.mod *.smod $(RANKINE_FORCING_STAMP) \
 	  input/umwmin_2026-01-01_00:00:00.nc \
 	  input/umwmin_2026-01-01_01:00:00.nc output/umwmout.grid

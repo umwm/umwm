@@ -5,8 +5,22 @@ UMWM_CONFIG_INCLUDED := 1
 MPI ?= no
 UMWM_MPI_ENABLED := $(filter yes YES true TRUE 1 on ON,$(strip $(MPI)))
 
+# NVIDIA GPU build with nvfortran and OpenACC: GPU_ARCH is the compute
+# capability of the GPU. The fields are in unified memory, as the code has no
+# OpenACC data directives.
+GPU ?= no
+UMWM_GPU_ENABLED := $(filter yes YES true TRUE 1 on ON,$(strip $(GPU)))
+GPU_ARCH ?= cc120
+GPU_FLAGS ?= -acc=gpu -gpu=$(GPU_ARCH),mem:unified
+
+ifeq ($(UMWM_GPU_ENABLED),)
+  UMWM_SERIAL_FC := gfortran
+else
+  UMWM_SERIAL_FC := nvfortran
+endif
+
 ifeq ($(UMWM_MPI_ENABLED),)
-  UMWM_DEFAULT_FC := gfortran
+  UMWM_DEFAULT_FC := $(UMWM_SERIAL_FC)
 else
   UMWM_DEFAULT_FC := mpif90
   override CPPFLAGS += -DMPI
@@ -20,10 +34,19 @@ else ifeq ($(origin FC),undefined)
   FC := $(UMWM_DEFAULT_FC)
 endif
 
-ifeq ($(origin FCFLAGS),default)
-  FCFLAGS := -Ofast -march=native -ffast-math -funroll-loops -Wall
-else ifeq ($(origin FCFLAGS),undefined)
-  FCFLAGS := -Ofast -march=native -ffast-math -funroll-loops -Wall
+# The default FCFLAGS are those of nvfortran in the GPU build and when FC is
+# nvfortran, also through an MPI wrapper, and those of gfortran otherwise.
+ifneq ($(filter default undefined,$(origin FCFLAGS)),)
+  ifneq ($(UMWM_GPU_ENABLED)$(findstring nvfortran,$(shell $(FC) --version 2>/dev/null)),)
+    FCFLAGS := -O3 -fast
+  else
+    FCFLAGS := -Ofast -march=native -ffast-math -funroll-loops -Wall
+  endif
+endif
+
+# The OpenACC flags are kept when FCFLAGS is overridden.
+ifneq ($(UMWM_GPU_ENABLED),)
+  override FCFLAGS += $(GPU_FLAGS)
 endif
 
 LDFLAGS ?=
@@ -77,6 +100,7 @@ endif
 .PHONY: print-config
 print-config:
 	@printf 'MPI=%s\n' '$(MPI)'
+	@printf 'GPU=%s\n' '$(GPU)'
 	@printf 'FC=%s\n' '$(FC)'
 	@printf 'FCFLAGS=%s\n' '$(FCFLAGS)'
 	@printf 'CPPFLAGS=%s\n' '$(CPPFLAGS)'

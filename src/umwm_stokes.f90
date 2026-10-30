@@ -40,12 +40,16 @@ contains
     allocate(self % us(istart:iend, self % lm), self % vs(istart:iend, self % lm))
     allocate(self % ds(istart:iend))
 
+    !$acc parallel loop collapse(3) private(arg, kd)
     do i = istart, iend
       do l = 1, self % lm
         do o = 1, size(f)
           arg = 2 * k(o,i) * (self % depth(l) + d(i))
           kd = k(o,i) * d(i)
-          if (abs(arg) > 50 .or. kd > 50) then
+          if (abs(self % depth(l)) > d(i)) then
+            ! below the bottom
+            self % weight(o,l,i) = 0
+          else if (abs(arg) > 50 .or. kd > 50) then
             ! hyperbolic trig. functions would overflow;
             ! use deep water approximation instead
             self % weight(o,l,i) = twopi * f(o) * 2 * k(o,i)**2 &
@@ -57,7 +61,6 @@ contains
                                  / sinh(kd)**2 * dwn(o,i) * dth
           end if
         end do
-        if (abs(self % depth(l)) > d(i)) self % weight(:,l,i) = 0
       end do
     end do
 
@@ -71,6 +74,13 @@ contains
     real, intent(in) :: cth(:), sth(:)
     real :: ex(size(e, 1)), ey(size(e, 1)), usmag(self % lm), ust_efolding
     integer :: i, l, p
+
+#ifdef _OPENACC
+    call compute_acc(size(e, 1), size(e, 2), self % lm, lbound(self % us, 1), &
+                     ubound(self % us, 1), e, cth, sth, self % weight, self % depth, &
+                     self % us, self % vs, self % ds)
+    return
+#endif
 
     do i = lbound(self % us, 1), ubound(self % us, 1)
 
@@ -104,5 +114,63 @@ contains
     end do
 
   end subroutine compute
+
+
+#ifdef _OPENACC
+  subroutine compute_acc(om, pm, lm, i1, i2, e, cth, sth, weight, depth, us, vs, ds)
+    ! Computes the Stokes drift as compute, on the GPU, by a thread block for
+    ! each cell, with its threads over the depth levels.
+    integer, intent(in) :: om, pm, lm, i1, i2
+    real, intent(in) :: e(om,pm,i1:i2), cth(pm), sth(pm), weight(om,lm,i1:i2), depth(lm)
+    real, intent(inout) :: us(i1:i2,lm), vs(i1:i2,lm), ds(i1:i2)
+    real :: ex, ey, sx, sy, usmag, usmag_prev, ust_efolding
+    integer :: i, l, o, p
+
+    !$acc parallel loop gang vector_length(64) private(usmag, usmag_prev, ust_efolding)
+    do i = i1, i2
+
+      ! the drift at each level, from the direction-integrated spectrum
+      ! projected on x and y
+      !$acc loop vector private(sx, sy, ex, ey)
+      do l = 1, lm
+        sx = 0
+        sy = 0
+        !$acc loop seq
+        do o = 1, om
+          ex = 0
+          ey = 0
+          !$acc loop seq
+          do p = 1, pm
+            ex = ex + e(o,p,i) * cth(p)
+            ey = ey + e(o,p,i) * sth(p)
+          end do
+          sx = sx + weight(o,l,i) * ex
+          sy = sy + weight(o,l,i) * ey
+        end do
+        us(i,l) = sx
+        vs(i,l) = sy
+      end do
+
+      ! Stokes e-folding depth
+      ds(i) = 0
+      usmag_prev = sqrt(us(i,1)**2 + vs(i,1)**2)
+      if (usmag_prev /= 0) then
+        ust_efolding = usmag_prev * eulerinv
+        !$acc loop seq
+        do l = 2, lm
+          usmag = sqrt(us(i,l)**2 + vs(i,l)**2)
+          if (usmag < ust_efolding) then
+            ds(i) = - (abs(usmag_prev - ust_efolding) * depth(l) &
+                     + abs(usmag - ust_efolding) * depth(l-1)) / (usmag_prev - usmag)
+            exit
+          end if
+          usmag_prev = usmag
+        end do
+      end if
+
+    end do
+
+  end subroutine compute_acc
+#endif
 
 end module umwm_stokes

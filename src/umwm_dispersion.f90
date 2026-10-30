@@ -13,6 +13,7 @@ contains
     wavenumber, depth, water_density, gravity, surface_tension &
   )
     ! Return angular frequency using the linear water wave dispersion relation.
+    !$acc routine seq
     real(rk), intent(in) :: wavenumber
     real(rk), intent(in) :: depth
     real(rk), intent(in) :: water_density
@@ -30,6 +31,7 @@ contains
   elemental real(rk) function group_speed( &
     wavenumber, depth, water_density, gravity, surface_tension &
   )
+    !$acc routine seq
     real(rk), intent(in) :: wavenumber
     real(rk), intent(in) :: depth
     real(rk), intent(in) :: water_density
@@ -58,6 +60,7 @@ contains
   ) result(k)
     ! Solve the linear water wave dispersion relationship using
     ! Newton-Raphson iteration.
+    !$acc routine seq
     real(rk), intent(in) :: frequency
     real(rk), intent(in) :: depth
     real(rk), intent(in) :: water_density

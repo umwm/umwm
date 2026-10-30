@@ -49,6 +49,7 @@ contains
   pure elemental real(rk) function sheltering_coare35(wspd) result(res)
     ! Returns the sheltering coefficient given input wind speed
     ! to approximately match the momentum flux of COARE 3.5 algorithm.
+    !$acc routine seq
     real(rk), intent(in) :: wspd ! wind speed [m/s]
     real(rk), parameter :: x1 = 15, x2 = 33, x3 = 60
     real(rk), parameter :: y1 = 0.10, y2 = 0.09, y3 = 0.06

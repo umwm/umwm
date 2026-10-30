@@ -55,8 +55,9 @@ contains
     ! Enables (nonzero) or disables (zero) the flushing of denormal
     ! floating-point results to zero in this process.
     integer(c_int), value :: enable
+    ! the argument is positional because nvfortran rejects the keyword gradual=
     if (ieee_support_underflow_control(1.0)) &
-      call ieee_set_underflow_mode(gradual=enable == 0)
+      call ieee_set_underflow_mode(enable == 0)
   end subroutine umwm_env_flush_denormals
 
 
