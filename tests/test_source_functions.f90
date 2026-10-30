@@ -4,7 +4,8 @@ program test_source_functions
 #ifdef MPI
   use umwm_env, only: env_init, env_stop
 #endif
-  use umwm_source_functions, only: mss_moments, power, sds_coefficient, sin_d12
+  use umwm_source_functions, only: mss_moments, power, sds_coefficient, sin_d12, snl_d12, &
+                                   snl_shift
 
   implicit none
 
@@ -18,7 +19,10 @@ program test_source_functions
   suite = test('test_source_functions', [ &
     test(mss_moments_match_direct_sum), &
     test(power_matches_intrinsic), &
-    test(wind_input_matches_reference) &
+    test(wind_input_matches_reference), &
+    test(downshifting_conserves_energy), &
+    test(downshifting_shift_is_resolution_independent), &
+    test(downshifting_matches_two_bin_weights) &
   ])
 
 #ifdef MPI
@@ -136,5 +140,95 @@ contains
 
     res = test('wind_input_matches_reference', ok)
   end function wind_input_matches_reference
+
+
+  function downshifting_conserves_energy() result(res)
+    ! At coarse to fine resolutions, and for any k dk of the bins, the
+    ! downshifting conserves the energy e k dk of the prognostic range, also
+    ! where it would move energy below the lowest bin, apart from the energy
+    ! that it moves in from the diagnostic bins.
+    type(test_result) :: res
+    real, parameter :: snl_fac = 5, dlnf(4) = [0.2, 0.11548, 0.05, 0.02]
+    real :: e(nf,nd), sds(nf,nd), kdk(nf), snl(nf,nd), shift, frac, moved, inflow, net
+    integer :: n, m, oc, o, p
+    logical :: ok
+
+    ok = .true.
+    do n = 1, size(dlnf)
+      shift = snl_shift / dlnf(n)
+      m = int(shift)
+      frac = shift - m
+      oc = nf - m - 4
+      call random_number(e)
+      call random_number(sds)
+      call random_number(kdk)
+      kdk = kdk + 0.1
+      call snl_d12(nf, nd, oc, e, kdk, snl_fac, m, frac, sds, snl)
+      ok = ok .and. all(snl(oc+1:,:) == 0)
+      do p = 1, nd
+        moved = snl_fac * sum(sds(1:oc,p) * e(1:oc,p) * kdk(1:oc))
+        inflow = snl_fac * (sum(sds(oc+1:oc+m,p) * e(oc+1:oc+m,p) * kdk(oc+1:oc+m)) &
+                            + frac * sds(oc+m+1,p) * e(oc+m+1,p) * kdk(oc+m+1))
+        net = 0
+        do o = 1, oc
+          net = net + snl(o,p) * kdk(o)
+        end do
+        ok = ok .and. abs(net - inflow) <= 1e-5 * (moved + inflow)
+      end do
+    end do
+
+    res = test('downshifting_conserves_energy', ok)
+  end function downshifting_conserves_energy
+
+
+  function downshifting_shift_is_resolution_independent() result(res)
+    ! The energy that the downshifting moves within the prognostic range
+    ! moves on average by snl_shift in ln(f), at any resolution, so that the
+    ! mean ln(f) of the spectrum changes at the same rate.
+    type(test_result) :: res
+    real, parameter :: snl_fac = 5, dlnf(5) = [0.2, 0.11548, 0.0832, 0.05, 0.02]
+    integer, parameter :: nmax = 400
+    real :: e(nmax,1), sds(nmax,1), kdk(nmax), snl(nmax,1), lnf(nmax)
+    real :: shift, frac, moved, dmean
+    integer :: n, m, oc, nb, o
+    logical :: ok
+
+    ok = .true.
+    do n = 1, size(dlnf)
+      shift = snl_shift / dlnf(n)
+      m = int(shift)
+      frac = shift - m
+      ! bins from 0.03 to 3 Hz, a spectrum peaked at 0.3 Hz, and the
+      ! dissipation of a saturated deep-water tail, none above oc
+      nb = int(log(100.) / dlnf(n)) + 1
+      oc = nb - m - 1
+      lnf(:nb) = [(log(0.03) + (o - 1) * dlnf(n), o = 1, nb)]
+      kdk(:nb) = exp(4 * lnf(:nb)) * dlnf(n)
+      e(:nb,1) = exp(-(lnf(:nb) - log(0.3))**2 / 0.1) / kdk(:nb)
+      sds(:nb,1) = exp(lnf(:nb))
+      sds(oc+1:nb,1) = 0
+      call snl_d12(nb, 1, oc, e(:nb,:), kdk(:nb), snl_fac, m, frac, sds(:nb,:), snl(:nb,:))
+      moved = snl_fac * sum(sds(:oc,1) * e(:oc,1) * kdk(:oc))
+      dmean = sum(snl(:oc,1) * kdk(:oc) * lnf(:oc))
+      ok = ok .and. abs(dmean / moved + snl_shift) < 1e-4 * snl_shift
+    end do
+
+    res = test('downshifting_shift_is_resolution_independent', ok)
+  end function downshifting_shift_is_resolution_independent
+
+
+  function downshifting_matches_two_bin_weights() result(res)
+    ! At the resolution for which it was calibrated, dlnf = ln(2 / 0.0313) / 36,
+    ! the downshifting moves the energy to the next two lower bins with the
+    ! weights of Donelan et al. (2012), b1 and b2 normalized to a sum of 1.
+    type(test_result) :: res
+    real :: dlnf, b1, b2, shift
+    dlnf = log(2 / 0.0313) / 36
+    b1 = exp(-16 * dlnf**2)
+    b2 = exp(-64 * dlnf**2)
+    shift = snl_shift / dlnf
+    res = test('downshifting_matches_two_bin_weights', &
+               int(shift) == 1 .and. abs((shift - 1) - b2 / (b1 + b2)) < 1e-5)
+  end function downshifting_matches_two_bin_weights
 
 end program test_source_functions

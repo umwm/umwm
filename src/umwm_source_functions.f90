@@ -11,8 +11,15 @@ module umwm_source_functions
 
   private
   public :: mss_moments, power, power_bin, power_threshold, sin_d12, sin_d12_bin, &
-            sds_coefficient, sds_coefficient_bin, sds_d12, snl_d12, snl_d12_bin, &
-            s_ice, s_ice_bin
+            sds_coefficient, sds_coefficient_bin, sds_d12, snl_d12, snl_d12_bin, snl_gain, &
+            snl_shift, s_ice, s_ice_bin
+
+  ! Nonlinear downshifting moves wave energy by snl_shift in ln(f) to lower
+  ! frequencies: the mean shift of the redistribution of Donelan et al.
+  ! (2012) over the next two lower bins with the weights b1 and b2,
+  ! (b1 + 2 b2) dlnf, at the resolution for which it was calibrated,
+  ! dlnf = ln(2 / 0.0313) / 36.
+  real, parameter :: snl_shift = 0.1553463
 
   ! sea ice attenuation, Kohout et al. (2014)
   real, parameter :: H_th = 3.0       ! [m]
@@ -190,36 +197,65 @@ contains
   end function power_bin
 
 
-  pure subroutine snl_d12(nf, nd, oc, e, bf1_renorm, bf2_renorm, snl_fac, sds, snl)
-    ! Nonlinear downshifting: spread wave energy to the 2 next longer
-    ! wavenumbers exponentially decaying as distance from the donating
-    ! wavenumber, and remove the energy from the donating wavenumbers.
-    integer, intent(in) :: nf, nd, oc
-    real, intent(in) :: e(nf,nd), sds(nf,nd)
-    real, intent(in) :: bf1_renorm(nf), bf2_renorm(nf)
-    real, intent(in) :: snl_fac
+  pure subroutine snl_d12(nf, nd, oc, e, kdk, snl_fac, snl_bins, snl_frac, sds, snl)
+    ! Nonlinear downshifting: spilling breaking moves wave energy at the
+    ! rate snl_fac * sds by snl_shift to lower frequencies. On bins of width
+    ! dlnf, the energy of a bin moves snl_bins = int(snl_shift / dlnf) bins
+    ! down, and the fraction snl_frac = snl_shift / dlnf - snl_bins of it one
+    ! bin further: it lands in the bins that its bin overlaps when shifted by
+    ! snl_shift, conserving the energy e k dk. The energy that would move below
+    ! the lowest bin stays where it is. The prognostic range 1:oc receives the
+    ! energy of the diagnostic bins up to oc + snl_bins + 1 <= nf.
+    ! The spilling breaking rate sds excludes the plunging breaker factor.
+    integer, intent(in) :: nf, nd, oc, snl_bins
+    real, intent(in) :: e(nf,nd), kdk(nf), sds(nf,nd)
+    real, intent(in) :: snl_fac, snl_frac
     real, intent(out) :: snl(nf,nd)
+    real :: gain1(oc), gain2(oc), loss(oc)
     integer :: o, p
+
+    associate(m => snl_bins)
+
+    ! energy into the bin per k dk of the bin, and the fraction of its own
+    ! energy that moves
+    do o = 1, oc
+      gain1(o) = snl_fac * (1 - snl_frac) * kdk(o+m) / kdk(o)
+      gain2(o) = snl_fac * snl_frac * kdk(o+m+1) / kdk(o)
+      loss(o) = snl_fac * (merge(1 - snl_frac, 0., o > m) + merge(snl_frac, 0., o > m + 1))
+    end do
 
     do p = 1, nd
       do o = 1, oc
-        snl(o,p) = snl_d12_bin(bf1_renorm(o), bf2_renorm(o), snl_fac, sds(o,p), e(o,p), &
-                               sds(o+1,p), e(o+1,p), sds(o+2,p), e(o+2,p))
+        snl(o,p) = snl_d12_bin(gain1(o), gain2(o), loss(o), sds(o,p), e(o,p), &
+                               sds(o+m,p), e(o+m,p), sds(o+m+1,p), e(o+m+1,p))
       end do
       snl(oc+1:nf,p) = 0
     end do
 
+    end associate
+
   end subroutine snl_d12
 
 
-  pure elemental real function snl_d12_bin(bf1_renorm, bf2_renorm, snl_fac, sds, e, &
-                                           sds1, e1, sds2, e2) result(res)
+  pure elemental real function snl_d12_bin(gain1, gain2, loss, sds, e, sds1, e1, sds2, e2) &
+    result(res)
     ! Nonlinear downshifting of one spectral bin (see snl_d12), from the
-    ! dissipation and spectrum of the bin and of the next two frequencies.
+    ! dissipation and spectrum of the bin and of the two bins that move
+    ! energy into it, with the coefficients of snl_d12.
     !$acc routine seq
-    real, intent(in) :: bf1_renorm, bf2_renorm, snl_fac, sds, e, sds1, e1, sds2, e2
-    res = bf1_renorm * sds1 * e1 + bf2_renorm * sds2 * e2 - snl_fac * sds * e
+    real, intent(in) :: gain1, gain2, loss, sds, e, sds1, e1, sds2, e2
+    res = gain1 * sds1 * e1 + gain2 * sds2 * e2 - loss * sds * e
   end function snl_d12_bin
+
+
+  pure elemental real function snl_gain(kdk, kdk1, kdk2, snl_fac, snl_frac) result(res)
+    ! The rate at which the downshifting moves energy into a bin with k dk
+    ! kdk, per e sds of the bins it comes from, with k dk kdk1 and kdk2, if
+    ! that were the same as that of the bin (see snl_d12).
+    !$acc routine seq
+    real, intent(in) :: kdk, kdk1, kdk2, snl_fac, snl_frac
+    res = snl_fac * ((1 - snl_frac) * kdk1 + snl_frac * kdk2) / kdk
+  end function snl_gain
 
 
   pure subroutine s_ice(nf, nd, e, kdk, cg, dth, fice, fice_lth, sice)

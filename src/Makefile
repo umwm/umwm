@@ -80,7 +80,7 @@ umwm_domain_output.o: umwm_domain_output.f90 umwm_domain.o umwm_io.o
 umwm_domain_acc.o:  umwm_domain_acc.f90 umwm_advection.o umwm_domain.o umwm_physics.o umwm_source_functions.o
 umwm_capi.o:        umwm_capi.f90       umwm_domain.o umwm_env.o umwm_io.o
 umwm_constants.o:   umwm_constants.f90
-umwm_config.o:      umwm_config.f90     umwm_constants.o
+umwm_config.o:      umwm_config.f90     umwm_constants.o umwm_source_functions.o
 umwm_env.o:         umwm_env.f90
 umwm_util.o:        umwm_util.f90
 umwm_grid.o:        umwm_grid.f90       umwm_config.o umwm_constants.o umwm_env.o umwm_spectrum.o umwm_util.o

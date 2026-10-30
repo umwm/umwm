@@ -113,6 +113,7 @@ def test_spectrum_points_validation():
     ({"domain.mm": 2}, "mm and nm"),
     ({"domain.pm": 30}, "divisible by 4"),
     ({"domain.fmin": 3.0}, "fmin must be < fmax"),
+    ({"domain.fmin": 1.8}, "fmax / fmin"),
     ({"domain.stoptimestr": "2025-01-01 00:00:00"}, "after starttimestr"),
     ({"domain.starttimestr": "yesterday"}, "YYYY-MM-DD"),
     ({"output.outgrid": 5}, "outgrid"),

@@ -15,7 +15,7 @@ submodule (umwm_domain) umwm_domain_acc
                             frequency_rate, propagation_flux, refraction_outflow, upstream_flux
   use umwm_physics, only: equilibrium_bin, integrate_bin, source_rate
   use umwm_source_functions, only: power_bin, power_threshold, s_ice_bin, &
-                                   sds_coefficient_bin, sin_d12_bin, snl_d12_bin
+                                   sds_coefficient_bin, sin_d12_bin, snl_d12_bin, snl_gain
 
   implicit none
 
@@ -80,8 +80,9 @@ contains
                      self % cth2, self % sth2, forcing % wspd, forcing % wdir, forcing % uc, &
                      forcing % vc, forcing % rhorat, forcing % fice, self % ustar, &
                      self % logl2overz, self % cp0, self % cg0, self % fkovg, self % k, &
-                     self % kdk, self % k3dk, self % k4, self % cothkd, self % snl_arg, &
-                     self % sbf, self % sdv, config % g, config % fcut_fac, config % fprog, &
+                     self % kdk, self % k3dk, self % k4, self % cothkd, config % snl_fac, &
+                     self % snl_bins, self % snl_frac, self % sbf, self % sdv, config % g, &
+                     config % fcut_fac, config % fprog, &
                      config % sin_fac, self % fieldscale1, self % fieldscale2, self % dth, &
                      config % mss_fac, self % twopisds_fac, config % sds_power, &
                      config % sdt_fac, config % fice_lth, config % explim, self % oc, &
@@ -174,11 +175,11 @@ contains
                          forcing % rhorat, forcing % fice, self % ustar, self % shelt, self % oc, &
                          self % logl2overz, self % cp0, self % fkovg, self % k4, self % cothkd, &
                          self % sbf, self % sdt, self % sdv, self % sice, self % oneoverk4, &
-                         self % bf1_renorm, self % bf2_renorm, self % mss_moments, &
-                         config % sin_fac, self % fieldscale1, self % fieldscale2, &
-                         config % mss_fac, self % twopisds_fac, config % sds_power, &
-                         self % inv_sds_power, config % snl_fac, self % sds, self % ssin, &
-                         self % snl)
+                         self % kdk, self % mss_moments, config % sin_fac, &
+                         self % fieldscale1, self % fieldscale2, config % mss_fac, &
+                         self % twopisds_fac, config % sds_power, self % inv_sds_power, &
+                         config % snl_fac, self % snl_bins, self % snl_frac, self % sds, &
+                         self % ssin, self % snl)
       end associate
     end subroutine integrate
 
@@ -228,22 +229,23 @@ contains
 
   subroutine sources_acc(om, pm, i1, i2, h1, h2, imm, e, f, cth, sth, cth2, sth2, wspd, &
                          wdir, uc, vc, rhorat, fice, ustar, logl2overz, cp0, cg0, fkovg, k, kdk, &
-                         k3dk, k4, cothkd, snl_arg, sbf, sdv, g, fcut_fac, fprog, sin_fac, &
-                         fieldscale1, fieldscale2, dth, mss_fac, twopisds_fac, sds_power, &
-                         sdt_fac, fice_lth, explim, oc, shelt, moments, sds, sdt, sice, &
-                         physics_time_step, res)
+                         k3dk, k4, cothkd, snl_fac, snl_bins, snl_frac, sbf, sdv, g, fcut_fac, &
+                         fprog, sin_fac, fieldscale1, fieldscale2, dth, mss_fac, twopisds_fac, &
+                         sds_power, sdt_fac, fice_lth, explim, oc, shelt, moments, sds, sdt, &
+                         sice, physics_time_step, res)
     ! Evaluates the source functions, the column-wise sink terms, and the
     ! largest stable source time step at each cell, as sources, and returns
     ! the smallest of these time steps in res(1).
-    integer, intent(in) :: om, pm, i1, i2, h1, h2, imm
+    integer, intent(in) :: om, pm, i1, i2, h1, h2, imm, snl_bins
     real, intent(in) :: e(om,pm,h1:h2), f(om), cth(pm), sth(pm), cth2(pm), sth2(pm)
     real, intent(in), dimension(imm) :: wspd, wdir, uc, vc, rhorat, fice
     real, intent(in) :: ustar(i1:i2)
     real, intent(in), dimension(om,i1:i2) :: logl2overz, fkovg, k, kdk, k3dk, k4, cothkd, &
-                                             snl_arg, sbf, sdv
+                                             sbf, sdv
     real, intent(in), dimension(om,h1:h2) :: cp0, cg0
-    real, intent(in) :: g, fcut_fac, fprog, sin_fac, fieldscale1, fieldscale2, dth, mss_fac, &
-                        twopisds_fac, sds_power, sdt_fac, fice_lth, explim
+    real, intent(in) :: snl_fac, snl_frac, g, fcut_fac, fprog, sin_fac, fieldscale1, &
+                        fieldscale2, dth, mss_fac, twopisds_fac, sds_power, sdt_fac, fice_lth, &
+                        explim
     integer, intent(inout) :: oc(i1:i2)
     real, intent(inout) :: shelt(i1:i2), moments(om,3,i1:i2), sds(om,pm,i1:i2), &
                            sdt(om,i1:i2), sice(om,i1:i2), physics_time_step(i1:i2), res(1)
@@ -265,11 +267,12 @@ contains
       cos_wdir = cos(wdir(i))
       sin_wdir = sin(wdir(i))
 
-      ! cut-off frequency (by default 4*pierson-moskowitz peak frequency) and its bin
+      ! cut-off frequency (by default 4*pierson-moskowitz peak frequency) and its
+      ! bin, below the bins that the downshifting into it reads
       fcutoff = min(fcut_fac * g / wspd_i, fprog)
       no = oc(i)
       !$acc loop seq
-      do o = om - 2, 1, -1
+      do o = om - max(2, snl_bins + 1), 1, -1
         no = o
         if (fcutoff > f(o)) exit
       end do
@@ -306,10 +309,11 @@ contains
         end do
       end do
 
-      ! breaking dissipation for the range used by the integration
+      ! breaking dissipation for the range used by the integration, with the
+      ! diagnostic bins that the downshifting reads
       !$acc loop vector collapse(2)
       do p = 1, pm
-        do o = 1, min(no + 2, om)
+        do o = 1, no + snl_bins + 1
           sds(o,p,i) = sds_coefficient_bin(f(o), cth2(p), sth2(p), fac, twopisds_fac, &
                                            moments(o,1,i), moments(o,2,i), moments(o,3,i)) &
                      * power_bin(e(o,p,i) * k4(o,i), sds_power, xmin)
@@ -355,7 +359,9 @@ contains
                         cos_wdir * cth(p) + sin_wdir * sth(p), cp0(o,i), uc(i), vc(i), &
                         cth(p), sth(p), shelt_i, sin_fac, fieldscale1, fieldscale2, scale, &
                         fkovg(o,i), -huge(0.)), &
-            sds(o,p,i) * cothkd(o,i) * snl_arg(o,i), sbf(o,i), sdt(o,i), sdv(o,i), sice(o,i))))
+            sds(o,p,i) * cothkd(o,i) * (1 - snl_gain(kdk(o,i), kdk(o+snl_bins,i), &
+                                                     kdk(o+snl_bins+1,i), snl_fac, snl_frac)), &
+            sbf(o,i), sdt(o,i), sdv(o,i), sice(o,i))))
         end do
       end do
       physics_time_step(i) = explim / rate
@@ -379,16 +385,16 @@ contains
   subroutine integrate_acc(om, pm, i1, i2, h1, h2, imm, halo, halo_source, store, dts, e, ef, &
                            f, cth, sth, cth2, sth2, wspd, wdir, uc, vc, rhorat, fice, ustar, &
                            shelt, oc, logl2overz, cp0, fkovg, k4, cothkd, sbf, sdt, sdv, sice, &
-                           oneoverk4, bf1_renorm, bf2_renorm, moments, sin_fac, fieldscale1, &
-                           fieldscale2, mss_fac, twopisds_fac, sds_power, inv_sds_power, &
-                           snl_fac, sds, ssin, snl)
+                           oneoverk4, kdk, moments, sin_fac, fieldscale1, fieldscale2, mss_fac, &
+                           twopisds_fac, sds_power, inv_sds_power, snl_fac, snl_bins, snl_frac, &
+                           sds, ssin, snl)
     ! Integrates the source functions over dts, as integrate_column, at the
     ! cells in the halo of other tiles if halo is .true., and at the other
     ! cells otherwise: ef is the updated spectrum, and e becomes the mean of
     ! the old and updated spectrum. If store is .true., Sin, Sds and Snl over
     ! the whole spectrum are kept for output. The kernel runs asynchronously
     ! on integrate_queue.
-    integer, intent(in) :: om, pm, i1, i2, h1, h2, imm
+    integer, intent(in) :: om, pm, i1, i2, h1, h2, imm, snl_bins
     logical, intent(in) :: halo, halo_source(i1:i2), store
     real, intent(in) :: dts
     real, intent(inout) :: e(om,pm,h1:h2), ef(om,pm,h1:h2)
@@ -397,19 +403,20 @@ contains
     real, intent(in) :: ustar(i1:i2), shelt(i1:i2)
     integer, intent(in) :: oc(i1:i2)
     real, intent(in), dimension(om,i1:i2) :: logl2overz, fkovg, k4, cothkd, sbf, sdt, sdv, sice, &
-                                             oneoverk4, bf1_renorm, bf2_renorm
+                                             oneoverk4, kdk
     real, intent(in) :: cp0(om,h1:h2), moments(om,3,i1:i2)
     real, intent(in) :: sin_fac, fieldscale1, fieldscale2, mss_fac, twopisds_fac, sds_power, &
-                        inv_sds_power, snl_fac
+                        inv_sds_power, snl_fac, snl_frac
     real, intent(inout) :: sds(om,pm,i1:i2), ssin(om,pm,i1:i2), snl(om,pm,i1:i2)
 
     real :: wspd_i, ustar_i, shelt_i, cos_wdir, sin_wdir, scale, fac, xmin_sds, xmin_eq
     real :: ssin_bin, snl_bin, coef
-    integer :: i, o, p, no
+    integer :: i, o, p, no, m
 
     fac = max(mss_fac, 0.)
     xmin_sds = power_threshold(sds_power)
     xmin_eq = power_threshold(inv_sds_power)
+    m = snl_bins
 
     !$acc parallel loop gang vector_length(vl) async(integrate_queue) &
     !$acc   private(wspd_i, ustar_i, shelt_i, cos_wdir, sin_wdir, scale, no)
@@ -434,10 +441,14 @@ contains
                                    vc(i), cth(p), sth(p), shelt_i, sin_fac, fieldscale1, &
                                    fieldscale2, scale, fkovg(o,i), merge(0., -huge(0.), o > no))
             if (o <= no) then
-              ! prognostic range: exponential update
-              snl_bin = snl_d12_bin(bf1_renorm(o,i), bf2_renorm(o,i), snl_fac, sds(o,p,i), &
-                                    e(o,p,i), sds(o+1,p,i), e(o+1,p,i), sds(o+2,p,i), &
-                                    e(o+2,p,i))
+              ! prognostic range: exponential update; the downshifting moves
+              ! no energy below the lowest bin (see snl_d12)
+              snl_bin = snl_d12_bin(snl_fac * (1 - snl_frac) * kdk(o+m,i) / kdk(o,i), &
+                                    snl_fac * snl_frac * kdk(o+m+1,i) / kdk(o,i), &
+                                    snl_fac * (merge(1 - snl_frac, 0., o > m) &
+                                               + merge(snl_frac, 0., o > m + 1)), &
+                                    sds(o,p,i), e(o,p,i), sds(o+m,p,i), e(o+m,p,i), &
+                                    sds(o+m+1,p,i), e(o+m+1,p,i))
               ef(o,p,i) = integrate_bin(e(o,p,i), dts, &
                                         source_rate(ssin_bin, sds(o,p,i) * cothkd(o,i), &
                                                     sbf(o,i), sdt(o,i), sdv(o,i), sice(o,i)), &
@@ -450,7 +461,7 @@ contains
               ef(o,p,i) = oneoverk4(o,i) &
                 * power_bin(equilibrium_bin(ssin_bin, sdt(o,i), sdv(o,i), sice(o,i), coef, &
                                             cothkd(o,i)), inv_sds_power, xmin_eq)
-              if (store .and. o > no + 2) &
+              if (store .and. o > no + m + 1) &
                 sds(o,p,i) = coef * power_bin(e(o,p,i) * k4(o,i), sds_power, xmin_sds)
             end if
             if (store) then
@@ -987,7 +998,7 @@ contains
                              self % cth, self % sth, self % oc, self % k, self % kdk, &
                              self % invcp0, self % cothkd, self % sdt, self % sdv, self % sbf, &
                              self % cp0, forcing % wspd, forcing % wdir, forcing % rhow, &
-                             self % bf1, self % bf2, self % dthg, self % taux_skin, &
+                             self % snl_bins, self % snl_frac, self % dthg, self % taux_skin, &
                              self % tauy_skin, self % tailocnx, self % tailocny, &
                              self % taux_ocntop, self % tauy_ocntop, self % taux_ocnbot, &
                              self % tauy_ocnbot, self % taux_snl, self % tauy_snl, &
@@ -1000,14 +1011,14 @@ contains
 
   subroutine ocean_stress_kernel(om, pm, i1, i2, h1, h2, imm, e, ssin, sds, snl, th, cth, sth, &
                                  oc, k, kdk, invcp0, cothkd, sdt, sdv, sbf, cp0, wspd, wdir, &
-                                 rhow, bf1, bf2, dthg, taux_skin, tauy_skin, tailocnx, tailocny, &
+                                 rhow, m, frac, dthg, taux_skin, tauy_skin, tailocnx, tailocny, &
                                  taux_ocntop, tauy_ocntop, taux_ocnbot, tauy_ocnbot, taux_snl, &
                                  tauy_snl, epsx_ocn, epsy_ocn, epsx_atm, epsy_atm, taux1, tauy1, &
                                  taux2, tauy2, taux3, tauy3)
     ! The ocean stress at all cells, by a thread block for each cell. The
     ! sums over frequency and direction of the quantities that ocean_stress
     ! sums over direction and then frequency.
-    integer, intent(in) :: om, pm, i1, i2, h1, h2, imm
+    integer, intent(in) :: om, pm, i1, i2, h1, h2, imm, m
     real, intent(in) :: e(om,pm,h1:h2)
     real, intent(in), dimension(om,pm,i1:i2) :: ssin, sds, snl
     real, intent(in) :: th(pm), cth(pm), sth(pm)
@@ -1015,7 +1026,7 @@ contains
     real, intent(in), dimension(om,i1:i2) :: k, kdk, invcp0, cothkd, sdt, sdv, sbf
     real, intent(in) :: cp0(om,h1:h2)
     real, intent(in), dimension(imm) :: wspd, wdir, rhow
-    real, intent(in) :: bf1, bf2, dthg
+    real, intent(in) :: frac, dthg
     real, intent(in), dimension(i1:i2) :: taux_skin, tauy_skin
     real, intent(inout), dimension(i1:i2) :: tailocnx, tailocny, taux_ocntop, tauy_ocntop, &
                                              taux_ocnbot, tauy_ocnbot, taux_snl, tauy_snl, &
@@ -1059,8 +1070,8 @@ contains
 
           ! Snl in the diagnostic part, at the phase speed of the bins it moves to
           snl_cp = 0
-          if (o >= 3) snl_cp = snl(o,p,i) * (bf1 * cp0(o,i) * invcp0(o-1,i) &
-                                            + bf2 * cp0(o,i) * invcp0(o-2,i))
+          if (o >= m + 2) snl_cp = snl(o,p,i) * ((1 - frac) * cp0(o,i) * invcp0(o-m,i) &
+                                                + frac * cp0(o,i) * invcp0(o-m-1,i))
 
           ! stress into ocean top (positive into ocean): dissipation into
           ! currents, corrected for the Snl in the diagnostic part
@@ -1078,9 +1089,9 @@ contains
           boty = boty + e(o,p,i) * sbf(o,i) * sth(p) * invcp0(o,i) * kdk(o,i)
 
           ! momentum loss due to the non-linear downshifting of energy
-          if (o >= 3 .and. o <= no) then
-            form = snl(o,p,i) * (bf1 * (1 - cp0(o,i) * invcp0(o-1,i)) &
-                               + bf2 * (1 - cp0(o,i) * invcp0(o-2,i))) * invcp0(o,i) * kdk(o,i)
+          if (o >= m + 2 .and. o <= no) then
+            form = snl(o,p,i) * ((1 - frac) * (1 - cp0(o,i) * invcp0(o-m,i)) &
+                               + frac * (1 - cp0(o,i) * invcp0(o-m-1,i))) * invcp0(o,i) * kdk(o,i)
             snlx = snlx + form * cth(p)
             snly = snly + form * sth(p)
           end if

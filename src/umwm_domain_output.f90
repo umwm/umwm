@@ -125,7 +125,7 @@ contains
               cothkd => self % cothkd, cp0 => self % cp0, invcp0 => self % invcp0, kdk => self % kdk, &
               cth => self % cth, sth => self % sth, forcing => self % forcing, &
               om => self % spectrum % num_frequencies, pm => self % spectrum % num_directions, &
-              bf1 => self % bf1, bf2 => self % bf2)
+              m => self % snl_bins, frac => self % snl_frac)
 
     do i = self % grid % istart, self % grid % iend
 
@@ -145,8 +145,9 @@ contains
                        * (sds(o,p,i) * cothkd(o,i) + self % sdt(o,i) + self % sdv(o,i)) &
                        * sth(p) * invcp0(o,i)
         end do
-        do o = 3, om
-          snl_cp(o) = snl(o,p,i) * (bf1 * cp0(o,i) * invcp0(o-1,i) + bf2 * cp0(o,i) * invcp0(o-2,i))
+        do o = m + 2, om
+          snl_cp(o) = snl(o,p,i) * ((1 - frac) * cp0(o,i) * invcp0(o-m,i) &
+                                  + frac * cp0(o,i) * invcp0(o-m-1,i))
           taux_util(o) = taux_util(o) - snl_cp(o) * cth(p) * invcp0(o,i)
           tauy_util(o) = tauy_util(o) - snl_cp(o) * sth(p) * invcp0(o,i)
         end do
@@ -172,9 +173,9 @@ contains
       taux_util = 0
       tauy_util = 0
       do p = 1, pm
-        do o = 3, self % oc(i)
-          snl_cp(o) = snl(o,p,i) * (bf1 * (1 - cp0(o,i) * invcp0(o-1,i)) &
-                                  + bf2 * (1 - cp0(o,i) * invcp0(o-2,i)))
+        do o = m + 2, self % oc(i)
+          snl_cp(o) = snl(o,p,i) * ((1 - frac) * (1 - cp0(o,i) * invcp0(o-m,i)) &
+                                  + frac * (1 - cp0(o,i) * invcp0(o-m-1,i)))
           taux_util(o) = taux_util(o) + snl_cp(o) * cth(p) * invcp0(o,i)
           tauy_util(o) = tauy_util(o) + snl_cp(o) * sth(p) * invcp0(o,i)
         end do
@@ -188,8 +189,9 @@ contains
       do p = 1, pm
         taux_util = taux_util + e(:,p,i) * (sds(:,p,i) * cothkd(:,i)) * cth(p)
         tauy_util = tauy_util + e(:,p,i) * (sds(:,p,i) * cothkd(:,i)) * sth(p)
-        do o = 3, om
-          snl_cp(o) = snl(o,p,i) * (bf1 * cp0(o,i) * invcp0(o-1,i) + bf2 * cp0(o,i) * invcp0(o-2,i))
+        do o = m + 2, om
+          snl_cp(o) = snl(o,p,i) * ((1 - frac) * cp0(o,i) * invcp0(o-m,i) &
+                                  + frac * cp0(o,i) * invcp0(o-m-1,i))
           taux_util(o) = taux_util(o) - snl_cp(o) * cth(p)
           tauy_util(o) = tauy_util(o) - snl_cp(o) * sth(p)
         end do

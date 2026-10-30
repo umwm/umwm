@@ -18,6 +18,7 @@ program test_config
     test(invalid_grid_size), &
     test(invalid_pm), &
     test(invalid_frequency_ordering), &
+    test(invalid_frequency_range), &
     test(reference_time_read), &
     test(invalid_reference_time), &
     test(invalid_output_interval), &
@@ -94,6 +95,18 @@ contains
     res = test('invalid_frequency_ordering', &
       .not. config % validate(stop_on_error=.false., rank=1))
   end function invalid_frequency_ordering
+
+
+  function invalid_frequency_range() result(res)
+    ! The frequency range must be wider than the shift of the downshifting.
+    type(test_result) :: res
+    type(config_type) :: config
+
+    config = valid_config()
+    config % fmin = 0.9 * config % fmax
+    res = test('invalid_frequency_range', &
+      .not. config % validate(stop_on_error=.false., rank=1))
+  end function invalid_frequency_range
 
 
   function reference_time_read() result(res)

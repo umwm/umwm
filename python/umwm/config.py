@@ -13,6 +13,7 @@ from __future__ import annotations
 import copy
 import dataclasses
 import json
+import math
 from collections import OrderedDict
 from dataclasses import dataclass, field, fields
 from datetime import datetime, timedelta
@@ -45,6 +46,9 @@ TIME_FORMAT = "%Y-%m-%d %H:%M:%S"
 
 OUTPUT_INTERVALS = (-1, 0, 1, 2, 3, 4, 6, 8, 12, 24)
 """Allowed values of the output intervals in hours; -1 means every global time step."""
+
+SNL_SHIFT = 0.1553463
+"""Shift of the nonlinear downshifting in ln(f), ``snl_shift`` of the Fortran source."""
 
 
 class ConfigError(ValueError):
@@ -447,6 +451,8 @@ class Config:
             errors.append("fmin, fmax and fprog must be > 0")
         if domain.fmin >= domain.fmax:
             errors.append("fmin must be < fmax")
+        elif domain.fmin > 0 and math.log(domain.fmax / domain.fmin) <= SNL_SHIFT:
+            errors.append("fmax / fmin must be > exp(snl_shift) = 1.168")
         if domain.dtg <= 0:
             errors.append("dtg must be > 0")
         for name in ("starttimestr", "stoptimestr", "reftimestr"):

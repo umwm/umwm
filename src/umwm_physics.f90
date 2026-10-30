@@ -3,7 +3,7 @@ module umwm_physics
   ! elemental functions evaluate one spectral bin, for the column routines
   ! and for the GPU kernels.
 
-  use umwm_source_functions, only: power
+  use umwm_source_functions, only: power, snl_gain
 
   implicit none
 
@@ -12,15 +12,23 @@ module umwm_physics
 
 contains
 
-  pure real function max_source_rate(nf, nd, oc, ssin, sds, cothkd, snl_arg, sbf, sdt, sdv, sice) &
-    result(res)
+  pure real function max_source_rate(nf, nd, oc, ssin, sds, cothkd, kdk, snl_fac, snl_bins, &
+                                     snl_frac, sbf, sdt, sdv, sice) result(res)
     ! Largest magnitude of the exponential growth/decay rate in the
-    ! prognostic range, which limits the source integration time step.
-    ! The breaking dissipation sds excludes the plunging breaker factor cothkd.
-    integer, intent(in) :: nf, nd, oc
+    ! prognostic range, which limits the source integration time step. The
+    ! breaking dissipation sds excludes the plunging breaker factor cothkd.
+    ! The breaking rate is reduced by the downshifting into the bin, from
+    ! bins of the same e sds (see snl_d12), which limits the time step for
+    ! the explicit downshifting.
+    integer, intent(in) :: nf, nd, oc, snl_bins
     real, intent(in) :: ssin(nf,nd), sds(nf,nd)
-    real, intent(in) :: cothkd(nf), snl_arg(nf), sbf(nf), sdt(nf), sdv(nf), sice(nf)
+    real, intent(in) :: cothkd(nf), kdk(nf), snl_fac, snl_frac, sbf(nf), sdt(nf), sdv(nf), sice(nf)
+    real :: snl_arg(oc)
     integer :: o, p
+
+    do o = 1, oc
+      snl_arg(o) = 1 - snl_gain(kdk(o), kdk(o+snl_bins), kdk(o+snl_bins+1), snl_fac, snl_frac)
+    end do
 
     res = 0
     do p = 1, nd

@@ -1,6 +1,7 @@
 module umwm_config
 
   use umwm_constants, only: rk
+  use umwm_source_functions, only: snl_shift
 
   implicit none
 
@@ -353,9 +354,14 @@ contains
       call diagnostic('error', &
         'bad value in main.nml: fmin, fmax and fprog must be > 0', ok, rank_value)
 
-    if (self%fmin >= self%fmax) &
+    if (self%fmin >= self%fmax) then
       call diagnostic('error', &
         'bad value in main.nml: fmin must be < fmax', ok, rank_value)
+    else if (self%fmin > 0 .and. log(self%fmax / self%fmin) <= snl_shift) then
+      ! the downshifting into the prognostic range reads the bins snl_shift above it
+      call diagnostic('error', &
+        'bad value in main.nml: fmax / fmin must be > exp(snl_shift) = 1.168', ok, rank_value)
+    end if
 
     if (self%fprog > self%fmax) then
       call diagnostic('warning', &
