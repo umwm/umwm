@@ -1478,9 +1478,10 @@ evaluated by the same direction sums when the modulation is on.
 
 The modulation is not implemented in the GPU build, which stops when it is
 on. Its cost is the direction sums of the moments and the evaluation of
-the input and the breaking factor for each bin: about 50 % of the time
-step when all its parts are on, 5 % for the dispersion and transport
-alone.
+the input and the breaking factor for each bin: 40 to 60 % more run time
+on the example cases when all its parts are on, of which the
+phase-averaged input is the largest part, and 3 to 15 % for the
+dispersion and transport alone.
 
 ## Integrated Diagnostics
 
