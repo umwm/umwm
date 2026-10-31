@@ -121,6 +121,9 @@ def test_spectrum_points_validation():
     ({"forcing_constant.fice_lth": 0.9}, "fice_lth"),
     ({"stokes.depths": [-1.0]}, "Stokes depth"),
     ({"physics.fcut_fac": 0.0}, "fcut_fac"),
+    ({"physics.mod_eps_max": 0.0}, "mod_eps_max"),
+    ({"physics.mod_phases": 2}, "mod_phases"),
+    ({"physics.mod_kratio": 0.5}, "mod_kratio"),
 ])
 def test_validate_errors(change, message):
     config = Config().update(change)

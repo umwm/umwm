@@ -389,6 +389,12 @@ contains
       call field('dcp', 'dominant phase speed', 'm/s', self % dcp)
       call field('dcg', 'dominant group speed', 'm/s', self % dcg)
       call field('physics_time_step', 'Physics time step', 's', self % physics_time_step)
+      call field('mod_eps', 'steepness of the equivalent long wave modulating the shortest ' &
+                 // 'prognostic waves', 'non-dimensional', self % mod_eps)
+      call field('mod_us', 'stokes drift of the waves longer than the shortest prognostic ' &
+                 // 'waves, x-component', 'm/s', self % mod_us)
+      call field('mod_vs', 'stokes drift of the waves longer than the shortest prognostic ' &
+                 // 'waves, y-component', 'm/s', self % mod_vs)
       end associate
     end subroutine fields
 

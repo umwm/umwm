@@ -17,6 +17,13 @@ It has been used to simulate:
 UMWM was initially designed with a primary goal of accurate and conservative
 momentum coupling with atmosphere and ocean circulation models.
 That design goal remains a priority.
+Optionally, UMWM represents the hydrodynamic modulation of short waves by
+the longer waves of the spectrum, after
+[Curcic (2025)](https://doi.org/10.1017/jfm.2025.10376): the modulated
+group speed and the transport by the Stokes drift of the longer waves, the
+wind input averaged over the long-wave phase, and the breaking dissipation
+enhanced by the modulated steepness (`modulation` in the `PHYSICS`
+namelist; see [DOCS.md](DOCS.md)).
 Further, UMWM takes a highly simplified approach to nonlinear downshifting
 of wave energy; this allows it to run signinficantly faster than other
 spectral wave models.

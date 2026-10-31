@@ -15,6 +15,9 @@ module umwm_domain
   use umwm_forcing, only: forcing_type, min_wind_speed
   use umwm_grid, only: grid_type
   use umwm_io, only: output_grid
+  use umwm_modulation, only: breaking_modulation, longwave_moments, modulated_group_speed, &
+                             modulation_fit, modulation_steepness, num_coef, num_moments, &
+                             num_sums, separation_bins, sin_mod
 #ifdef MPI
   use umwm_mpi, only: exchange_halo
 #endif
@@ -63,6 +66,7 @@ module umwm_domain
     ! spectral coordinates (o) and (p)
     real, allocatable :: f(:), th(:), cth(:), sth(:)
     real, allocatable :: cth2(:), sth2(:) ! cos(2 th), sin(2 th)
+    real, allocatable :: cth3(:), sth3(:), cth4(:), sth4(:) ! cos(3 th), ..., sin(4 th)
 
     ! wave kinematics and derived factors (o,i)
     real, allocatable :: k(:,:), cp0(:,:), cg0(:,:) ! cp0 and cg0 include halo
@@ -71,6 +75,16 @@ module umwm_domain
     real, allocatable :: fkovg(:,:), cothkd(:,:), logl2overz(:,:), psiml2(:,:)
     real, allocatable :: sbf(:,:), sdv(:,:)
     real, allocatable :: cgdlncp_dx(:,:), cgdlncp_dy(:,:) ! (cg/cp) grad(cp), for refraction
+
+    ! modulation of short waves by longer waves (see umwm_modulation)
+    integer :: mod_sep = 1 ! bins by which the longer waves are at least below a bin
+    real :: mod_xmax = 1   ! largest squared steepness of the equivalent long wave
+    real :: mod_coef_c(num_coef) = 0, mod_coef_ks(num_coef) = 0, mod_coef_ds(num_coef) = 0 ! phase means
+    real, allocatable :: worb(:,:), wstk(:,:)   ! (o,i) weights of the orbital velocity and Stokes drift
+    real, allocatable :: mod_moments(:,:,:)     ! (o,num_moments,i) moments of the longer waves
+    real, allocatable :: cgm(:,:)               ! (o,i) modulated group speed; includes halo
+    real, allocatable :: usl(:,:), vsl(:,:)     ! (o,i) Stokes drift of the longer waves; includes halo
+    real, allocatable :: mod_eps(:), mod_us(:), mod_vs(:) ! (i) at the highest prognostic bin
 
     ! wave spectrum (o,p,i); ef is the spectrum forward in time
     real, allocatable :: e(:,:,:), ef(:,:,:)
@@ -230,7 +244,8 @@ contains
               iis => self % grid % iistart - 1, iie => self % grid % iiend)
 
     allocate(self % f(om), self % th(pm), self % cth(pm), self % sth(pm), &
-             self % cth2(pm), self % sth2(pm))
+             self % cth2(pm), self % sth2(pm), self % cth3(pm), self % sth3(pm), &
+             self % cth4(pm), self % sth4(pm))
 
     allocate(self % k(om,is:ie), self % invcp0(om,is:ie), self % kdk(om,is:ie), &
              self % k3dk(om,is:ie), self % k4(om,is:ie), self % oneoverk4(om,is:ie), &
@@ -240,7 +255,11 @@ contains
              self % psiml2(om,is:ie), self % sdt(om,is:ie), self % sice(om,is:ie), &
              self % mss_moments(om,3,is:ie), source=0.)
     allocate(self % cp0(om,iis:iie), self % cg0(om,iis:iie), self % kovcg(om,iis:iie), &
-             source=tiny(1.))
+             self % cgm(om,iis:iie), source=tiny(1.))
+    allocate(self % usl(om,iis:iie), self % vsl(om,iis:iie), source=0.)
+    allocate(self % worb(om,is:ie), self % wstk(om,is:ie), source=0.)
+    if (self % config % modulation) &
+      allocate(self % mod_moments(om,num_moments,is:ie), source=0.)
 
     ! the spectral fields are filled by a loop that runs on the GPU in the GPU
     ! build, which places their memory there
@@ -275,7 +294,8 @@ contains
              self % dwl(is:ie), self % dwp(is:ie), self % dcp0(is:ie), &
              self % dcp(is:ie), self % dcg0(is:ie), self % dcg(is:ie), &
              self % momx(is:ie), self % momy(is:ie), self % cgmxx(is:ie), &
-             self % cgmxy(is:ie), self % cgmyy(is:ie), source=0.)
+             self % cgmxy(is:ie), self % cgmyy(is:ie), &
+             self % mod_eps(is:ie), self % mod_us(is:ie), self % mod_vs(is:ie), source=0.)
 
     end associate
 
@@ -321,6 +341,10 @@ contains
     self % sth = sin(self % th)
     self % cth2 = cos(2 * self % th)
     self % sth2 = sin(2 * self % th)
+    self % cth3 = cos(3 * self % th)
+    self % sth3 = sin(3 * self % th)
+    self % cth4 = cos(4 * self % th)
+    self % sth4 = sin(4 * self % th)
 
     self % dthg = self % dth * config % g
     self % twopisds_fac = twopi * config % sds_fac
@@ -341,6 +365,21 @@ contains
     ! the downshifting shift in bins, whole and fraction:
     self % snl_bins = int(snl_shift / dlnf)
     self % snl_frac = snl_shift / dlnf - self % snl_bins
+
+    ! the modulation by longer waves: their separation in bins, and the
+    ! tables of the phase means of the modulation over the steepness
+    if (config % modulation) then
+#ifdef _OPENACC
+      error stop 'umwm: the modulation by longer waves (modulation = .true.) ' &
+        // 'is not implemented in the GPU build'
+#endif
+      self % mod_sep = separation_bins(config % mod_kratio, dlnf)
+      self % mod_xmax = config % mod_eps_max**2
+      call modulation_fit(config % mod_eps_max, config % mod_phases, config % sds_power, &
+                          self % mod_coef_c, self % mod_coef_ks, self % mod_coef_ds)
+      if (nproc == 0) write(*,'(a,i0,a)') 'umwm: modulation: longer waves at least ', &
+        self % mod_sep, ' bins below each bin'
+    end if
 
     ! wave numbers, phase speeds, and group velocities:
     if (nproc == 0) write(*,'(a)') 'umwm: dispersion: solving for dispersion relationship;'
@@ -394,6 +433,22 @@ contains
       end do
     end do
 
+    ! weights of the moments of the modulation by longer waves: the variance
+    ! of the surface orbital velocity per e, sigma^2 coth^2(kd) k dk, and the
+    ! surface Stokes drift per e, sigma k^2 cosh(2kd) / sinh^2(kd) dk; with
+    ! kd limited, deep water where the hyperbolic functions would overflow
+    do i = is, ie
+      do o = 1, om
+        self % worb(o,i) = (twopi * f(o))**2 * (cosh(kd(o,i)) / sinh(kd(o,i)))**2 * self % kdk(o,i)
+        if (kd(o,i) < 20.) then
+          self % wstk(o,i) = twopi * f(o) * k(o,i) * cosh(2 * kd(o,i)) / sinh(kd(o,i))**2 &
+                           * self % kdk(o,i)
+        else
+          self % wstk(o,i) = twopi * f(o) * k(o,i) * 2 * self % kdk(o,i)
+        end if
+      end do
+    end do
+
     ! half-wavelength over z, limited to 10 m for l/2 > 10 m:
     self % logl2overz = log(l2 / config % z)
     where (l2 > 20.) self % logl2overz = log(20. / config % z)
@@ -424,6 +479,13 @@ contains
         self % kovcg(o,i) = twopi * f(o) / (cp0(o,i) * cg0(o,i))
       end do
     end do
+
+    ! the group speed of the propagation, modulated by the longer waves at
+    ! each time step when the modulation is on, and the Stokes drift of the
+    ! longer waves, zero on land
+    self % cgm = cg0
+    self % usl = 0
+    self % vsl = 0
 
     ! phase speed gradients at fixed frequency, times cg/cp, for the
     ! bottom-induced refraction, over the sea neighbors of each cell:
@@ -709,6 +771,16 @@ contains
 
     call self % sources()
 
+#ifdef MPI
+    ! the modulated group speed and the Stokes drift of the longer waves of
+    ! the neighbors, for the propagation
+    if (config % modulation) then
+      call exchange_halo(self % cgm, self % spectrum % num_frequencies, grid, config % isglobal)
+      call exchange_halo(self % usl, self % spectrum % num_frequencies, grid, config % isglobal)
+      call exchange_halo(self % vsl, self % spectrum % num_frequencies, grid, config % isglobal)
+    end if
+#endif
+
     ! dynamic time step and in-step model time:
     self % dts = min(minval(self % physics_time_step), self % dtamin, config % dtg - self % sumt)
 #ifdef MPI
@@ -778,6 +850,8 @@ contains
     ! largest stable source time step at each cell.
     class(domain_type), intent(inout) :: self
     real :: ssin(self % spectrum % num_frequencies, self % spectrum % num_directions)
+    real :: fds(self % spectrum % num_frequencies, self % spectrum % num_directions)
+    real :: esum(self % spectrum % num_frequencies, num_sums)
     real :: wspd, fcutoff
     integer :: i, o
 
@@ -798,17 +872,58 @@ contains
       end do
 
       self % shelt(i) = sheltering_coare35(wspd)
-      call self % wind_input(i, self % oc(i), ssin)
+
+      ! the modulation by longer waves: their moments, with those of the
+      ! mean-squared slope, the modulated group speed of the propagation,
+      ! their Stokes drift, and the enhancement of the breaking dissipation
+      if (config % modulation) then
+        call longwave_moments(om, pm, self % mod_sep, self % e(:,:,i), self % k3dk(:,i), &
+                              self % worb(:,i), self % wstk(:,i), self % cth, self % sth, &
+                              self % cth2, self % sth2, self % cth3, self % sth3, self % cth4, &
+                              self % sth4, self % dth, self % mod_moments(:,:,i), &
+                              self % mss_moments(:,:,i), esum)
+        call modulated_group_speed(om, esum, self % mod_moments(:,:,i), self % mod_coef_c, &
+                                   self % mod_xmax, self % cg0(:,i), self % cgm(:,i))
+        if (config % mod_stokes) then
+          self % usl(:,i) = self % mod_moments(:,9,i)
+          self % vsl(:,i) = self % mod_moments(:,10,i)
+        end if
+        self % mod_eps(i) = modulation_steepness(om, pm, self % oc(i), self % e(:,:,i), &
+                                                 self % mod_moments(:,:,i), self % cth2, &
+                                                 self % sth2, self % cth4, self % sth4)
+        self % mod_us(i) = self % usl(self % oc(i),i)
+        self % mod_vs(i) = self % vsl(self % oc(i),i)
+      end if
+
+      if (config % modulation) then
+        ! the wind input over the whole spectrum, kept for the integration
+        ! and the stress, which do not evaluate it again
+        call self % wind_input(i, om, self % ssin(:,:,i))
+        ssin = self % ssin(:,:,i)
+      else
+        call self % wind_input(i, self % oc(i), ssin)
+      end if
 
       ! breaking dissipation for the range used by the integration, with the
       ! diagnostic bins that the downshifting reads; the rest of the
       ! diagnostic range is evaluated for output only
-      call mss_moments(om, pm, self % e(:,:,i), self % k3dk(:,i), self % cth2, self % sth2, &
-                       self % dth, self % mss_moments(:,:,i))
-      call sds_d12(om, pm, 1, self % oc(i) + self % snl_bins + 1, self % e(:,:,i), &
-                   self % k4(:,i), self % f, self % cth2, self % sth2, config % mss_fac, &
-                   self % twopisds_fac, self % mss_moments(:,:,i), config % sds_power, &
-                   self % sds(:,:,i))
+      if (.not. config % modulation) &
+        call mss_moments(om, pm, self % e(:,:,i), self % k3dk(:,i), self % cth2, self % sth2, &
+                         self % dth, self % mss_moments(:,:,i))
+      if (config % modulation .and. config % mod_sds) then
+        call breaking_modulation(om, pm, 1, self % oc(i) + self % snl_bins + 1, &
+                                 self % mod_moments(:,:,i), self % cth2, self % sth2, &
+                                 self % cth4, self % sth4, self % mod_coef_ds, self % mod_xmax, fds)
+        call sds_d12(om, pm, 1, self % oc(i) + self % snl_bins + 1, self % e(:,:,i), &
+                     self % k4(:,i), self % f, self % cth2, self % sth2, config % mss_fac, &
+                     self % twopisds_fac, self % mss_moments(:,:,i), config % sds_power, &
+                     self % sds(:,:,i), fds)
+      else
+        call sds_d12(om, pm, 1, self % oc(i) + self % snl_bins + 1, self % e(:,:,i), &
+                     self % k4(:,i), self % f, self % cth2, self % sth2, config % mss_fac, &
+                     self % twopisds_fac, self % mss_moments(:,:,i), config % sds_power, &
+                     self % sds(:,:,i))
+      end if
 
       ! dissipation due to turbulence
       self % sdt(:,i) = config % sdt_fac * sqrt(forcing % rhorat(i)) * self % ustar(i) * self % k(:,i)
@@ -847,11 +962,23 @@ contains
 #endif
     cosd = cos(forcing % wdir(i) - self % th)
 
-    call sin_d12(self % spectrum % num_frequencies, self % spectrum % num_directions, &
-                 no, self % oc(i), wind, cosd, self % cp0(:,i), forcing % uc(i), forcing % vc(i), &
-                 self % cth, self % sth, self % shelt(i), self % config % sin_fac, &
-                 self % fieldscale1, self % fieldscale2, &
-                 (1 - forcing % fice(i)) * twopi * forcing % rhorat(i), self % fkovg(:,i), ssin)
+    if (self % config % modulation .and. self % config % mod_sin) then
+      ! averaged over the phase of the longer waves
+      call sin_mod(self % spectrum % num_frequencies, self % spectrum % num_directions, &
+                   no, self % oc(i), wind, cosd, self % cp0(:,i), forcing % uc(i), forcing % vc(i), &
+                   self % cth, self % sth, self % cth2, self % sth2, self % cth3, self % sth3, &
+                   self % cth4, self % sth4, self % shelt(i), self % config % sin_fac, &
+                   self % fieldscale1, self % fieldscale2, &
+                   (1 - forcing % fice(i)) * twopi * forcing % rhorat(i), self % fkovg(:,i), &
+                   self % mod_moments(:,:,i), self % mod_coef_c, self % mod_coef_ks, &
+                   self % mod_xmax, ssin)
+    else
+      call sin_d12(self % spectrum % num_frequencies, self % spectrum % num_directions, &
+                   no, self % oc(i), wind, cosd, self % cp0(:,i), forcing % uc(i), forcing % vc(i), &
+                   self % cth, self % sth, self % shelt(i), self % config % sin_fac, &
+                   self % fieldscale1, self % fieldscale2, &
+                   (1 - forcing % fice(i)) * twopi * forcing % rhorat(i), self % fkovg(:,i), ssin)
+    end if
 
     end associate
 
@@ -866,22 +993,42 @@ contains
     integer, intent(in) :: i
     logical, intent(in) :: store
     real, dimension(self % spectrum % num_frequencies, self % spectrum % num_directions) :: &
-      ssin, snl, sds_coef
+      ssin, snl, sds_coef, fds
 
     associate(config => self % config, &
               om => self % spectrum % num_frequencies, pm => self % spectrum % num_directions)
 
-    call self % wind_input(i, om, ssin)
-    if (store) &
-      call sds_d12(om, pm, self % oc(i) + self % snl_bins + 2, om, self % e(:,:,i), &
-                   self % k4(:,i), self % f, self % cth2, self % sth2, config % mss_fac, &
-                   self % twopisds_fac, self % mss_moments(:,:,i), config % sds_power, &
-                   self % sds(:,:,i))
+    if (config % modulation) then
+      ssin = self % ssin(:,:,i) ! evaluated by sources
+    else
+      call self % wind_input(i, om, ssin)
+    end if
+    if (config % modulation .and. config % mod_sds) then
+      ! the breaking dissipation enhanced by the modulated steepness
+      call breaking_modulation(om, pm, self % oc(i) + 1, om, self % mod_moments(:,:,i), &
+                               self % cth2, self % sth2, self % cth4, self % sth4, &
+                               self % mod_coef_ds, self % mod_xmax, fds)
+      if (store) &
+        call sds_d12(om, pm, self % oc(i) + self % snl_bins + 2, om, self % e(:,:,i), &
+                     self % k4(:,i), self % f, self % cth2, self % sth2, config % mss_fac, &
+                     self % twopisds_fac, self % mss_moments(:,:,i), config % sds_power, &
+                     self % sds(:,:,i), fds)
+      call sds_coefficient(om, pm, self % oc(i) + 1, om, self % f, self % cth2, self % sth2, &
+                           config % mss_fac, self % twopisds_fac, self % mss_moments(:,:,i), &
+                           sds_coef, fds)
+    else
+      if (store) &
+        call sds_d12(om, pm, self % oc(i) + self % snl_bins + 2, om, self % e(:,:,i), &
+                     self % k4(:,i), self % f, self % cth2, self % sth2, config % mss_fac, &
+                     self % twopisds_fac, self % mss_moments(:,:,i), config % sds_power, &
+                     self % sds(:,:,i))
+      ! dissipation coefficient for the diagnostic range
+      call sds_coefficient(om, pm, self % oc(i) + 1, om, self % f, self % cth2, self % sth2, &
+                           config % mss_fac, self % twopisds_fac, self % mss_moments(:,:,i), &
+                           sds_coef)
+    end if
     call snl_d12(om, pm, self % oc(i), self % e(:,:,i), self % kdk(:,i), config % snl_fac, &
                  self % snl_bins, self % snl_frac, self % sds(:,:,i), snl)
-    ! dissipation coefficient for the diagnostic range
-    call sds_coefficient(om, pm, self % oc(i) + 1, om, self % f, self % cth2, self % sth2, &
-                         config % mss_fac, self % twopisds_fac, self % mss_moments(:,:,i), sds_coef)
     call integrate_sources(om, pm, self % oc(i), self % dts, self % e(:,:,i), ssin, &
                            self % sds(:,:,i), snl, sds_coef, self % sbf(:,i), self % sdt(:,i), &
                            self % sdv(:,i), self % sice(:,i), self % cothkd(:,i), &
@@ -910,23 +1057,43 @@ contains
 
     associate(config => self % config, grid => self % grid, &
               om => self % spectrum % num_frequencies, pm => self % spectrum % num_directions, &
-              e => self % e, ef => self % ef, cg0 => self % cg0, kovcg => self % kovcg, &
+              e => self % e, ef => self % ef, cg0 => self % cg0, cgm => self % cgm, &
+              kovcg => self % kovcg, usl => self % usl, vsl => self % vsl, &
               uc => self % forcing % uc, vc => self % forcing % vc, &
               ie => self % grid % ie(i), iw => self % grid % iw(i), &
               in => self % grid % in(i), is => self % grid % is(i))
 
     if (self % forcing % fice(i) > config % fice_uth) then
       ef(1:self % oc(i),:,i) = 0 ! no propagation through ice
+    else if (config % modulation .and. config % mod_stokes) then
+
+      ! at the group speed modulated by the longer waves, and transported by
+      ! their Stokes drift
+      call propagation(om, pm, self % oc(i), e(:,:,i), e(:,:,ie), e(:,:,iw), e(:,:,in), &
+                       e(:,:,is), cgm(:,i), cgm(:,ie), cgm(:,iw), cgm(:,in), cgm(:,is), &
+                       kovcg(:,i), kovcg(:,ie), kovcg(:,iw), kovcg(:,in), kovcg(:,is), &
+                       grid % cth_curv(:,i), grid % sth_curv(:,i), grid % dxn(i), grid % dxs(i), &
+                       grid % dye(i), grid % dyw(i), currents, &
+                       uc(i) + uc(grid % iie(i)), uc(i) + uc(grid % iiw(i)), &
+                       vc(i) + vc(grid % iin(i)), vc(i) + vc(grid % iis(i)), &
+                       0.25 * self % dts * grid % oneovar(i), ef(:,:,i), &
+                       usl(:,i) + usl(:,ie), usl(:,i) + usl(:,iw), &
+                       vsl(:,i) + vsl(:,in), vsl(:,i) + vsl(:,is))
+
     else
 
       call propagation(om, pm, self % oc(i), e(:,:,i), e(:,:,ie), e(:,:,iw), e(:,:,in), &
-                       e(:,:,is), cg0(:,i), cg0(:,ie), cg0(:,iw), cg0(:,in), cg0(:,is), &
+                       e(:,:,is), cgm(:,i), cgm(:,ie), cgm(:,iw), cgm(:,in), cgm(:,is), &
                        kovcg(:,i), kovcg(:,ie), kovcg(:,iw), kovcg(:,in), kovcg(:,is), &
                        grid % cth_curv(:,i), grid % sth_curv(:,i), grid % dxn(i), grid % dxs(i), &
                        grid % dye(i), grid % dyw(i), currents, &
                        uc(i) + uc(grid % iie(i)), uc(i) + uc(grid % iiw(i)), &
                        vc(i) + vc(grid % iin(i)), vc(i) + vc(grid % iis(i)), &
                        0.25 * self % dts * grid % oneovar(i), ef(:,:,i))
+
+    end if
+
+    if (self % forcing % fice(i) <= config % fice_uth) then
 
 #ifdef ESMF
       ! in coupled mode, refraction and the frequency shift act on the
@@ -1044,7 +1211,11 @@ contains
               om => self % spectrum % num_frequencies, oc => self % oc(i))
 
     ! form drag from atmosphere (positive into waves)
-    call self % wind_input(i, om, ssin)
+    if (config % modulation) then
+      ssin = self % ssin(:,:,i) ! evaluated by sources
+    else
+      call self % wind_input(i, om, ssin)
+    end if
     call directional_integral(om, self % spectrum % num_directions, self % ef(:,:,i), &
                               ssin, self % cth, self % sth, taux_util, tauy_util)
     taux_util = taux_util * self % invcp0(:,i)

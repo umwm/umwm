@@ -103,6 +103,13 @@ class PhysicsConfig:
     sbf_fac: float = field(default=0.003, metadata=_doc("Bottom friction coefficient", "m/s"))
     sbp_fac: float = field(default=0.003, metadata=_doc("Bottom percolation coefficient", "m/s"))
     fcut_fac: float = field(default=0.53, metadata=_doc("Prognostic cutoff frequency factor, fc = fcut_fac*g/U"))
+    modulation: bool = field(default=False, metadata=_doc("Modulation of short waves by longer waves (Curcic 2025)"))
+    mod_eps_max: float = field(default=0.3, metadata=_doc("Largest steepness of the equivalent long wave"))
+    mod_phases: int = field(default=16, metadata=_doc("Long-wave phases of the phase means"))
+    mod_kratio: float = field(default=4.0, metadata=_doc("Smallest wavenumber ratio of the short to the longer waves"))
+    mod_stokes: bool = field(default=True, metadata=_doc("Transport of the short waves by the Stokes drift of the longer waves"))
+    mod_sin: bool = field(default=True, metadata=_doc("Wind input averaged over the long-wave phase"))
+    mod_sds: bool = field(default=True, metadata=_doc("Breaking dissipation enhanced by the modulated steepness"))
 
 
 @dataclass
@@ -205,7 +212,11 @@ GROUPS = OrderedDict(
 )
 """Namelist group names of ``main.nml`` in file order and their dataclasses."""
 
-MODEL_DEFAULTS = frozenset({"domain.reftimestr", "physics.fcut_fac", "forcing.steady"})
+MODEL_DEFAULTS = frozenset({
+    "domain.reftimestr", "physics.fcut_fac", "forcing.steady",
+    "physics.modulation", "physics.mod_eps_max", "physics.mod_phases", "physics.mod_kratio",
+    "physics.mod_stokes", "physics.mod_sin", "physics.mod_sds",
+})
 """Namelist variables that a ``main.nml`` file may leave out, which the model
 defaults to the same values as the package; it defaults most of the others
 to zero."""
@@ -473,6 +484,12 @@ class Config:
             errors.append("dmin must be > 0")
         if physics.fcut_fac <= 0:
             errors.append("fcut_fac must be > 0")
+        if not 0 < physics.mod_eps_max <= 1:
+            errors.append("mod_eps_max must be in (0, 1]")
+        if physics.mod_phases < 4:
+            errors.append("mod_phases must be >= 4")
+        if physics.mod_kratio < 1:
+            errors.append("mod_kratio must be >= 1")
         if not grid.gridfromfile and (grid.delx <= 0 or grid.dely <= 0):
             errors.append("delx and dely must be > 0")
         if not grid.topofromfile and grid.dpt <= 0:

@@ -33,6 +33,13 @@
   sbf_fac      = 0.003   ! Bottom friction coefficient [m/s]
   sbp_fac      = 0.003   ! Bottom percolation coefficient [m/s]
   fcut_fac     = 0.53    ! Prognostic cutoff frequency factor, fc = fcut_fac*g/U
+  modulation   = .false. ! Modulation of short waves by longer waves (Curcic 2025)
+  mod_eps_max  = 0.3     ! Largest steepness of the equivalent long wave
+  mod_phases   = 16      ! Long-wave phases of the phase means
+  mod_kratio   = 4.      ! Smallest wavenumber ratio of the short to the longer waves
+  mod_stokes   = .true.  ! Transport of the short waves by the Stokes drift of the longer waves
+  mod_sin      = .true.  ! Wind input averaged over the long-wave phase
+  mod_sds      = .true.  ! Breaking dissipation enhanced by the modulated steepness
 /
 &GRID
   gridFromFile  = .F.   ! Set to .T. if lon/lat fields are input from file

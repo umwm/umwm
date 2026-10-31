@@ -69,6 +69,9 @@ GRID_OUTPUT_FIELDS = OrderedDict([
     ("dcp", ("dominant phase speed", "m/s")),
     ("dcg", ("dominant group speed", "m/s")),
     ("physics_time_step", ("Physics time step", "s")),
+    ("mod_eps", ("steepness of the equivalent long wave modulating the shortest prognostic waves", "non-dimensional")),
+    ("mod_us", ("stokes drift of the waves longer than the shortest prognostic waves, x-component", "m/s")),
+    ("mod_vs", ("stokes drift of the waves longer than the shortest prognostic waves, y-component", "m/s")),
 ])
 """Gridded output fields, one value per sea cell, gathered to the grid by :meth:`umwm.Domain.grid_field`."""
 
@@ -109,6 +112,10 @@ KINEMATICS_FIELDS = OrderedDict([
     ("k3dk", ("spectral weight k^3 dk", "rad^4/m^4")),
     ("cothkd", ("plunging breaker factor coth(0.2 k d)", "non-dimensional")),
     ("oc", ("highest prognostic frequency bin", "index")),
+    ("cgm", ("group speed modulated by the longer waves", "m/s")),
+    ("usl", ("stokes drift of the longer waves, x-component", "m/s")),
+    ("vsl", ("stokes drift of the longer waves, y-component", "m/s")),
+    ("mod_moments", ("moments of the longer-wave spectrum of the modulation", "mixed")),
 ])
 """Spectral coordinates and wave kinematics."""
 

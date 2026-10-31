@@ -113,12 +113,15 @@ contains
 
 
   pure subroutine sds_coefficient(nf, nd, o1, o2, f, cth2, sth2, mss_fac, twopisds_fac, &
-                                  moments, sds_coef)
+                                  moments, sds_coef, fds)
     ! Wave breaking dissipation coefficient for frequencies o1:o2,
-    ! enhanced by the mean-squared slope of longer waves if mss_fac > 0.
+    ! enhanced by the mean-squared slope of longer waves if mss_fac > 0, and
+    ! by the factor fds of the modulation of the short-wave steepness by the
+    ! longer waves if present (see umwm_modulation).
     integer, intent(in) :: nf, nd, o1, o2
     real, intent(in) :: f(nf), cth2(nd), sth2(nd), mss_fac, twopisds_fac, moments(nf,3)
     real, intent(inout) :: sds_coef(nf,nd)
+    real, intent(in), optional :: fds(nf,nd)
     real :: fac
     integer :: o, p
     fac = max(mss_fac, 0.)
@@ -128,6 +131,13 @@ contains
                                             moments(o,1), moments(o,2), moments(o,3))
       end do
     end do
+    if (present(fds)) then
+      do p = 1, nd
+        do o = o1, o2
+          sds_coef(o,p) = sds_coef(o,p) * fds(o,p)
+        end do
+      end do
+    end if
   end subroutine sds_coefficient
 
 
@@ -142,14 +152,17 @@ contains
 
 
   pure subroutine sds_d12(nf, nd, o1, o2, e, k4, f, cth2, sth2, mss_fac, twopisds_fac, &
-                          moments, sds_power, sds)
+                          moments, sds_power, sds, fds)
     ! Wave breaking dissipation for frequencies o1:o2, proportional to a
-    ! power of the saturation spectrum. The adjustment for plunging breakers,
-    ! coth(0.2 kd), is not included and is applied where sds is used.
+    ! power of the saturation spectrum, enhanced by the factor fds of the
+    ! modulation by longer waves if present. The adjustment for plunging
+    ! breakers, coth(0.2 kd), is not included and is applied where sds is
+    ! used.
     integer, intent(in) :: nf, nd, o1, o2
     real, intent(in) :: e(nf,nd), k4(nf), f(nf), cth2(nd), sth2(nd)
     real, intent(in) :: mss_fac, twopisds_fac, moments(nf,3), sds_power
     real, intent(inout) :: sds(nf,nd)
+    real, intent(in), optional :: fds(nf,nd)
     real :: saturation(o1:o2,nd), sds_coef(nf,nd)
     integer :: p
 
@@ -158,7 +171,13 @@ contains
       saturation(:,p) = e(o1:o2,p) * k4(o1:o2)
     end do
     call power(size(saturation), saturation, sds_power)
-    call sds_coefficient(nf, nd, o1, o2, f, cth2, sth2, mss_fac, twopisds_fac, moments, sds_coef)
+    if (present(fds)) then
+      call sds_coefficient(nf, nd, o1, o2, f, cth2, sth2, mss_fac, twopisds_fac, moments, &
+                           sds_coef, fds)
+    else
+      call sds_coefficient(nf, nd, o1, o2, f, cth2, sth2, mss_fac, twopisds_fac, moments, &
+                           sds_coef)
+    end if
     do p = 1, nd
       sds(o1:o2,p) = sds_coef(o1:o2,p) * saturation(:,p)
     end do

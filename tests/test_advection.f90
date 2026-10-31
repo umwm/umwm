@@ -30,7 +30,8 @@ program test_advection
     test(frequency_shift_conserves_action_and_shifts_by_the_whole_step), &
     test(frequency_shift_exchanges_action_with_the_diagnostic_tail), &
     test(propagation_shoals_by_linear_theory), &
-    test(action_flux_is_conserved_on_opposing_current) &
+    test(action_flux_is_conserved_on_opposing_current), &
+    test(propagation_transports_action_at_stokes_drift) &
   ])
 #ifdef MPI
   call env_stop()
@@ -381,6 +382,53 @@ contains
       'test_advection: variance ratio, expected, at fixed frequency: ', ratio, expected, &
       sum(cg * e(:,1,0) * kovcg * sigma) / sum((cg + u(i)) * e(:,1,0) * kovcg * sigma)
   end function action_flux_is_conserved_on_opposing_current
+
+
+  function propagation_transports_action_at_stokes_drift() result(res)
+    ! A pulse of action of each of three frequencies over deep water, along
+    ! x, with the Stokes drift of the longer waves of each frequency and a
+    ! uniform current, travels at cg + u_s + u: the upstream scheme moves
+    ! the centroid of a conserved quantity at exactly the advection speed.
+    type(test_result) :: res
+    integer, parameter :: n = 400, nsteps = 100
+    real, parameter :: dx = 1000, u = 0.4
+    real, parameter :: us(nf) = [0.6, 0.3, 0.1]
+    real :: e(nf,1,0:n+1), ef(nf,1,0:n+1), cg(nf), kovcg(nf), zero(nf)
+    real :: sigma, k, dt, centroid0(nf), centroid(nf), total0(nf), total(nf), worst
+    integer :: i, o, step
+    do o = 1, nf
+      sigma = twopi * 0.1 * 2**(o - 1)
+      k = sigma**2 / 9.81
+      cg(o) = 0.5 * sigma / k
+      kovcg(o) = k / cg(o)
+    end do
+    zero = 0
+    e = 0
+    e(:,1,48:52) = 1
+    dt = 0.5 * dx / (maxval(cg) + maxval(us) + u)
+    do step = 1, nsteps
+      ef = e
+      do i = 1, n
+        call propagation(nf, 1, nf, e(:,:,i), e(:,:,i+1), e(:,:,i-1), e(:,:,i), e(:,:,i), &
+                         cg, cg, cg, cg, cg, kovcg, kovcg, kovcg, kovcg, kovcg, cth_x, sth_x, &
+                         dx, dx, dx, dx, .true., 2 * u, 2 * u, 0., 0., 0.25 * dt / dx**2, &
+                         ef(:,:,i), 2 * us, 2 * us, zero, zero)
+      end do
+      e(:,:,1:n) = ef(:,:,1:n)
+    end do
+    worst = 0
+    do o = 1, nf
+      total0(o) = 5
+      centroid0(o) = 50
+      total(o) = sum(e(o,1,1:n))
+      centroid(o) = sum([(i * e(o,1,i), i = 1, n)]) / total(o)
+      worst = max(worst, abs(total(o) / total0(o) - 1), &
+                  abs((centroid(o) - centroid0(o)) * dx / (nsteps * dt) / (cg(o) + us(o) + u) - 1))
+    end do
+    res = test('propagation_transports_action_at_stokes_drift', worst < 1e-4 .and. all(e >= 0))
+    if (.not. res % ok) write(stderr, '(a,es12.4)') &
+      'test_advection: worst relative error of the action and its speed: ', worst
+  end function propagation_transports_action_at_stokes_drift
 
 
   subroutine directions(cth, sth)

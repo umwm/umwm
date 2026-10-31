@@ -14,6 +14,7 @@ This file is a technical reference for the physics implemented in the University
 | Propagation, refraction, and frequency shift | `src/umwm_advection.f90` | First-order upstream advection of the wave action in geographic, directional, and frequency space. |
 | Stress | `src/umwm_stress.f90` | Form/skin drag, drag coefficient, stress tail, and spectral stress integrals. The domain evaluates the atmospheric stress each time step, and the ocean-top and ocean-bottom momentum fluxes (`ocean_stress` in `src/umwm_domain_output.f90`) at gridded output times, or each time step when coupled with ESMF. |
 | Stokes drift | `src/umwm_stokes.f90` | `stokes_type` with wave-induced Stokes drift and e-folding depth. |
+| Modulation by longer waves | `src/umwm_modulation.f90` | Steady modulation of short waves by a long wave (Curcic 2025), its phase means, the moments of the longer-wave spectrum, the modulated group speed and Stokes transport, the phase-averaged wind input, and the breaking enhancement. |
 | Spectral grid | `src/umwm_spectrum.f90` | `spectrum_type`, frequency and direction coordinates, and spectral spacings. |
 | Dispersion | `src/umwm_dispersion.f90` | Capillary-gravity dispersion relation, wavenumber solve, angular frequency, and group speed. |
 | Initialization and precomputed factors | `src/umwm_domain.f90` | Runtime allocation, spectral coordinates, wave kinematics, integration weights, dissipation constants, CFL limits. |
@@ -1318,6 +1319,169 @@ $$
 |\mathbf{u}_S(z)| = \frac{|\mathbf{u}_S(0)|}{e}.
 $$
 
+## Modulation by Longer Waves
+
+When `PHYSICS: modulation = .TRUE.`, the model represents the hydrodynamic
+modulation of the short waves by the longer waves of the same spectrum,
+after Curcic (2025): the longer waves strain, accelerate and advect the
+short waves riding on them, which modulates the wavenumber, action,
+effective gravity, phase and group speed, and steepness of the short waves
+over the phase of the longer waves. The implementation is
+`src/umwm_modulation.f90`. By default the modulation is off, and the model
+is unchanged.
+
+### Steady solutions and their phase means
+
+For a short wave on a single long wave of steepness $\varepsilon = a_L k_L$,
+at the long-wave phase $\psi$, with $x = \varepsilon\cos\psi$, the steady
+solutions of the crest and action conservation, with the orbital velocity
+and acceleration of the long wave evaluated at its surface, are
+
+$$
+\frac{\tilde{k}}{k} = \frac{\tilde{N}}{N} = e^{x e^{x}},
+\qquad
+\frac{\tilde{g}}{g} = 1 - x e^{x} + x^2 e^{2x},
+\qquad
+\tilde{\sigma} = \sqrt{\tilde{g}\tilde{k}},
+\qquad
+\frac{\tilde{c}}{c} = \frac{\tilde{c}_g}{c_g} = \sqrt{\frac{\tilde{g}/g}{\tilde{k}/k}},
+\qquad
+\frac{\widetilde{ak}}{ak} = \left(\frac{\tilde{k}}{k}\right)^{7/4}
+\left(\frac{\tilde{g}}{g}\right)^{-1/4},
+$$
+
+the Lagrangian effective gravity at the surface (equations 3.2, 3.4, 3.8,
+3.10, 3.15 and 3.18 of the paper). The first-order modulations of the
+wavenumber, $+\varepsilon\cos\psi$, and of the gravity,
+$-\varepsilon\cos\psi$, cancel in the intrinsic frequency, so that a
+modulated short wave stays in its frequency bin: the modulation lives
+within the bins of the spectral grid, and the phase-averaged spectrum that
+the model carries is unchanged at first order. The phase and group speeds
+are reduced by $\varepsilon\cos\psi$ on the long-wave crests, and the
+steepness is raised by $2\varepsilon\cos\psi$.
+
+The means over the long-wave phase are second order in $\varepsilon$: of
+the speed ratio, $F_c(\varepsilon) = \langle\tilde{c}/c\rangle \approx 1 -
+0.12\varepsilon^2$; of the product of the wavenumber and frequency ratios,
+which scales the wind input, $F_{k\sigma}(\varepsilon) \approx 1 +
+0.9\varepsilon^2$; and of the breaking enhancement
+$F_{ds}(\varepsilon) = \langle (s^2/\langle s^2\rangle)^n \rangle$ of the
+steepness ratio $s$ with the saturation exponent $n$, the mean of the local
+saturation of a bin raised to the exponent of the breaking dissipation,
+which is 1.14, 1.56 and 2.31 at $\varepsilon$ = 0.1, 0.2 and 0.3 for
+$n = 2.4$. The means are evaluated at initialization by the midpoint rule
+over `mod_phases` phases (`phase_means`) and fitted by polynomials of
+degree 4 in $(\varepsilon/\varepsilon_{\max})^2$ (`modulation_fit`), which
+reproduce them to 1e-4 and need neither a square root nor a table in the
+time step; `mod_eps_max` = $\varepsilon_{\max}$ limits the steepness, as
+the steady solutions hold for $\varepsilon \lesssim 0.2$ to $0.3$.
+
+### Two dimensions and the spectrum of longer waves
+
+For a long wave at the angle $\Delta\phi$ to the short wave, the
+first-order modulations follow from the ray equations with the orbital
+velocity $\mathbf{U}$ of the long wave as a current, as in the refraction
+and frequency shift by resolved currents:
+
+$$
+\frac{\delta k}{k} = \varepsilon\cos\psi\cos^2\Delta\phi,
+\quad
+\frac{\delta g}{g} = -\varepsilon\cos\psi,
+\quad
+\frac{\delta N}{N} = \varepsilon\cos\psi,
+\quad
+\frac{\delta c}{c} = \frac{\delta c_g}{c_g} = -\frac{\varepsilon}{2}\cos\psi\,(1 + \cos^2\Delta\phi),
+\quad
+\mathbf{U}\cdot\hat{\mathbf{k}} = \varepsilon c_L \cos\psi\cos\Delta\phi,
+$$
+
+the strain of the orbital velocity along the short wave, the vertical
+orbital acceleration and the convergence of the orbital velocity, which are
+isotropic, and the orbital advection along the short wave. For a spectrum
+of longer waves with independent phases these add, and their variances are
+cumulative moments of the spectrum of the waves at least `mod_sep` bins
+below each bin, weighted by powers of $\cos\Delta\phi$:
+
+$$
+\mu_g(o) = \sum_{q \le o - m}\sum_{p'} E_{q,p'} k_q^3 dk_q d\phi,
+\qquad
+\mu_{gk}(o,p) = \sum \ldots \cos^2(\phi_{p'} - \phi_p),
+\qquad
+\mu_k(o,p) = \sum \ldots \cos^4(\phi_{p'} - \phi_p),
+$$
+
+the variance of the gravity and action modulation (the cumulative
+mean-squared slope), minus the covariance of the gravity and wavenumber
+modulations, and the variance of the wavenumber modulation. With
+$\cos^4 x = (3 + 4\cos 2x + \cos 4x)/8$, five direction moments of the
+spectrum (`longwave_moments`, moments 1 to 5) give all three. The variance
+of the orbital velocity along the short wave is the moment with the weight
+$\sigma^2\coth^2(kd)\,k\,dk$ (moments 6 to 8), and the surface Stokes drift
+of the longer waves and their covariance with the phase speed modulation
+the moments with the weight $\sigma k^2 \cosh(2kd)/\sinh^2(kd)\,dk$ of the
+Stokes drift (moments 9 to 12). A single long wave of steepness
+$\varepsilon$ has the variance $\varepsilon^2/2$ in each first-order
+modulation, so each modulated quantity of a bin is evaluated at the
+squared steepness of the equivalent single long wave with the same
+first-order variance as the spectrum:
+
+$$
+\varepsilon_c^2 = \frac{\mu_g + 2\mu_{gk} + \mu_k}{2},
+\qquad
+\varepsilon_s^2 = \frac{1}{2}\left(\frac{25}{16}\mu_k + \frac{15}{8}\mu_{gk} + \frac{9}{16}\mu_g\right),
+\qquad
+\varepsilon_{k\sigma}^2 = \frac{9}{2}\mu_k - 3\mu_{gk} + \frac{1}{2}\mu_g,
+$$
+
+for the speeds, the steepness and $k\sigma$. The separation
+`mod_sep` = `separation_bins(mod_kratio, dlnf)` keeps the longer waves at
+a wavenumber ratio of at least `mod_kratio` (4 by default, a factor 2 in
+frequency, 6 bins at the default resolution), where the short waves ride
+on the longer waves; the mean-squared slope of the breaking dissipation
+sums from the next lower bin. The moments of the mean-squared slope are
+evaluated by the same direction sums when the modulation is on.
+
+### Effects in the model
+
+1. Dispersion and transport. The group speed of the propagation of each
+   frequency is $c_g F_c$ at the mean over directions, weighted by the
+   spectrum, of $\varepsilon_c^2$ (`modulated_group_speed`, `cgm`); the
+   action Jacobian $k/c_g$ of the spectral coordinate is unchanged. With
+   `mod_stokes`, the action of each frequency is also advected by the
+   surface Stokes drift of the longer waves (`usl`, `vsl`, moments 9 and
+   10), together with the ocean currents, in the current fluxes of
+   `propagation`: the short-wave action is concentrated on the long-wave
+   crests where the orbital velocity is forward, so the mean over the phase
+   of its orbital advection is the Stokes drift, as in the generalized
+   Lagrangian mean wave action equation. Both are evaluated at each time
+   step from the spectrum, and exchanged with the halo in parallel.
+2. Wind input (`mod_sin`). The relative speed of the wind and the waves is
+   modulated by $-b\cos\psi$, with $b$ the amplitude of the orbital
+   velocity of the longer waves along the short wave less that of the
+   phase speed modulation (`relative_speed_amplitude`; $b = \varepsilon(c_L
+   - c)$ for a single aligned long wave). The input is the mean over the
+   phase of $\Delta U|\Delta U|$ with $\Delta U = \Delta U_0 - b\cos\psi$,
+   in closed form, $\Delta U_0^2 + b^2/2$ with the coefficient of the sign
+   of $\Delta U_0$ where the relative speed keeps its sign, and the integral
+   over the two sign ranges with their coefficients otherwise
+   (`sin_mod_bin`); the phase speed is $c F_c$ and the input is scaled by
+   $F_{k\sigma}$. The input is evaluated once per time step for the whole
+   spectrum and kept for the integration and the stress.
+3. Breaking dissipation (`mod_sds`). The coefficient of $S_{ds}$,
+   including its mean-squared slope factor $(1 + A_3\overline{\chi^2})^2$,
+   is multiplied by $F_{ds}(\varepsilon_s)$ (`breaking_modulation`). The
+   steady modulation of the steepness is far smaller than the empirical
+   factor: with $n = 2.4$, $F_{ds}$ is 1.3, 2.8 and 8 at $\varepsilon$ =
+   0.1, 0.2 and 0.3, against 7.8, 67 and 296 of the mean-squared slope
+   factor at the same steepness, so the two overlap, and `mss_fac` is to be
+   retuned with the modulation on.
+
+The modulation is not implemented in the GPU build, which stops when it is
+on. Its cost is the direction sums of the moments and the evaluation of
+the input and the breaking factor for each bin: about 50 % of the time
+step when all its parts are on, 5 % for the dispersion and transport
+alone.
+
 ## Integrated Diagnostics
 
 The following diagnostics are computed from the full spectrum unless
@@ -1485,6 +1649,13 @@ are from `namelists/main.nml`.
 | `sbf_fac` | `0.003` | `m/s` | Bottom friction coefficient $G_f$. |
 | `sbp_fac` | `0.003` | `m/s` | Bottom percolation coefficient $G_p$. |
 | `fcut_fac` | `0.53` | nondimensional | Factor of the prognostic cutoff frequency $f_c$ = `fcut_fac`$\,g/U_{10}$, about 4 times the Pierson-Moskowitz peak frequency by default. |
+| `modulation` | `.false.` | logical | Modulation of the short waves by the longer waves (Curcic 2025). |
+| `mod_eps_max` | `0.3` | nondimensional | Largest steepness of the equivalent long wave of the modulation. |
+| `mod_phases` | `16` | integer | Long-wave phases of the phase means at initialization. |
+| `mod_kratio` | `4.` | nondimensional | Smallest wavenumber ratio of the short to the longer waves of the moments. |
+| `mod_stokes` | `.true.` | logical | Transport of the short waves by the Stokes drift of the longer waves. |
+| `mod_sin` | `.true.` | logical | Wind input averaged over the long-wave phase. |
+| `mod_sds` | `.true.` | logical | Breaking dissipation enhanced by the modulated steepness. |
 
 Physics-related `DOMAIN` controls:
 
@@ -1549,6 +1720,8 @@ diagnostics:
 | `epsx_ocn`, `epsy_ocn` | Wave energy dissipation flux to ocean. |
 | `physics_time_step` | Local source-limited physics timestep diagnostic. |
 | `u_stokes`, `v_stokes`, `d_stokes` | Stokes drift components and e-folding depth, when enabled. |
+| `mod_eps` | Steepness of the equivalent long wave modulating the shortest prognostic waves, with the modulation. |
+| `mod_us`, `mod_vs` | Stokes drift of the waves longer than the shortest prognostic waves, with the modulation. |
 
 Spectrum point output includes:
 
@@ -1589,7 +1762,8 @@ The current focused tests are:
 | `test_dispersion` | Wavenumber/frequency round-trip accuracy and positive finite group speed for the capillary-gravity dispersion module. |
 | `test_spectrum` | Spectrum constructor metadata, endpoint frequencies, legacy log-space frequency equivalence, direction-grid equivalence, `dlnf`, and `dth`. |
 | `test_source_functions` | Mean-squared slope moments against the direct sum over directions, the vectorized power function against the intrinsic, and the wind input against a step-by-step evaluation. |
-| `test_advection` | Current-induced ray rotation against the ray equation and in a solid-body eddy, depth-induced ray rotation against Snell's law along a ray over a slope, the conservation, positivity, and rotation of the spectrum by refraction in several substeps, the conservation of action and the shift of the spectrum by the frequency shift, steady shoaling against linear theory, and the steady variance of waves against a strengthening current against ray theory. |
+| `test_modulation` | The crest wavenumber modulation against the values of Curcic (2025), the first-order invariance of the intrinsic frequency, the phase means against a double-precision quadrature and their polynomial fits, the separation in bins, the moments against direct sums over the longer waves and directions, the equivalent steepness and the relative speed amplitude of a single long wave, the phase-averaged input against a quadrature of the input of Donelan et al. (2012) and over a column against the bins, the group speed mean, and the breaking enhancement. |
+| `test_advection` | Current-induced ray rotation against the ray equation and in a solid-body eddy, depth-induced ray rotation against Snell's law along a ray over a slope, the conservation, positivity, and rotation of the spectrum by refraction in several substeps, the conservation of action and the shift of the spectrum by the frequency shift, steady shoaling against linear theory, the steady variance of waves against a strengthening current against ray theory, and the transport of action at the group speed plus the Stokes drift of the longer waves and the current. |
 | `test_domain` | One-hour integration of the idealized hurricane case by `domain_type` with gridded and spectrum output and Stokes drift, compared with the mean and maximum of output fields, ocean stress, and Stokes drift from UMWM before the domain refactor without the refraction by its spurious current gradients against land; the uniform current over the flat bottom neither refracts the waves nor shifts their frequency. |
 
 The Python package has its own test suite in `python/tests`, run with
@@ -1605,6 +1779,7 @@ test-local binaries, object files, and module files.
 The physics basis and manual equations are from UMWM manual version 2,
 sections 1 through 4 and 9. The cited references are:
 
+- Curcic, M., 2025: Revisiting the hydrodynamic modulation of short surface waves by longer waves. *Journal of Fluid Mechanics*, 1015, A20. https://doi.org/10.1017/jfm.2025.10376.
 - Donelan, M. A., and W. J. Plant, 2009: A threshold for wind-wave growth. *Journal of Geophysical Research*, 114, C07012. https://doi.org/10.1029/2008JC005238.
 - Donelan, M. A., M. Curcic, S. S. Chen, and A. K. Magnusson, 2012: Modeling waves and wind stress. *Journal of Geophysical Research*, 117, C00J23. https://doi.org/10.1029/2011JC007787.
 - Jeffreys, H., 1924: On the formation of waves by wind. *Proceedings of the Royal Society A*, 107, 189-206.

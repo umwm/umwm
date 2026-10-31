@@ -6,10 +6,10 @@ include ../mk/config.mk
 
 SRC_DIR := ../src
 TESTS := test_dispersion test_spectrum test_config test_grid test_forcing \
-         test_source_functions test_advection test_domain
+         test_source_functions test_modulation test_advection test_domain
 MODEL_OBJS := datetime_module.o umwm_advection.o umwm_config.o umwm_constants.o \
               umwm_dispersion.o umwm_domain.o umwm_domain_acc.o umwm_domain_output.o umwm_env.o \
-              umwm_forcing.o umwm_grid.o umwm_io.o umwm_mpi.o umwm_physics.o \
+              umwm_forcing.o umwm_grid.o umwm_io.o umwm_modulation.o umwm_mpi.o umwm_physics.o \
               umwm_restart.o umwm_sheltering.o umwm_source_functions.o \
               umwm_spectrum.o umwm_stokes.o umwm_stress.o umwm_util.o
 PYTHON ?= python
@@ -35,6 +35,7 @@ test: $(TESTS)
 	./test_grid
 	./test_forcing
 	./test_source_functions
+	./test_modulation
 	./test_advection
 	./test_domain
 
@@ -54,6 +55,9 @@ test_forcing: test_forcing.f90 tuff.o umwm_constants.o umwm_source_functions.o u
 	$(FC) $(CPPFLAGS) $(FCFLAGS) -I. -I$(SRC_DIR) -o $@ $^ $(NETCDF_FLIBS) $(LDLIBS)
 
 test_source_functions: test_source_functions.f90 tuff.o umwm_constants.o umwm_source_functions.o umwm_env.o
+	$(FC) $(CPPFLAGS) $(FCFLAGS) -I. -I$(SRC_DIR) -o $@ $^ $(LDLIBS)
+
+test_modulation: test_modulation.f90 tuff.o umwm_constants.o umwm_modulation.o umwm_source_functions.o umwm_env.o
 	$(FC) $(CPPFLAGS) $(FCFLAGS) -I. -I$(SRC_DIR) -o $@ $^ $(LDLIBS)
 
 test_advection: test_advection.f90 tuff.o umwm_constants.o umwm_dispersion.o umwm_advection.o umwm_env.o
@@ -96,12 +100,13 @@ umwm_io.o: datetime_module.o umwm_env.o umwm_grid.o umwm_mpi.o
 umwm_restart.o: umwm_env.o umwm_grid.o umwm_io.o umwm_spectrum.o umwm_util.o
 umwm_sheltering.o: umwm_constants.o
 umwm_source_functions.o: umwm_constants.o
+umwm_modulation.o:
 umwm_physics.o: umwm_source_functions.o
 umwm_stokes.o: umwm_constants.o
 umwm_stress.o: umwm_constants.o
 umwm_domain.o: datetime_module.o umwm_advection.o umwm_config.o umwm_constants.o \
                umwm_dispersion.o umwm_env.o umwm_forcing.o umwm_grid.o umwm_io.o \
-               umwm_mpi.o umwm_physics.o umwm_restart.o umwm_sheltering.o \
+               umwm_modulation.o umwm_mpi.o umwm_physics.o umwm_restart.o umwm_sheltering.o \
                umwm_source_functions.o umwm_spectrum.o umwm_stokes.o umwm_stress.o \
                umwm_util.o
 umwm_domain_output.o: umwm_domain.o umwm_io.o

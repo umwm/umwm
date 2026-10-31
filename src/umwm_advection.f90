@@ -17,13 +17,16 @@ contains
   pure subroutine propagation(nf, nd, oc, e, e_e, e_w, e_n, e_s, cg, cg_e, cg_w, cg_n, cg_s, &
                               kovcg, kovcg_e, kovcg_w, kovcg_n, kovcg_s, &
                               cth, sth, dxn, dxs, dye, dyw, currents, uc_e, uc_w, vc_n, vc_s, &
-                              dt_over_area, ef)
+                              dt_over_area, ef, us_e, us_w, vs_n, vs_s)
     ! Advects the wave action of a cell with neighbors to the east, west,
     ! north, and south (e_e, e_w, e_n, e_s) by the group velocity and,
     ! if currents is .true., by the ocean currents, and integrates the change
     ! of the variance spectrum e into ef. The action per unit ln(frequency)
     ! is e k/cg (kovcg), so the action flowing in from a neighbor is its
-    ! spectrum times the ratio of its k/cg to that of the cell.
+    ! spectrum times the ratio of its k/cg to that of the cell. If the Stokes
+    ! drift of the longer waves at the cell edges (us_e, us_w, vs_n, vs_s) is
+    ! present, each frequency is also advected by it, together with the
+    ! ocean currents.
     integer, intent(in) :: nf, nd, oc
     real, intent(in) :: e(nf,nd), e_e(nf,nd), e_w(nf,nd), e_n(nf,nd), e_s(nf,nd)
     real, intent(in) :: cg(nf), cg_e(nf), cg_w(nf), cg_n(nf), cg_s(nf) ! group speed
@@ -34,6 +37,7 @@ contains
     real, intent(in) :: uc_e, uc_w, vc_n, vc_s ! double current speed at cell edges
     real, intent(in) :: dt_over_area ! 0.25 * dt / cell area
     real, intent(inout) :: ef(nf,nd)
+    real, intent(in), optional :: us_e(nf), us_w(nf), vs_n(nf), vs_s(nf) ! double Stokes drift at cell edges
 
     integer :: o, p
     real :: ae(nf), aw(nf), an(nf), as(nf) ! out of the cell through each edge
@@ -41,6 +45,8 @@ contains
     real :: re(nf), rw(nf), rn(nf), rs(nf) ! k/cg of the neighbors over that of the cell
     real :: fe_in(nf), fw_in(nf), fn_in(nf), fs_in(nf) ! into the cell by the currents
     real :: feup, fedn, fwup, fwdn, fnup, fndn, fsup, fsdn, f_out
+    real :: ue, uw, vn, vs ! double current and Stokes drift of a frequency at the edges
+    real :: fo_out(nf)     ! out of the cell by them, of each frequency
 
     ! The double group velocity at the east cell edge is (cg + cg_e) * cth,
     ! and so on.
@@ -83,6 +89,38 @@ contains
         end if
       end if
     end do
+
+    if (present(us_e)) then
+      ! advective action flux by the currents and the Stokes drift of the
+      ! longer waves, of each frequency, in and out of all 4 directions
+      do o = 1, oc
+        ue = uc_e + us_e(o)
+        uw = uc_w + us_w(o)
+        vn = vc_n + vs_n(o)
+        vs = vc_s + vs_s(o)
+        feup = (ue + abs(ue)) * dye
+        fedn = (ue - abs(ue)) * dye
+        fwup = (uw + abs(uw)) * dyw
+        fwdn = (uw - abs(uw)) * dyw
+        fnup = (vn + abs(vn)) * dxn
+        fndn = (vn - abs(vn)) * dxn
+        fsup = (vs + abs(vs)) * dxs
+        fsdn = (vs - abs(vs)) * dxs
+        fo_out(o) = feup - fwdn + fnup - fsdn
+        fe_in(o) = fedn * re(o)
+        fw_in(o) = fwup * rw(o)
+        fn_in(o) = fndn * rn(o)
+        fs_in(o) = fsup * rs(o)
+      end do
+      do p = 1, nd
+        do o = 1, oc
+          ef(o,p) = ef(o,p) - dt_over_area * (fo_out(o) * e(o,p) + fe_in(o) * e_e(o,p) &
+                                            - fw_in(o) * e_w(o,p) + fn_in(o) * e_n(o,p) &
+                                            - fs_in(o) * e_s(o,p))
+        end do
+      end do
+      return
+    end if
 
     if (.not. currents) return
 

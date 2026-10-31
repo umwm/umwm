@@ -53,6 +53,16 @@ module umwm_config
     real :: sbp_fac = 0.
     real :: fcut_fac = 0.53 ! default for namelists that do not set it
 
+    ! modulation of short waves by longer waves; defaults for namelists
+    ! that do not set them
+    logical :: modulation = .false.
+    real :: mod_eps_max = 0.3
+    integer :: mod_phases = 16
+    real :: mod_kratio = 4.
+    logical :: mod_stokes = .true.
+    logical :: mod_sin = .true.
+    logical :: mod_sds = .true.
+
     logical :: gridfromfile = .false.
     real :: delx = 0.
     real :: dely = 0.
@@ -124,7 +134,8 @@ contains
       res%sfct, res%kappa, res%z, res%gustiness, res%dmin, res%explim, &
       res%sin_fac, res%sin_diss1, res%sin_diss2, res%sds_fac, &
       res%sds_power, res%mss_fac, res%snl_fac, res%sdt_fac, res%sbf_fac, &
-      res%sbp_fac, res%fcut_fac, stat, iomsg)
+      res%sbp_fac, res%fcut_fac, res%modulation, res%mod_eps_max, res%mod_phases, &
+      res%mod_kratio, res%mod_stokes, res%mod_sin, res%mod_sds, stat, iomsg)
     if (stat == 0) call read_grid(unit, res%gridfromfile, res%delx, res%dely, &
       res%topofromfile, res%dpt, res%fillestuaries, res%filllakes, stat, iomsg)
     if (stat == 0) call read_forcing(unit, res%winds, res%currents, &
@@ -176,18 +187,24 @@ contains
   subroutine read_physics(unit, g, nu_air, nu_water, sfct, kappa, z, &
                           gustiness, dmin, explim, sin_fac, sin_diss1, &
                           sin_diss2, sds_fac, sds_power, mss_fac, snl_fac, &
-                          sdt_fac, sbf_fac, sbp_fac, fcut_fac, stat, iomsg)
+                          sdt_fac, sbf_fac, sbp_fac, fcut_fac, modulation, &
+                          mod_eps_max, mod_phases, mod_kratio, mod_stokes, &
+                          mod_sin, mod_sds, stat, iomsg)
     integer, intent(in) :: unit
     real, intent(inout) :: g, nu_air, nu_water, sfct, kappa, z
     real, intent(inout) :: gustiness, dmin, explim, sin_fac, sin_diss1
     real, intent(inout) :: sin_diss2, sds_fac, sds_power, mss_fac, snl_fac
     real, intent(inout) :: sdt_fac, sbf_fac, sbp_fac, fcut_fac
+    logical, intent(inout) :: modulation, mod_stokes, mod_sin, mod_sds
+    real, intent(inout) :: mod_eps_max, mod_kratio
+    integer, intent(inout) :: mod_phases
     integer, intent(out) :: stat
     character(len=*), intent(out) :: iomsg
 
     namelist /physics/ g, nu_air, nu_water, sfct, kappa, z, &
       gustiness, dmin, explim, sin_fac, sin_diss1, sin_diss2, &
-      sds_fac, sds_power, mss_fac, snl_fac, sdt_fac, sbf_fac, sbp_fac, fcut_fac
+      sds_fac, sds_power, mss_fac, snl_fac, sdt_fac, sbf_fac, sbp_fac, fcut_fac, &
+      modulation, mod_eps_max, mod_phases, mod_kratio, mod_stokes, mod_sin, mod_sds
 
     read(unit, nml=physics, iostat=stat, iomsg=iomsg)
   end subroutine read_physics
@@ -417,6 +434,18 @@ contains
     if (self%fcut_fac <= 0) &
       call diagnostic('error', &
         'bad value in main.nml: fcut_fac must be > 0', ok, rank_value)
+
+    if (self%mod_eps_max <= 0 .or. self%mod_eps_max > 1) &
+      call diagnostic('error', &
+        'bad value in main.nml: mod_eps_max must be in (0, 1]', ok, rank_value)
+
+    if (self%mod_phases < 4) &
+      call diagnostic('error', &
+        'bad value in main.nml: mod_phases must be >= 4', ok, rank_value)
+
+    if (self%mod_kratio < 1) &
+      call diagnostic('error', &
+        'bad value in main.nml: mod_kratio must be >= 1', ok, rank_value)
 
     if (.not. self%gridfromfile) then
       if (self%delx <= 0 .or. self%dely <= 0) &

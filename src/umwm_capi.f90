@@ -361,6 +361,10 @@ contains
     case ('logl2overz'); call real2(domain % logl2overz)
     case ('cgdlncp_dx'); call real2(domain % cgdlncp_dx)
     case ('cgdlncp_dy'); call real2(domain % cgdlncp_dy)
+    case ('cgm'); call real2(domain % cgm)
+    case ('usl'); call real2(domain % usl)
+    case ('vsl'); call real2(domain % vsl)
+    case ('mod_moments'); call real3(domain % mod_moments)
 
     ! wave spectrum and source functions
     case ('F', 'e'); call real3(domain % e)
@@ -432,6 +436,9 @@ contains
     case ('cgmxx'); call real1(domain % cgmxx)
     case ('cgmxy'); call real1(domain % cgmxy)
     case ('cgmyy'); call real1(domain % cgmyy)
+    case ('mod_eps'); call real1(domain % mod_eps)
+    case ('mod_us'); call real1(domain % mod_us)
+    case ('mod_vs'); call real1(domain % mod_vs)
 
     ! forcing on the cells (i) and on the native grid (m,n)
     case ('wspd'); call real1(domain % forcing % wspd)
@@ -655,6 +662,9 @@ contains
     case ('cgmxx'); field => domain % cgmxx
     case ('cgmxy'); field => domain % cgmxy
     case ('cgmyy'); field => domain % cgmyy
+    case ('mod_eps'); field => domain % mod_eps
+    case ('mod_us'); field => domain % mod_us
+    case ('mod_vs'); field => domain % mod_vs
     case ('wspd'); field => domain % forcing % wspd; all_cells = .true.
     case ('wdir'); field => domain % forcing % wdir; all_cells = .true.
     case ('uc'); field => domain % forcing % uc; all_cells = .true.
