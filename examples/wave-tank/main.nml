@@ -7,7 +7,7 @@
 ! tank of unlimited width, and the wind blows toward +y from the upwind end
 ! at y = 0; grid row n is at a fetch of (n-1)*dely. The waves are steady
 ! along the tank within a minute, with the significant wave height growing
-! from 1 cm at 1 m to 2.9 cm at 9.8 m and the peak frequency falling from 3.5
+! from 1 cm at 1 m to 3.0 cm at 9.8 m and the peak frequency falling from 3.2
 ! to 1.8 Hz.
 !
 ! The frequencies span 1 to 20 Hz, through the gravity-capillary range: the

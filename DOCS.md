@@ -512,7 +512,8 @@ rate. The factor `cothkd` is applied where `sds` is used, to include the
 finite-depth/plunging-breaker enhancement in the decay rate used by the
 source integrator, the stress diagnostics, and the `Sds` output. Between
 output times, `sds` is evaluated only for the frequencies used by the
-integration, up to two bins above the prognostic range.
+integration, up to the $m+1$ bins above the prognostic range from which
+`Snl` moves energy into it (two at the default resolution).
 
 ## Turbulent Dissipation `Sdt`
 
@@ -608,68 +609,106 @@ Defaults in `namelists/main.nml` are `sbf_fac = 0.003` and
 
 ## Nonlinear Downshifting `Snl`
 
-UMWM represents nonlinear wave-wave transfer by moving a quantity
-proportional to spilling dissipation into the next two lower-wavenumber
-bins. The manual form is
+UMWM represents nonlinear wave-wave transfer by a downshifting of the
+energy of spilling breakers: at $A_5$ times the spilling breaking rate,
+energy moves from each frequency $f$ to the lower frequency
+$f e^{-\Delta}$, by the fixed distance $\Delta$ in $\ln f$. With
+$\mathcal{E}(\ln f,\phi) = E\,k\,dk/d\ln f$, the variance per unit
+$\ln f$ and direction,
 
 $$
-S_{nl}(k,\phi)
+\left.\frac{\partial \mathcal{E}(\ln f,\phi)}{\partial t}\right|_{nl}
 =
 A_5
 \left[
-b_1 S_{sb}(k-\Delta k,\phi)
-+ b_2 S_{sb}(k-2\Delta k,\phi)
-- S_{sb}(k,\phi)
+S_{sb}(\ln f+\Delta,\phi)\,\mathcal{E}(\ln f+\Delta,\phi)
+- S_{sb}(\ln f,\phi)\,\mathcal{E}(\ln f,\phi)
 \right],
 $$
 
 where
 
 $$
-b_1 = \exp\left[-16\left(\frac{\Delta f}{f}\right)^2\right],
+S_{sb} = \frac{S_{ds}^*}{\coth(0.2kd)}
+$$
+
+is the spilling-only breaking rate. The transfer conserves energy, moves
+it on average by exactly $\Delta$, and refers to neither the spectral
+resolution nor the wavenumber spacing of the bins: it is an energy flux
+through spectral space, the same in wavenumber and in frequency
+coordinates. `snl_fac` is $A_5$; the default is `5.0`. The shift is the
+constant `snl_shift` of `src/umwm_source_functions.f90`,
+
+$$
+\Delta = (b_1 + 2b_2)\,\Delta\ln f_0 = 0.155346,
 \qquad
-b_2 = \exp\left[-16\left(2\frac{\Delta f}{f}\right)^2\right],
+b_1 = e^{-16\Delta\ln f_0^2},
+\qquad
+b_2 = e^{-64\Delta\ln f_0^2},
 $$
 
-renormalized so $b_1+b_2=1$, and
+renormalized so $b_1+b_2=1$: the mean shift of the redistribution of
+Donelan et al. (2012) over the next two lower bins with the weights $b_1$
+and $b_2$, at the default resolution, 37 bins from 0.0313 to 2 Hz,
+$\Delta\ln f_0 = \ln(2/0.0313)/36$. That redistribution moved energy by
+one or two bins, whatever their width, so that its mean shift depended on
+the resolution: 0.243 at $\Delta\ln f = 0.225$, 0.155 at 0.115, 0.118 at
+0.083, and 0.057 at 0.038.
 
-$$
-S_{sb} = \frac{S_{ds}}{\coth(0.2kd)}
-$$
-
-is the spilling-only breaking term.
-
-In the discrete implementation, bin $o$ receives transfer from bins
-$o+1$ and $o+2$ and loses energy to lower-wavenumber bins:
+On bins of width $\Delta\ln f$, the shift is $\Delta/\Delta\ln f = m +
+\varphi$ bins, with $m$ whole bins (`snl_bins`) and the fraction
+$\varphi$ (`snl_frac`). The energy that leaves bin $j$ moves to bins
+$j-m$ and $j-m-1$ with the fractions $1-\varphi$ and $\varphi$: to the
+bins that bin $j$ overlaps when shifted by $\Delta$, a first-order
+conservative remapping. On bins wider than the shift ($m = 0$), this is
+first-order upstream finite-volume advection of energy at the speed
+$A_5\Delta S_{sb}$ in $\ln f$. On finer bins, energy moves over more than
+one bin per transfer, so the downshifting does not limit the time step
+more as the bins get narrower. For the variance spectrum,
 
 $$
 S_{nl,o,p}
 =
-\beta_{1,o} S_{ds,o+1,p}^*E_{o+1,p}
+\beta_{1,o} S_{sb,o+m,p}E_{o+m,p}
 +
-\beta_{2,o} S_{ds,o+2,p}^*E_{o+2,p}
+\beta_{2,o} S_{sb,o+m+1,p}E_{o+m+1,p}
 -
-A_5 S_{ds,o,p}^*E_{o,p}.
+A_5\lambda_o S_{sb,o,p}E_{o,p},
 $$
-
-The implementation factors are
 
 $$
 \beta_{1,o}
 =
-A_5 b_1
-\frac{(k\,dk)_{o+1}}{(k\,dk)_o},
+A_5 (1-\varphi)
+\frac{(k\,dk)_{o+m}}{(k\,dk)_o},
 \qquad
 \beta_{2,o}
 =
-A_5 b_2
-\frac{(k\,dk)_{o+2}}{(k\,dk)_o}.
+A_5 \varphi
+\frac{(k\,dk)_{o+m+1}}{(k\,dk)_o},
 $$
 
-`snl_fac` is the implementation coefficient $A_5$; the default is `5.0`.
-The array `snl_arg = 1 - (\beta_1+\beta_2)` is used in the dynamic
-physics time-step estimate to account for the nonlinear transfer's
-effective sink strength.
+where $\lambda_o = (1-\varphi)[o>m] + \varphi[o>m+1]$ is the fraction of
+the energy of bin $o$ that moves: the energy that would move below the
+lowest bin stays where it is. The ratios of $k\,dk$ only convert between
+the energy of a bin, $E\,k\,dk\,d\phi$, and the spectrum, which makes the
+transfer conserve energy for any wavenumber spacing. Within the
+prognostic range the downshifting conserves energy: it changes the
+energy of the range only by what it moves in from the diagnostic bins
+$o_c+1$ to $o_c+m+1$, the downshifting through the cutoff frequency.
+The highest prognostic bin is therefore at most $N_f - \max(2, m+1)$, and
+the frequency range must be wider than the shift, $f_{\max}/f_{\min} >
+e^{\Delta} = 1.168$, which the model checks at startup.
+
+At the default resolution, $m = 1$ and $\varphi = b_2$: the downshifting
+is the two-bin redistribution of Donelan et al. (2012), apart from the
+lowest two bins, which no longer lose energy below the spectrum.
+
+In the dynamic physics time-step estimate, the breaking rate is reduced
+to $S_{ds}^*(1 - \beta_{1,o} - \beta_{2,o})$, which accounts for the rate
+at which the downshifting moves energy into a bin from bins with the same
+$E\,S_{sb}$ (see the time step below). As $\Delta$ is fixed, so is this
+estimate, apart from the interpolation of $k\,dk$ between bins.
 
 ## Sea-Ice Attenuation `Sice`
 
@@ -764,12 +803,15 @@ $$
 \Lambda
 =
 S_{in}^*
-- S_{ds}^*
+- S_{ds}^*(1 - \beta_{1,o} - \beta_{2,o})
 - S_{bottom}^*
 - S_{dt}^*
 - S_{dv}^*
-+ S_{ice}^*.
++ S_{ice}^*,
 $$
+
+with the factors $\beta$ of the downshifting `Snl`, which is integrated
+explicitly.
 
 The actual source timestep is
 
@@ -1438,7 +1480,7 @@ are from `namelists/main.nml`.
 | `sds_fac` | `42.` | nondimensional | Breaking dissipation factor $A_2$. |
 | `sds_power` | `2.4` | nondimensional | Saturation-spectrum exponent $n$. |
 | `mss_fac` | `360` | nondimensional | Mean-square-slope enhancement factor $A_3$. |
-| `snl_fac` | `5.0` | nondimensional | Nonlinear downshifting factor $A_5$. |
+| `snl_fac` | `5.0` | nondimensional | Nonlinear downshifting factor $A_5$: the rate at which energy moves by `snl_shift` = 0.155346 in $\ln f$, relative to the spilling breaking rate. |
 | `sdt_fac` | `0.002` | nondimensional | Turbulent dissipation factor $A_4$. |
 | `sbf_fac` | `0.003` | `m/s` | Bottom friction coefficient $G_f$. |
 | `sbp_fac` | `0.003` | `m/s` | Bottom percolation coefficient $G_p$. |

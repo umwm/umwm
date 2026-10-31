@@ -150,8 +150,8 @@ wind, at 20 cm resolution. The wind speed is the wind at 10 m, to which
 laboratory winds are customarily extrapolated with the logarithmic profile
 for comparison with field measurements. The tank is periodic in x, of
 unlimited width. The waves are steady along the tank within a minute: the
-significant wave height grows from 1 cm at 1 m to 2.9 cm at 9.8 m, and the
-peak frequency falls from 3.5 to 1.8 Hz. The frequencies span 1 to 20 Hz,
+significant wave height grows from 1 cm at 1 m to 3.0 cm at 9.8 m, and the
+peak frequency falls from 3.2 to 1.8 Hz. The frequencies span 1 to 20 Hz,
 through the gravity-capillary range: the phase speed is smallest at 13.5 Hz,
 for a wavenumber of (g ρ<sub>w</sub>/σ)<sup>1/2</sup> = 367 rad/m and a wavelength of
 1.7 cm. The gridded output and the spectra along the tank are written every
@@ -190,8 +190,7 @@ As in the Earth cases, the frequencies extend through the gravity-capillary
 range, past the smallest phase speed, at the wavenumber (g ρ<sub>w</sub>/σ)<sup>1/2</sup>;
 with the lower gravity of Titan and Mars, it lies at lower frequencies and
 longer wavelengths than on Earth. The number of bins keeps the frequency
-spacing of the default 37 bins from 0.0313 to 2 Hz, since the downshifting
-`Snl` moves energy by one or two bins and so depends on the spacing.
+spacing of the default 37 bins from 0.0313 to 2 Hz.
 
 **`titan-ontario-lacus`**: Ontario Lacus, the largest lake of Titan's south
 polar region, as a 230 × 75 km basin, 20 m deep, under a 1.5 m/s wind along

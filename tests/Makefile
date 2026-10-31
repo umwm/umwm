@@ -44,13 +44,13 @@ test_dispersion: test_dispersion.f90 tuff.o umwm_constants.o umwm_dispersion.o u
 test_spectrum: test_spectrum.f90 tuff.o umwm_constants.o umwm_spectrum.o umwm_env.o
 	$(FC) $(CPPFLAGS) $(FCFLAGS) -I. -I$(SRC_DIR) -o $@ $^ $(LDLIBS)
 
-test_config: test_config.f90 tuff.o umwm_constants.o umwm_config.o umwm_env.o
+test_config: test_config.f90 tuff.o umwm_constants.o umwm_source_functions.o umwm_config.o umwm_env.o
 	$(FC) $(CPPFLAGS) $(FCFLAGS) -I. -I$(SRC_DIR) -o $@ $^ $(LDLIBS)
 
-test_grid: test_grid.f90 tuff.o umwm_constants.o umwm_config.o umwm_spectrum.o umwm_env.o umwm_util.o umwm_grid.o
+test_grid: test_grid.f90 tuff.o umwm_constants.o umwm_source_functions.o umwm_config.o umwm_spectrum.o umwm_env.o umwm_util.o umwm_grid.o
 	$(FC) $(CPPFLAGS) $(FCFLAGS) -I. -I$(SRC_DIR) -o $@ $^ $(NETCDF_FLIBS) $(LDLIBS)
 
-test_forcing: test_forcing.f90 tuff.o umwm_constants.o umwm_config.o umwm_spectrum.o umwm_env.o umwm_util.o umwm_grid.o umwm_forcing.o
+test_forcing: test_forcing.f90 tuff.o umwm_constants.o umwm_source_functions.o umwm_config.o umwm_spectrum.o umwm_env.o umwm_util.o umwm_grid.o umwm_forcing.o
 	$(FC) $(CPPFLAGS) $(FCFLAGS) -I. -I$(SRC_DIR) -o $@ $^ $(NETCDF_FLIBS) $(LDLIBS)
 
 test_source_functions: test_source_functions.f90 tuff.o umwm_constants.o umwm_source_functions.o umwm_env.o
@@ -86,7 +86,7 @@ $(RANKINE_FORCING_STAMP): forcing/idealized_rankine_forcing.py Makefile
 	  --rhow 1025
 	touch $@
 
-umwm_config.o: umwm_constants.o
+umwm_config.o: umwm_constants.o umwm_source_functions.o
 umwm_dispersion.o: umwm_constants.o
 umwm_spectrum.o: umwm_constants.o
 umwm_grid.o: umwm_config.o umwm_constants.o umwm_env.o umwm_spectrum.o umwm_util.o

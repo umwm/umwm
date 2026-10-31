@@ -21,7 +21,8 @@ module umwm_domain
   use umwm_physics, only: integrate_sources, max_source_rate
   use umwm_restart, only: restart_read, restart_write
   use umwm_sheltering, only: sheltering_coare35
-  use umwm_source_functions, only: mss_moments, s_ice, sds_coefficient, sds_d12, sin_d12, snl_d12
+  use umwm_source_functions, only: mss_moments, s_ice, sds_coefficient, sds_d12, sin_d12, snl_d12, &
+                                   snl_shift
   use umwm_spectrum, only: spectrum_type
   use umwm_stokes, only: stokes_type
   use umwm_stress, only: directional_integral, drag_coefficient, &
@@ -54,7 +55,9 @@ module umwm_domain
     integer :: iip = 0, nproc_plot = 0
 
     ! derived constants
-    real :: dth, dthg, bf1, bf2
+    real :: dth, dthg
+    integer :: snl_bins = 0 ! the shift of the downshifting, snl_shift, in whole bins
+    real :: snl_frac = 0    ! and the fraction of a bin beyond them
     real :: twopisds_fac, fieldscale1, fieldscale2, inv_sds_power
 
     ! spectral coordinates (o) and (p)
@@ -66,7 +69,7 @@ module umwm_domain
     real, allocatable :: kovcg(:,:) ! k/cg, action per unit ln(f) over e; includes halo
     real, allocatable :: invcp0(:,:), kdk(:,:), k3dk(:,:), k4(:,:), oneoverk4(:,:)
     real, allocatable :: fkovg(:,:), cothkd(:,:), logl2overz(:,:), psiml2(:,:)
-    real, allocatable :: sbf(:,:), sdv(:,:), snl_arg(:,:), bf1_renorm(:,:), bf2_renorm(:,:)
+    real, allocatable :: sbf(:,:), sdv(:,:)
     real, allocatable :: cgdlncp_dx(:,:), cgdlncp_dy(:,:) ! (cg/cp) grad(cp), for refraction
 
     ! wave spectrum (o,p,i); ef is the spectrum forward in time
@@ -232,8 +235,7 @@ contains
     allocate(self % k(om,is:ie), self % invcp0(om,is:ie), self % kdk(om,is:ie), &
              self % k3dk(om,is:ie), self % k4(om,is:ie), self % oneoverk4(om,is:ie), &
              self % fkovg(om,is:ie), self % cothkd(om,is:ie), self % logl2overz(om,is:ie), &
-             self % sbf(om,is:ie), self % sdv(om,is:ie), self % snl_arg(om,is:ie), &
-             self % bf1_renorm(om,is:ie), self % bf2_renorm(om,is:ie), &
+             self % sbf(om,is:ie), self % sdv(om,is:ie), &
              self % cgdlncp_dx(om,is:ie), self % cgdlncp_dy(om,is:ie), &
              self % psiml2(om,is:ie), self % sdt(om,is:ie), self % sice(om,is:ie), &
              self % mss_moments(om,3,is:ie), source=0.)
@@ -299,7 +301,7 @@ contains
     class(domain_type), intent(inout) :: self
 
     real, allocatable :: kd(:,:), l2(:,:), dwn(:,:)
-    real :: dlnf, bf1, bf2, cfllim, mindelx
+    real :: dlnf, cfllim, mindelx
     integer :: i, o
 #ifdef MPI
     integer :: n, ierr
@@ -336,11 +338,9 @@ contains
       cfllim = 1. / sqrt(2.)
     end if
 
-    ! diffusion values in 2 frequencies:
-    bf1 = exp(-16 * dlnf * dlnf)
-    bf2 = exp(-64 * dlnf * dlnf)
-    self % bf1 = bf1 / (bf1 + bf2)
-    self % bf2 = bf2 / (bf1 + bf2)
+    ! the downshifting shift in bins, whole and fraction:
+    self % snl_bins = int(snl_shift / dlnf)
+    self % snl_frac = snl_shift / dlnf - self % snl_bins
 
     ! wave numbers, phase speeds, and group velocities:
     if (nproc == 0) write(*,'(a)') 'umwm: dispersion: solving for dispersion relationship;'
@@ -391,16 +391,6 @@ contains
         self % sbf(o,i) = config % sbf_fac * k(o,i) / (sinh(2. * kd(o,i))) &      ! bottom friction
                         + config % sbp_fac * k(o,i) / (cosh(kd(o,i)) * cosh(kd(o,i))) ! bottom percolation
         self % sdv(o,i) = 4. * config % nu_water * k(o,i)**2.          ! viscosity
-      end do
-    end do
-
-    ! renormalization factors for snl:
-    !$acc parallel loop collapse(2)
-    do i = is, ie
-      do o = 1, om - 2
-        self % bf1_renorm(o,i) = config % snl_fac * self % bf1 * self % kdk(o+1,i) / self % kdk(o,i)
-        self % bf2_renorm(o,i) = config % snl_fac * self % bf2 * self % kdk(o+2,i) / self % kdk(o,i)
-        self % snl_arg(o,i) = 1. - (self % bf1_renorm(o,i) + self % bf2_renorm(o,i))
       end do
     end do
 
@@ -799,9 +789,10 @@ contains
       ! protection against low wind speed values
       wspd = max(forcing % wspd(i), min_wind_speed)
 
-      ! cut-off frequency (by default 4*pierson-moskowitz peak frequency) and its bin
+      ! cut-off frequency (by default 4*pierson-moskowitz peak frequency) and its
+      ! bin, below the bins that the downshifting into it reads
       fcutoff = min(config % fcut_fac * config % g / wspd, config % fprog)
-      do o = om - 2, 1, -1
+      do o = om - max(2, self % snl_bins + 1), 1, -1
         self % oc(i) = o
         if (fcutoff > self % f(o)) exit
       end do
@@ -809,13 +800,15 @@ contains
       self % shelt(i) = sheltering_coare35(wspd)
       call self % wind_input(i, self % oc(i), ssin)
 
-      ! breaking dissipation for the range used by the integration;
-      ! the rest of the diagnostic range is evaluated for output only
+      ! breaking dissipation for the range used by the integration, with the
+      ! diagnostic bins that the downshifting reads; the rest of the
+      ! diagnostic range is evaluated for output only
       call mss_moments(om, pm, self % e(:,:,i), self % k3dk(:,i), self % cth2, self % sth2, &
                        self % dth, self % mss_moments(:,:,i))
-      call sds_d12(om, pm, 1, min(self % oc(i) + 2, om), self % e(:,:,i), self % k4(:,i), &
-                   self % f, self % cth2, self % sth2, config % mss_fac, self % twopisds_fac, &
-                   self % mss_moments(:,:,i), config % sds_power, self % sds(:,:,i))
+      call sds_d12(om, pm, 1, self % oc(i) + self % snl_bins + 1, self % e(:,:,i), &
+                   self % k4(:,i), self % f, self % cth2, self % sth2, config % mss_fac, &
+                   self % twopisds_fac, self % mss_moments(:,:,i), config % sds_power, &
+                   self % sds(:,:,i))
 
       ! dissipation due to turbulence
       self % sdt(:,i) = config % sdt_fac * sqrt(forcing % rhorat(i)) * self % ustar(i) * self % k(:,i)
@@ -825,7 +818,8 @@ contains
 
       self % physics_time_step(i) = config % explim &
         / max_source_rate(om, pm, self % oc(i), ssin, self % sds(:,:,i), &
-                          self % cothkd(:,i), self % snl_arg(:,i), self % sbf(:,i), &
+                          self % cothkd(:,i), self % kdk(:,i), config % snl_fac, &
+                          self % snl_bins, self % snl_frac, self % sbf(:,i), &
                           self % sdt(:,i), self % sdv(:,i), self % sice(:,i))
 
     end do
@@ -879,11 +873,12 @@ contains
 
     call self % wind_input(i, om, ssin)
     if (store) &
-      call sds_d12(om, pm, self % oc(i) + 3, om, self % e(:,:,i), self % k4(:,i), &
-                   self % f, self % cth2, self % sth2, config % mss_fac, self % twopisds_fac, &
-                   self % mss_moments(:,:,i), config % sds_power, self % sds(:,:,i))
-    call snl_d12(om, pm, self % oc(i), self % e(:,:,i), self % bf1_renorm(:,i), &
-                 self % bf2_renorm(:,i), config % snl_fac, self % sds(:,:,i), snl)
+      call sds_d12(om, pm, self % oc(i) + self % snl_bins + 2, om, self % e(:,:,i), &
+                   self % k4(:,i), self % f, self % cth2, self % sth2, config % mss_fac, &
+                   self % twopisds_fac, self % mss_moments(:,:,i), config % sds_power, &
+                   self % sds(:,:,i))
+    call snl_d12(om, pm, self % oc(i), self % e(:,:,i), self % kdk(:,i), config % snl_fac, &
+                 self % snl_bins, self % snl_frac, self % sds(:,:,i), snl)
     ! dissipation coefficient for the diagnostic range
     call sds_coefficient(om, pm, self % oc(i) + 1, om, self % f, self % cth2, self % sth2, &
                          config % mss_fac, self % twopisds_fac, self % mss_moments(:,:,i), sds_coef)
