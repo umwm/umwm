@@ -227,13 +227,15 @@ subroutine define_grid(self, config)
 
   class(grid_type), intent(inout) :: self
   type(config_type), intent(in) :: config
-  logical :: loniscontinuous = .true.
+  logical :: loniscontinuous ! not initialized in the declaration, which would save it
 
   integer :: m, n
   integer :: ncid, varid, stat
 
   real, allocatable :: abscoslat(:,:), lon_tmp(:,:), rotx(:,:), roty(:,:)
   real, allocatable :: rlon(:,:), rlat(:,:)
+
+  if (config % gridfromfile .or. config % lonlat_grid()) then
 
   if (config % gridfromfile) then
 
@@ -267,12 +269,25 @@ subroutine define_grid(self, config)
     call grid_nc_check(nf90_get_var(ncid, varid, self % lat))
     call grid_nc_check(nf90_close(ncid))
 
+  else
+
+    ! a regular lon-lat grid from the namelist, as made by umwm_gridgen:
+    ! longitudes in [-180, 180), latitudes increasing with n
+    do n = 1, self % nm
+      do m = 1, self % mm
+        self % lon(m,n) = modulo(config % lon0 + (m - 1) * config % dlon + 180., 360.) - 180.
+        self % lat(m,n) = config % lat0 + (n - 1) * config % dlat
+      end do
+    end do
+
+  end if
+
     allocate(abscoslat(self % mm,self % nm), lon_tmp(self % mm,self % nm), &
              rotx(self % mm,self % nm), roty(self % mm,self % nm))
     allocate(rlon(self % mm,self % nm), rlat(self % mm,self % nm))
 
     ! figure out if longitude field is continuous:
-    if (minval(self % lon) < -175 .and. maxval(self % lon) > 175) loniscontinuous = .false.
+    loniscontinuous = .not. (minval(self % lon) < -175 .and. maxval(self % lon) > 175)
 
     lon_tmp = self % lon
 
@@ -304,10 +319,12 @@ subroutine define_grid(self, config)
     rlon = self % lon * twopi / 360.
     rlat = self % lat * twopi / 360.
 
+    ! the edges of the cells are midway in longitude along the shorter arc,
+    ! also across the dateline
     do n = 1, self % nm
       do m = 2, self % mm - 1
-        self % dx_2d(m,n) = r_earth * distance_haversine(0.5 * (rlon(m-1,n) + rlon(m  ,n)), &
-                                                         0.5 * (rlon(m  ,n) + rlon(m+1,n)), &
+        self % dx_2d(m,n) = r_earth * distance_haversine(lon_midpoint(rlon(m-1,n), rlon(m  ,n)), &
+                                                         lon_midpoint(rlon(m  ,n), rlon(m+1,n)), &
                                                          0.5 * (rlat(m-1,n) + rlat(m  ,n)), &
                                                          0.5 * (rlat(m  ,n) + rlat(m+1,n)))
       end do
@@ -318,8 +335,8 @@ subroutine define_grid(self, config)
 
     do n = 2, self % nm - 1
       do m = 1, self % mm
-        self % dy_2d(m,n) = r_earth * distance_haversine(0.5 * (rlon(m,n-1) + rlon(m,n  )), &
-                                                         0.5 * (rlon(m,n  ) + rlon(m,n+1)), &
+        self % dy_2d(m,n) = r_earth * distance_haversine(lon_midpoint(rlon(m,n-1), rlon(m,n  )), &
+                                                         lon_midpoint(rlon(m,n  ), rlon(m,n+1)), &
                                                          0.5 * (rlat(m,n-1) + rlat(m,n  )), &
                                                          0.5 * (rlat(m,n  ) + rlat(m,n+1)))
       end do
@@ -1128,6 +1145,16 @@ subroutine finalize(self)
   if (allocated(self % oneovar)) deallocate(self % oneovar, self % oneovdx, self % oneovdy)
 
 end subroutine finalize
+
+
+pure elemental real function lon_midpoint(a, b) result(res)
+! The longitude midway between longitudes a and b [rad], along the shorter
+! arc between them; across the dateline it is off by 2 pi, to which the
+! distance_haversine is periodic.
+  real, intent(in) :: a, b
+  res = 0.5 * (a + b)
+  if (abs(b - a) > pi) res = res + pi
+end function lon_midpoint
 
 
 subroutine grid_nc_check(stat)

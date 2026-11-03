@@ -85,9 +85,9 @@ contains
                      config % fcut_fac, config % fprog, &
                      config % sin_fac, self % fieldscale1, self % fieldscale2, self % dth, &
                      config % mss_fac, self % twopisds_fac, config % sds_power, &
-                     config % sdt_fac, config % fice_lth, config % explim, self % oc, &
-                     self % shelt, self % mss_moments, self % sds, self % sdt, self % sice, &
-                     self % physics_time_step, results)
+                     config % sdt_fac, config % fice_lth, config % explim, self % prescribed, &
+                     self % oc, self % shelt, self % mss_moments, self % sds, self % sdt, &
+                     self % sice, self % physics_time_step, results)
     call copy_results(1, dts_min)
 
     ! dynamic time step and in-step model time:
@@ -169,7 +169,8 @@ contains
                 om => self % spectrum % num_frequencies, pm => self % spectrum % num_directions)
       call integrate_acc(om, pm, self % grid % istart, self % grid % iend, &
                          self % grid % iistart - 1, self % grid % iiend, self % grid % imm, &
-                         halo, self % halo_source, store, self % dts, self % e, self % ef, &
+                         halo, self % halo_source, self % prescribed, store, self % dts, &
+                         self % e, self % ef, &
                          self % f, self % cth, self % sth, self % cth2, self % sth2, &
                          forcing % wspd, forcing % wdir, forcing % uc, forcing % vc, &
                          forcing % rhorat, forcing % fice, self % ustar, self % shelt, self % oc, &
@@ -231,11 +232,12 @@ contains
                          wdir, uc, vc, rhorat, fice, ustar, logl2overz, cp0, cg0, fkovg, k, kdk, &
                          k3dk, k4, cothkd, snl_fac, snl_bins, snl_frac, sbf, sdv, g, fcut_fac, &
                          fprog, sin_fac, fieldscale1, fieldscale2, dth, mss_fac, twopisds_fac, &
-                         sds_power, sdt_fac, fice_lth, explim, oc, shelt, moments, sds, sdt, &
-                         sice, physics_time_step, res)
+                         sds_power, sdt_fac, fice_lth, explim, prescribed, oc, shelt, moments, &
+                         sds, sdt, sice, physics_time_step, res)
     ! Evaluates the source functions, the column-wise sink terms, and the
     ! largest stable source time step at each cell, as sources, and returns
-    ! the smallest of these time steps in res(1).
+    ! the smallest of these time steps in res(1); the prescribed cells do
+    ! not limit it.
     integer, intent(in) :: om, pm, i1, i2, h1, h2, imm, snl_bins
     real, intent(in) :: e(om,pm,h1:h2), f(om), cth(pm), sth(pm), cth2(pm), sth2(pm)
     real, intent(in), dimension(imm) :: wspd, wdir, uc, vc, rhorat, fice
@@ -246,6 +248,7 @@ contains
     real, intent(in) :: snl_fac, snl_frac, g, fcut_fac, fprog, sin_fac, fieldscale1, &
                         fieldscale2, dth, mss_fac, twopisds_fac, sds_power, sdt_fac, fice_lth, &
                         explim
+    logical, intent(in) :: prescribed(i1:i2)
     integer, intent(inout) :: oc(i1:i2)
     real, intent(inout) :: shelt(i1:i2), moments(om,3,i1:i2), sds(om,pm,i1:i2), &
                            sdt(om,i1:i2), sice(om,i1:i2), physics_time_step(i1:i2), res(1)
@@ -364,7 +367,11 @@ contains
             sbf(o,i), sdt(o,i), sdv(o,i), sice(o,i))))
         end do
       end do
-      physics_time_step(i) = explim / rate
+      if (prescribed(i)) then
+        physics_time_step(i) = huge(rate)
+      else
+        physics_time_step(i) = explim / rate
+      end if
 
     end do
 
@@ -382,7 +389,8 @@ contains
   end subroutine sources_acc
 
 
-  subroutine integrate_acc(om, pm, i1, i2, h1, h2, imm, halo, halo_source, store, dts, e, ef, &
+  subroutine integrate_acc(om, pm, i1, i2, h1, h2, imm, halo, halo_source, prescribed, store, &
+                           dts, e, ef, &
                            f, cth, sth, cth2, sth2, wspd, wdir, uc, vc, rhorat, fice, ustar, &
                            shelt, oc, logl2overz, cp0, fkovg, k4, cothkd, sbf, sdt, sdv, sice, &
                            oneoverk4, kdk, moments, sin_fac, fieldscale1, fieldscale2, mss_fac, &
@@ -392,10 +400,10 @@ contains
     ! cells in the halo of other tiles if halo is .true., and at the other
     ! cells otherwise: ef is the updated spectrum, and e becomes the mean of
     ! the old and updated spectrum. If store is .true., Sin, Sds and Snl over
-    ! the whole spectrum are kept for output. The kernel runs asynchronously
-    ! on integrate_queue.
+    ! the whole spectrum are kept for output. The spectrum of the prescribed
+    ! cells is kept. The kernels run asynchronously on integrate_queue.
     integer, intent(in) :: om, pm, i1, i2, h1, h2, imm, snl_bins
-    logical, intent(in) :: halo, halo_source(i1:i2), store
+    logical, intent(in) :: halo, halo_source(i1:i2), prescribed(i1:i2), store
     real, intent(in) :: dts
     real, intent(inout) :: e(om,pm,h1:h2), ef(om,pm,h1:h2)
     real, intent(in) :: f(om), cth(pm), sth(pm), cth2(pm), sth2(pm)
@@ -421,7 +429,7 @@ contains
     !$acc parallel loop gang vector_length(vl) async(integrate_queue) &
     !$acc   private(wspd_i, ustar_i, shelt_i, cos_wdir, sin_wdir, scale, no)
     do i = i1, i2
-      if (halo_source(i) .eqv. halo) then
+      if ((halo_source(i) .eqv. halo) .and. .not. prescribed(i)) then
 
         no = oc(i)
         wspd_i = max(wspd(i), min_wind_speed)
@@ -478,6 +486,19 @@ contains
           end do
         end do
 
+      end if
+    end do
+
+    ! the prescribed spectrum of the boundary cells is kept, and propagated
+    !$acc parallel loop gang vector_length(vl) async(integrate_queue)
+    do i = i1, i2
+      if ((halo_source(i) .eqv. halo) .and. prescribed(i)) then
+        !$acc loop vector collapse(2)
+        do p = 1, pm
+          do o = 1, om
+            ef(o,p,i) = e(o,p,i)
+          end do
+        end do
       end if
     end do
 

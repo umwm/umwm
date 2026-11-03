@@ -26,6 +26,8 @@ program test_config
     test(invalid_stokes_depths), &
     test(cutoff_factor), &
     test(sibling_paths), &
+    test(lonlat_grid_settings), &
+    test(waves_and_source), &
     test(unreadable_namelist) &
   ])
 
@@ -206,6 +208,53 @@ contains
       here % input_path('umwm.gridtopo') == '../examples/seamount/input/umwm.gridtopo' .and. &
       .not. config % steady)
   end function sibling_paths
+
+
+  function lonlat_grid_settings() result(res)
+    ! A lon-lat grid needs both spacings, latitudes within [-90, 90], and,
+    ! if global, longitudes that close the circle; the namelist default is
+    ! no lon-lat grid.
+    type(test_result) :: res
+    type(config_type) :: config
+    logical :: ok
+
+    config = valid_config()
+    ok = .not. config % lonlat_grid() .and. config % dlon == 0 .and. config % dlat == 0
+    config % dlon = 0.25
+    ok = ok .and. config % lonlat_grid() .and. .not. config % validate(stop_on_error=.false., rank=-1)
+    config % dlat = 0.25
+    config % lat0 = 88 ! to 90.5
+    ok = ok .and. .not. config % validate(stop_on_error=.false., rank=-1)
+    config % lat0 = 10
+    ok = ok .and. config % validate(stop_on_error=.false., rank=-1)
+    config % gridfromfile = .true.
+    ok = ok .and. .not. config % lonlat_grid()
+
+    res = test('lonlat_grid_settings', ok)
+  end function lonlat_grid_settings
+
+
+  function waves_and_source() result(res)
+    ! The wave partitions are read from file with waves, and the input files
+    ! come from a data source unless it is 'none' or empty, the default.
+    type(test_result) :: res
+    type(config_type) :: config
+    logical :: ok
+
+    config = valid_config()
+    ok = .not. config % waves .and. .not. config % has_source() .and. &
+         .not. config % forcing_from_file()
+    config % waves = .true.
+    ok = ok .and. config % forcing_from_file()
+    config % source = 'era5'
+    ok = ok .and. config % has_source()
+    config % source = ' None'
+    ok = ok .and. .not. config % has_source()
+    config % source = ''
+    ok = ok .and. .not. config % has_source()
+
+    res = test('waves_and_source', ok)
+  end function waves_and_source
 
 
   function unreadable_namelist() result(res)

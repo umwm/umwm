@@ -63,6 +63,11 @@ source-dir = "tests"
 main = "test_forcing.f90"
 
 [[test]]
+name = "test_partitions"
+source-dir = "tests"
+main = "test_partitions.f90"
+
+[[test]]
 name = "test_source_functions"
 source-dir = "tests"
 main = "test_source_functions.f90"

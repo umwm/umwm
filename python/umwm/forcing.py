@@ -9,6 +9,7 @@ such files from NumPy arrays of shape ``(ny, nx)``.
 
 from __future__ import annotations
 
+import re
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -18,7 +19,7 @@ import xarray as xr
 from .config import format_time, parse_time
 
 __all__ = ["forcing_filename", "forcing_files", "write_forcing", "write_forcing_dataset", "write_grid",
-           "rankine_vortex", "write_rankine_forcing", "STEADY_FORCING_FILE"]
+           "rankine_vortex", "write_rankine_forcing", "STEADY_FORCING_FILE", "partition_variable"]
 
 FORCING_VARIABLES = {
     "uw": ("wind x-component", "m s-1"),
@@ -30,6 +31,20 @@ FORCING_VARIABLES = {
     "fice": ("sea ice fraction", "1"),
 }
 """Forcing variables of the input files, with description and units."""
+
+_PARTITION_VARIABLE = re.compile(r"^p(hs|tm|tp|dir|spr|gam)([0-9])$")
+
+
+def partition_variable(name: str) -> tuple[str, str] | None:
+    """The description and units of a wave partition variable of the input files
+    (``forcing.waves``), such as ``phs0`` or ``pdir2``, or None if ``name`` is not one."""
+    from .sources.waves import PARTITION_VARIABLES
+
+    match = _PARTITION_VARIABLE.match(name)
+    if not match:
+        return None
+    description, units = PARTITION_VARIABLES["p" + match.group(1)]
+    return description.format(p=match.group(2)), units
 
 
 STEADY_FORCING_FILE = "umwmin.nc"
@@ -66,7 +81,7 @@ def _as_field(name, value, shape, dtype=np.float32):
 
 
 def write_forcing(path, time, *, uw=None, vw=None, uc=None, vc=None, rhoa=None, rhow=None,
-                  fice=None, lon=None, lat=None, x=None, y=None, attrs=None, steady=False) -> Path:
+                  fice=None, lon=None, lat=None, x=None, y=None, attrs=None, steady=False, **partitions) -> Path:
     """Write a forcing input file for one time.
 
     ``path`` is the input directory, in which case the file is named after
@@ -78,10 +93,30 @@ def write_forcing(path, time, *, uw=None, vw=None, uc=None, vc=None, rhoa=None, 
     ``rhow``; ``forcing.seaice``: ``fice``) must be given. ``lon`` and
     ``lat`` (2-D) and ``x`` and ``y`` (1-D) are optional coordinates written
     for reference. Returns the path of the file written.
+
+    The wave partitions of ``forcing.waves`` are given as keyword arguments
+    named after their variables, for each partition p (0 to 9): ``phs<p>``,
+    the significant wave height [m]; ``ptm<p>``, the mean period Tm-1,0 [s],
+    or ``ptp<p>``, the peak period [s]; ``pdir<p>``, the mean direction of
+    propagation, counterclockwise from east [rad]; and optionally
+    ``pspr<p>``, the directional spread sqrt(2 (1 - M1)) [rad], and
+    ``pgam<p>``, the JONSWAP peak enhancement factor. A significant wave
+    height of 0 is an absent partition, and a negative or missing (NaN) one
+    marks a cell without wave data, which is written as -1; the other
+    missing values are written as 0.
     """
     time = time if isinstance(time, datetime) else parse_time(time)
+    for name in partitions:
+        if partition_variable(name) is None:
+            raise TypeError(f"write_forcing() got an unexpected keyword argument {name!r}")
     given = {name: value for name, value in dict(uw=uw, vw=vw, uc=uc, vc=vc, rhoa=rhoa, rhow=rhow, fice=fice).items()
              if value is not None}
+    waves = {name: value for name, value in partitions.items() if value is not None}
+    for name, value in waves.items():
+        value = np.asarray(value, dtype=np.float64)
+        missing = ~np.isfinite(value) | (value < 0) if name.startswith("phs") else ~np.isfinite(value)
+        waves[name] = np.where(missing, -1.0 if name.startswith("phs") else 0.0, value)
+    given.update(waves)
     if not given:
         raise ValueError("at least one forcing field must be given")
     shapes = {np.shape(value) for value in given.values() if np.ndim(value) == 2}
@@ -96,7 +131,7 @@ def write_forcing(path, time, *, uw=None, vw=None, uc=None, vc=None, rhoa=None, 
         data_vars["lon"] = (("y", "x"), _as_field("lon", lon, shape), {"long_name": "longitude", "units": "degrees_east"})
         data_vars["lat"] = (("y", "x"), _as_field("lat", lat, shape), {"long_name": "latitude", "units": "degrees_north"})
     for name, value in given.items():
-        description, units = FORCING_VARIABLES[name]
+        description, units = FORCING_VARIABLES.get(name) or partition_variable(name)
         data_vars[name] = (("time", "y", "x"), _as_field(name, value, shape)[np.newaxis], {"long_name": description, "units": units})
 
     coords = {"time": ("time", np.array([np.datetime64(time, "s")]), {"long_name": "time"})}
@@ -110,7 +145,7 @@ def write_forcing(path, time, *, uw=None, vw=None, uc=None, vc=None, rhoa=None, 
     if path.is_dir() or path.suffix != ".nc":
         path = path / forcing_filename(time, steady)
     path.parent.mkdir(parents=True, exist_ok=True)
-    encoding = {name: {"dtype": "float32"} for name in dataset.data_vars}
+    encoding = {name: {"dtype": "float32", "_FillValue": None} for name in dataset.data_vars}
     dataset.to_netcdf(path, engine="netcdf4", format="NETCDF4", encoding=encoding, unlimited_dims=("time",))
     return path
 
@@ -130,16 +165,19 @@ def write_forcing_dataset(path, dataset, *, rename=None) -> list[Path]:
     """Write one forcing file per time of an xarray dataset into the directory ``path``.
 
     The dataset holds the forcing variables (``uw``, ``vw``, ``uc``, ``vc``,
-    ``rhoa``, ``rhow``, ``fice``; others are ignored) with dimensions
-    ``(time, y, x)``, and optionally ``lon`` and ``lat``. ``rename`` maps the
-    names in the dataset to these, for example ``{"u10": "uw", "v10": "vw"}``.
-    Returns the paths of the files written, in time order.
+    ``rhoa``, ``rhow``, ``fice``, and the wave partitions ``phs<p>``,
+    ``ptm<p>``, ... of :func:`write_forcing`; others are ignored) with
+    dimensions ``(time, y, x)``, and optionally ``lon`` and ``lat``.
+    ``rename`` maps the names in the dataset to these, for example
+    ``{"u10": "uw", "v10": "vw"}``. Returns the paths of the files written,
+    in time order.
     """
     rename = {old: new for old, new in dict(rename or {}).items() if old in dataset}
     dataset = dataset.rename(rename) if rename else dataset
     if "time" not in dataset.dims:
         raise ValueError("the dataset needs a time dimension")
     names = [name for name in FORCING_VARIABLES if name in dataset]
+    names += sorted(name for name in dataset.data_vars if partition_variable(str(name)))
     if not names:
         raise ValueError("the dataset has none of the forcing variables " + ", ".join(FORCING_VARIABLES))
     if {"y", "x"} <= set(dataset.dims):

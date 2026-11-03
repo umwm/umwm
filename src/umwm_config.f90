@@ -10,6 +10,7 @@ module umwm_config
 
   integer, parameter :: max_stokes_depths = 100
   integer, parameter :: max_path = 4096 ! the longest path, PATH_MAX of Linux
+  integer, parameter, public :: max_source = 64 ! the longest data source name
   integer, parameter :: allowedoutputtimes(10) = [-1, 0, 1, 2, 3, 4, 6, 8, 12, 24]
 
   type :: config_type
@@ -60,13 +61,19 @@ module umwm_config
     real :: dpt = 0.
     logical :: fillestuaries = .false.
     logical :: filllakes = .false.
+    real :: lon0 = 0. ! longitude and latitude of cell (1,1) of a lon-lat grid [deg]
+    real :: lat0 = 0.
+    real :: dlon = 0. ! spacing of a regular lon-lat grid made by the model [deg]
+    real :: dlat = 0.
 
     logical :: winds = .false.
     logical :: currents = .false.
     logical :: air_density = .false.
     logical :: water_density = .false.
     logical :: seaice = .false.
+    logical :: waves = .false. ! wave partitions: initial spectrum and open boundaries
     logical :: steady = .false.
+    character(len=max_source) :: source = 'none' ! where the input files come from
 
     real :: wspd0 = 0.
     real :: wdir0 = 0.
@@ -90,6 +97,9 @@ module umwm_config
   contains
     procedure :: input_path
     procedure :: sibling_path
+    procedure :: lonlat_grid
+    procedure :: forcing_from_file
+    procedure :: has_source
     procedure :: validate
   end type config_type
 
@@ -126,9 +136,11 @@ contains
       res%sds_power, res%mss_fac, res%snl_fac, res%sdt_fac, res%sbf_fac, &
       res%sbp_fac, res%fcut_fac, stat, iomsg)
     if (stat == 0) call read_grid(unit, res%gridfromfile, res%delx, res%dely, &
-      res%topofromfile, res%dpt, res%fillestuaries, res%filllakes, stat, iomsg)
+      res%topofromfile, res%dpt, res%fillestuaries, res%filllakes, &
+      res%lon0, res%lat0, res%dlon, res%dlat, stat, iomsg)
     if (stat == 0) call read_forcing(unit, res%winds, res%currents, &
-      res%air_density, res%water_density, res%seaice, res%steady, stat, iomsg)
+      res%air_density, res%water_density, res%seaice, res%waves, res%steady, &
+      res%source, stat, iomsg)
     if (stat == 0) call read_forcing_constant(unit, res%wspd0, res%wdir0, &
       res%uc0, res%vc0, res%rhoa0, res%rhow0, res%fice0, res%fice_lth, &
       res%fice_uth, stat, iomsg)
@@ -194,30 +206,33 @@ contains
 
 
   subroutine read_grid(unit, gridfromfile, delx, dely, topofromfile, dpt, &
-                       fillestuaries, filllakes, stat, iomsg)
+                       fillestuaries, filllakes, lon0, lat0, dlon, dlat, stat, iomsg)
     integer, intent(in) :: unit
     logical, intent(inout) :: gridfromfile, topofromfile
     logical, intent(inout) :: fillestuaries, filllakes
     real, intent(inout) :: delx, dely, dpt
+    real, intent(inout) :: lon0, lat0, dlon, dlat
     integer, intent(out) :: stat
     character(len=*), intent(out) :: iomsg
 
     namelist /grid/ gridfromfile, delx, dely, topofromfile, dpt, &
-      fillestuaries, filllakes
+      fillestuaries, filllakes, lon0, lat0, dlon, dlat
 
     read(unit, nml=grid, iostat=stat, iomsg=iomsg)
   end subroutine read_grid
 
 
   subroutine read_forcing(unit, winds, currents, air_density, water_density, &
-                          seaice, steady, stat, iomsg)
+                          seaice, waves, steady, source, stat, iomsg)
     integer, intent(in) :: unit
     logical, intent(inout) :: winds, currents, air_density, water_density, seaice
-    logical, intent(inout) :: steady
+    logical, intent(inout) :: waves, steady
+    character(len=max_source), intent(inout) :: source
     integer, intent(out) :: stat
     character(len=*), intent(out) :: iomsg
 
-    namelist /forcing/ winds, currents, air_density, water_density, seaice, steady
+    namelist /forcing/ winds, currents, air_density, water_density, seaice, waves, &
+      steady, source
 
     read(unit, nml=forcing, iostat=stat, iomsg=iomsg)
   end subroutine read_forcing
@@ -311,6 +326,39 @@ contains
 
     res = self%path(1:index(self%path, '/', back=.true.)) // name
   end function sibling_path
+
+
+  logical function lonlat_grid(self)
+    ! Whether the model makes a regular longitude-latitude grid from lon0,
+    ! lat0, dlon and dlat, rather than reading the grid from a file or using
+    ! a Cartesian grid of spacing delx and dely.
+    class(config_type), intent(in) :: self
+    lonlat_grid = .not. self%gridfromfile .and. (self%dlon > 0 .or. self%dlat > 0)
+  end function lonlat_grid
+
+
+  logical function forcing_from_file(self)
+    ! Whether any forcing field, or the wave partitions, are read from the
+    ! input files.
+    class(config_type), intent(in) :: self
+    forcing_from_file = any([self%winds, self%currents, self%air_density, &
+                             self%water_density, self%seaice, self%waves])
+  end function forcing_from_file
+
+
+  logical function has_source(self)
+    ! Whether the input files are prepared from a data source, such as
+    ! 'era5', rather than provided in the input directory ('none', in any
+    ! case, or empty).
+    class(config_type), intent(in) :: self
+    character(len=max_source) :: name
+    integer :: n
+    name = adjustl(self%source)
+    do n = 1, len_trim(name)
+      if (name(n:n) >= 'A' .and. name(n:n) <= 'Z') name(n:n) = achar(iachar(name(n:n)) + 32)
+    end do
+    has_source = .not. (len_trim(name) == 0 .or. name == 'none')
+  end function has_source
 
 
   function validate(self, stop_on_error, rank) result(ok)
@@ -428,6 +476,23 @@ contains
       if (self%dpt <= 0) &
         call diagnostic('error', &
           'bad value in main.nml: dpt must be > 0', ok, rank_value)
+    end if
+
+    if (self%lonlat_grid()) then
+      if (self%dlon <= 0 .or. self%dlat <= 0) then
+        call diagnostic('error', &
+          'bad value in main.nml: dlon and dlat must both be > 0 for a lon-lat grid', &
+          ok, rank_value)
+      else
+        if (self%lat0 < -90 .or. self%lat0 + (self%nm - 1) * self%dlat > 90) &
+          call diagnostic('error', &
+            'bad value in main.nml: the latitudes lat0 to lat0 + (nm - 1) * dlat ' // &
+            'must be within [-90, 90]', ok, rank_value)
+        if (self%isglobal .and. abs(self%mm * self%dlon - 360) > 0.01 * self%dlon) &
+          call diagnostic('error', &
+            'bad value in main.nml: a global lon-lat grid must have mm * dlon = 360', &
+            ok, rank_value)
+      end if
     end if
 
     if (self%rhoa0 <= 0 .or. self%rhow0 <= 0) &

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import contextlib
 import os
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Iterator
@@ -61,7 +62,10 @@ class Domain:
     The model is set up by :meth:`initialize`, which writes the namelists
     and reads the inputs, and integrated by :meth:`run` or :meth:`advance`;
     both initialize the domain if needed. :meth:`finalize` releases the
-    model memory, and is also called on leaving a ``with`` block.
+    model memory, and is also called on leaving a ``with`` block. With a
+    data source of the input files (``forcing.source``, such as ``"era5"``),
+    :meth:`initialize` prepares the missing input files from it first; see
+    :meth:`prepare_inputs`.
 
     >>> with Domain(config, workdir="runs/case1") as domain:
     ...     domain.run()
@@ -226,6 +230,22 @@ class Domain:
             names.append("rhow")
         return names
 
+    def prepare_inputs(self, source: str | None = None, force: bool = False, **options) -> list[Path]:
+        """Prepare the input files of the configuration that are missing from the
+        input directory, or all of them with ``force``, from its data source
+        (``forcing.source``) or ``source``, and return their paths; see
+        :func:`umwm.sources.prepare.prepare_inputs` for the files and the
+        ``options``. Only the root process prepares them; all processes wait
+        for it, and get the paths."""
+        from .sources import prepare_inputs
+
+        paths = []
+        if self.rank == 0:
+            with self._model_output():
+                paths = prepare_inputs(self.config, self.input_dir, source=source, force=force, **options)
+        self.barrier()
+        return paths
+
     def missing_inputs(self) -> list[Path]:
         """The input files the configuration requires that do not exist."""
         config = self.config
@@ -284,6 +304,23 @@ class Domain:
         if variables:
             for name in forcing_files(config):
                 check(self.input_dir / name, variables, 3)
+        if config.forcing.waves and forcing_files(config):
+            # the initial spectrum needs the partitions of the start time
+            path = self.input_dir / forcing_files(config)[0]
+            if path.is_file():
+                with Dataset(path) as dataset:
+                    partitions = [name for name in dataset.variables if re.fullmatch(r"phs[0-9]", name)]
+                    if not partitions:
+                        problems.append(f"{path}: no wave partitions (phs0, ptm0, pdir0, ...), which "
+                                        "forcing.waves reads")
+                    for name in partitions:
+                        p = name[-1]
+                        needed = [f"pdir{p}"] + ([] if f"ptp{p}" in dataset.variables else [f"ptm{p}"])
+                        for variable in needed:
+                            if variable not in dataset.variables:
+                                problems.append(f"{path}: variable {variable!r} of partition {p} not found")
+                    if partitions:
+                        check(path, partitions, 3)
         return problems
 
     def check_inputs(self) -> None:
@@ -301,12 +338,15 @@ class Domain:
         raise ValueError(f"input file problems:\n  {listing}{more}")
 
     def initialize(self) -> "Domain":
-        """Validate the configuration, check the inputs, write the namelists,
+        """Validate the configuration, prepare the missing input files from
+        its data source if it has one, check the inputs, write the namelists,
         and initialize the model: construct the grids, load the forcing at
         the start time, and compute the initial wave state."""
         if self._handle is not None:
             raise RuntimeError("the domain is already initialized")
         self.config.validate()
+        if self.config.source_name is not None and self.missing_inputs():
+            self.prepare_inputs()
         self.check_inputs()
         self.write_namelists()
         namelist = os.path.relpath(self.namelist_path, self.workdir)
@@ -457,7 +497,13 @@ class Domain:
         if self.initialized:
             sizes = self.sizes
             cells += f", {sizes['im']} sea cells and {sizes['imm'] - sizes['im']} land"
-        geometry = "geometry from input/umwm.grid" if grid.gridfromfile else f"{grid.delx:g} x {grid.dely:g} m spacing"
+        if grid.gridfromfile:
+            geometry = "geometry from input/umwm.grid"
+        elif config.lonlat_grid:
+            geometry = (f"lon-lat grid from ({grid.lon0:g}, {grid.lat0:g}) at {grid.dlon:g} x {grid.dlat:g} "
+                        "degrees")
+        else:
+            geometry = f"{grid.delx:g} x {grid.dely:g} m spacing"
         depth = "bathymetry from input/umwm.gridtopo" if grid.topofromfile else f"{grid.dpt:g} m depth"
         lines.append(f"  grid: {cells}, {geometry}, {depth}" + (", global" if domain.isglobal else ""))
         lines.append(f"  spectrum: {domain.om} frequencies from {domain.fmin:g} to {domain.fmax:g} Hz "
@@ -468,7 +514,8 @@ class Domain:
         if domain.restart:
             time += ", from a restart file"
         lines.append(time)
-        sources = [name.replace("_", " ") for name in ("winds", "currents", "air_density", "water_density", "seaice")
+        sources = [name.replace("_", " ").replace("waves", "wave partitions")
+                   for name in ("winds", "currents", "air_density", "water_density", "seaice", "waves")
                    if getattr(forcing, name)]
         constants = []
         if not forcing.winds:
@@ -485,6 +532,8 @@ class Domain:
             sources[-1] += " (steady)"
         lines.append("  forcing: " + ("from input files: " + ", ".join(sources) + "; " if sources else "")
                      + "constant " + ", ".join(constants))
+        if config.source_name is not None:
+            lines.append(f"  input files: prepared from {config.source_name} when missing")
 
         def interval(value):
             return "off" if value == 0 else "every global step" if value == -1 else f"every {value} h"

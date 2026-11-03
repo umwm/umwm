@@ -35,6 +35,7 @@ OBJS = datetime_module.o \
        umwm_grid.o \
        umwm_io.o \
        umwm_mpi.o \
+       umwm_partitions.o \
        umwm_physics.o \
        umwm_util.o \
        umwm_restart.o \
@@ -73,9 +74,9 @@ $(SHARED_LIB): $(OBJS)
 
 # Object            Source              Dependencies
 umwm.o:             umwm.f90            umwm_cli.o umwm_domain.o umwm_env.o
-umwm_cli.o:         umwm_cli.f90        umwm_env.o
+umwm_cli.o:         umwm_cli.f90        datetime_module.o umwm_config.o umwm_env.o
 datetime_module.o:  datetime_module.f90
-umwm_domain.o:      umwm_domain.f90     datetime_module.o umwm_advection.o umwm_config.o umwm_constants.o umwm_dispersion.o umwm_env.o umwm_forcing.o umwm_grid.o umwm_io.o umwm_mpi.o umwm_physics.o umwm_restart.o umwm_sheltering.o umwm_source_functions.o umwm_spectrum.o umwm_stokes.o umwm_stress.o umwm_util.o
+umwm_domain.o:      umwm_domain.f90     datetime_module.o umwm_advection.o umwm_config.o umwm_constants.o umwm_dispersion.o umwm_env.o umwm_forcing.o umwm_grid.o umwm_io.o umwm_mpi.o umwm_partitions.o umwm_physics.o umwm_restart.o umwm_sheltering.o umwm_source_functions.o umwm_spectrum.o umwm_stokes.o umwm_stress.o umwm_util.o
 umwm_domain_output.o: umwm_domain_output.f90 umwm_domain.o umwm_io.o
 umwm_domain_acc.o:  umwm_domain_acc.f90 umwm_advection.o umwm_domain.o umwm_physics.o umwm_source_functions.o
 umwm_capi.o:        umwm_capi.f90       umwm_domain.o umwm_env.o umwm_io.o
@@ -91,7 +92,8 @@ umwm_mpi.o:         umwm_mpi.f90        umwm_env.o umwm_grid.o
 umwm_physics.o:     umwm_physics.f90    umwm_source_functions.o
 umwm_advection.o:   umwm_advection.f90
 umwm_io.o:          umwm_io.f90         datetime_module.o umwm_env.o umwm_grid.o umwm_mpi.o
-umwm_forcing.o:     umwm_forcing.f90    umwm_config.o umwm_grid.o
+umwm_forcing.o:     umwm_forcing.f90    umwm_config.o umwm_grid.o umwm_partitions.o
+umwm_partitions.o:  umwm_partitions.f90
 umwm_restart.o:     umwm_restart.f90    umwm_env.o umwm_grid.o umwm_io.o umwm_spectrum.o umwm_util.o
 umwm_sheltering.o:  umwm_sheltering.f90 umwm_constants.o
 umwm_stokes.o:      umwm_stokes.f90     umwm_constants.o

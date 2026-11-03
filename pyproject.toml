@@ -30,6 +30,8 @@ dependencies = [
 test = ["pytest"]
 lazy = ["dask"]
 plot = ["matplotlib"]
+# the ERA5 data source (forcing.source = 'era5'): the ARCO Zarr store over HTTPS
+era5 = ["zarr>=2.18", "fsspec>=2023.1", "aiohttp>=3.8"]
 
 [project.scripts]
 umwm = "umwm.cli:main"
@@ -40,7 +42,7 @@ Documentation = "https://github.com/umwm/umwm/blob/main/python/README.md"
 
 [dependency-groups]
 # Installed by `uv sync` (and `uv run`) by default, for developing and testing.
-dev = ["pytest", "matplotlib"]
+dev = ["pytest", "matplotlib", "zarr", "fsspec", "aiohttp"]
 
 [tool.uv]
 # The package build compiles the Fortran sources into the shared library, so

@@ -3,6 +3,7 @@ module umwm_forcing
   use netcdf
   use umwm_config, only: config_type
   use umwm_grid, only: grid_type
+  use umwm_partitions, only: partitions_type
 
   implicit none
 
@@ -30,6 +31,11 @@ module umwm_forcing
     real, dimension(:), allocatable :: wspd, wdir
     real, dimension(:), allocatable :: fice
 
+    ! Wave partitions of the last file read (waves), on the native grid, and
+    ! whether that file had them.
+    type(partitions_type) :: partitions
+    logical :: partitions_read = .false.
+
   contains
     procedure :: initialize => forcing_initialize
     procedure :: finalize => forcing_finalize
@@ -50,8 +56,7 @@ contains
 
     call self % finalize()
 
-    self % readfile = any([config % winds, config % currents, config % air_density, &
-                           config % water_density, config % seaice])
+    self % readfile = config % forcing_from_file()
 
     allocate(self % gustu(grid % mm, grid % nm), self % gustv(grid % mm, grid % nm))
     allocate(self % rhoa_2d(grid % mm, grid % nm), self % rhow_2d(grid % mm, grid % nm))
@@ -139,6 +144,8 @@ contains
     if (allocated(self % rhoa)) deallocate(self % rhoa, self % rhoab, self % rhoaf)
     if (allocated(self % rhow)) deallocate(self % rhow, self % rhowb, self % rhowf)
     if (allocated(self % rhorat)) deallocate(self % rhorat)
+    call self % partitions % finalize()
+    self % partitions_read = .false.
 
     self % readfile = .false.
 
@@ -167,8 +174,7 @@ contains
     if (config % water_density) self % rhowb = self % rhowf
     if (config % seaice) self % ficeb = self % ficef
 
-    self % readfile = any([config % winds, config % currents, config % air_density, &
-                           config % water_density, config % seaice])
+    self % readfile = config % forcing_from_file()
     if (self % readfile .and. .not. config % steady) call self % load(config, timestr, grid)
 
   end subroutine forcing_update
@@ -193,10 +199,9 @@ contains
     else
       nc_infile = config % input_path('umwmin_' // readstr // '.nc')
     end if
-    self % readfile = any([config % winds, config % currents, config % air_density, &
-                           config % water_density, config % seaice])
+    self % readfile = config % forcing_from_file()
 
-    if (self % readfile) call forcing_nc_check(nf90_open(nc_infile, nf90_nowrite, ncid))
+    if (self % readfile) call forcing_nc_check(nf90_open(nc_infile, nf90_nowrite, ncid), nc_infile)
 
     if (config % winds) then
       call forcing_nc_check(nf90_inq_varid(ncid, 'uw', varid))
@@ -256,6 +261,14 @@ contains
     else
       self % rhow_2d = config % rhow0
       self % rhow = config % rhow0
+    end if
+
+    ! wave partitions, for the initial spectrum and the open boundaries; the
+    ! domain checks that the files it needs them from have them
+    self % partitions_read = .false.
+    if (config % waves) then
+      call self % partitions % read(ncid, nc_infile, config % mm, config % nm)
+      self % partitions_read = self % partitions % num > 0
     end if
 
     if (self % readfile) call forcing_nc_check(nf90_close(ncid))
@@ -366,11 +379,13 @@ contains
   end subroutine forcing_apply_wind_speed_floor
 
 
-  subroutine forcing_nc_check(stat)
+  subroutine forcing_nc_check(stat, path)
     integer, intent(in) :: stat
+    character(*), intent(in), optional :: path
 
     if (stat /= nf90_noerr) then
       write(*,*) 'error in netcdf forcing input'
+      if (present(path)) write(*,*) trim(path)
       write(*,*) trim(nf90_strerror(stat))
       stop
     end if

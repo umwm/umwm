@@ -17,7 +17,9 @@ program test_grid
     test(constant_limited_grid), &
     test(remap_round_trip), &
     test(limited_neighbor_aliases), &
-    test(global_periodic_neighbors) &
+    test(global_periodic_neighbors), &
+    test(lonlat_grid_across_dateline), &
+    test(global_lonlat_grid) &
   ])
 
 #ifdef MPI
@@ -154,6 +156,75 @@ contains
 
     res = test('global_periodic_neighbors', ok)
   end function global_periodic_neighbors
+
+
+  function lonlat_grid_across_dateline() result(res)
+    ! A regular lon-lat grid made by the model from lon0, lat0, dlon and
+    ! dlat, across the dateline: longitudes in [-180, 180), and the spacing
+    ! of a sphere, with the grid rotation of great circles.
+    use umwm_constants, only: dr, r_earth
+    type(test_result) :: res
+    type(config_type) :: config
+    type(grid_type) :: grid
+    integer :: n
+    logical :: ok
+
+    config = valid_config()
+    config % lon0 = 170
+    config % lat0 = 10
+    config % dlon = 0.5
+    config % dlat = 0.25
+    ok = config % lonlat_grid() .and. config % validate(stop_on_error=.false., rank=-1)
+    call grid % initialize(config)
+
+    ok = ok .and. nearly_equal(grid % lon(1,1), 170.) .and. nearly_equal(grid % lon(20,1), 179.5) &
+         .and. nearly_equal(grid % lon(21,1), -180.) .and. nearly_equal(grid % lat(1,11), 12.5) &
+         .and. all(nearly_equal(grid % lon(:,1), grid % lon(:,11)))
+    do n = 2, config % nm - 1
+      ok = ok .and. all(abs(grid % dx_2d(2:20,n) / (r_earth * dr * 0.5 * cos(dr * grid % lat(2,n))) - 1) < 1e-3) &
+              .and. all(abs(grid % dy_2d(2:20,n) / (r_earth * dr * 0.25) - 1) < 1e-3) &
+              .and. all(grid % curv(2:20,n) < 0 .and. grid % curv(2:20,n) > -0.01)
+    end do
+
+    call grid % finalize()
+
+    res = test('lonlat_grid_across_dateline', ok)
+  end function lonlat_grid_across_dateline
+
+
+  function global_lonlat_grid() result(res)
+    ! A global lon-lat grid is periodic in longitude, also in its spacing.
+    type(test_result) :: res
+    type(config_type) :: config
+    type(grid_type) :: grid
+    logical :: ok
+
+    config = valid_config()
+    config % isglobal = .true.
+    config % mm = 72
+    config % nm = 31
+    config % xpl = 10
+    config % lon0 = 0
+    config % lat0 = -75
+    config % dlon = 5
+    config % dlat = 5
+    ok = config % validate(stop_on_error=.false., rank=-1)
+    call grid % initialize(config)
+
+    ok = ok .and. grid % im == config % mm * (config % nm - 2) &
+         .and. all(abs(grid % dx_2d(1,:) / grid % dx_2d(2,:) - 1) < 1e-4) &
+         .and. all(abs(grid % dx_2d(72,:) / grid % dx_2d(2,:) - 1) < 1e-4) &
+         .and. all(abs(grid % curv(1,:) - grid % curv(2,:)) < 1e-5) &
+         .and. nearly_equal(grid % lon(37,1), -180.)
+
+    call grid % finalize()
+
+    ! the longitudes of a global grid must close the circle
+    config % dlon = 4
+    ok = ok .and. .not. config % validate(stop_on_error=.false., rank=-1)
+
+    res = test('global_lonlat_grid', ok)
+  end function global_lonlat_grid
 
 
   function valid_config() result(config)

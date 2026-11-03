@@ -110,6 +110,18 @@ module umwm_domain
     integer, allocatable :: spectrum_m(:), spectrum_n(:), spectrum_i(:)
     character(40), allocatable :: spectrum_id(:)
 
+    ! open boundaries (waves): the sea cells next to the edges of a regional
+    ! domain where the input files have wave partitions, whose spectrum is
+    ! set from them, interpolated in time between the backward and forward
+    ! forcing times
+    integer :: num_boundary = 0     ! boundary cells of this process
+    integer :: num_boundary_all = 0 ! of all processes
+    integer, allocatable :: boundary(:)
+    real, allocatable :: e_boundary_b(:,:,:), e_boundary_f(:,:,:) ! (o,p,boundary)
+    ! cells whose spectrum is prescribed, the boundary cells: their source
+    ! functions are not integrated, and do not limit the time step
+    logical, allocatable :: prescribed(:)
+
   contains
 
     procedure :: initialize
@@ -122,6 +134,9 @@ module umwm_domain
     procedure, private :: allocate_fields
     procedure, private :: initialize_physics
     procedure, private :: initialize_pipeline
+    procedure, private :: initialize_waves
+    procedure, private :: update_boundaries
+    procedure, private :: apply_boundaries
     procedure, private :: step
     procedure, private :: step_acc
     procedure, private :: sources
@@ -215,6 +230,7 @@ contains
     call self % forcing % load(config, config % starttimestr, grid)
     call self % initialize_physics()
     call self % initialize_pipeline()
+    if (config % waves) call self % initialize_waves()
 
     end associate
 
@@ -253,6 +269,7 @@ contains
     call fill(size(self % snl), self % snl, 0.)
 
     allocate(self % oc(is:ie), source=0)
+    allocate(self % prescribed(is:ie), source=.false.)
     allocate(self % psim(self % grid % imm), source=0.)
 
     allocate(self % shelt(is:ie), self % physics_time_step(is:ie), &
@@ -530,6 +547,135 @@ contains
   end subroutine initialize_pipeline
 
 
+  subroutine initialize_waves(self)
+    ! Sets the initial spectrum from the wave partitions of the input file
+    ! of the start time, unless restarting, and finds the open boundaries of
+    ! a regional domain: the sea cells next to its edges where that file has
+    ! wave data, whose spectrum is set from the partitions of the input
+    ! files throughout the run.
+    class(domain_type), intent(inout) :: self
+    integer :: i, j, m, n
+#ifdef MPI
+    integer :: ierr
+#endif
+
+    associate(config => self % config, grid => self % grid, &
+              partitions => self % forcing % partitions, &
+              om => self % spectrum % num_frequencies, pm => self % spectrum % num_directions, &
+              is => self % grid % istart, ie => self % grid % iend)
+
+    if (.not. self % forcing % partitions_read) then
+      if (nproc == 0) write(*,'(a)') 'umwm: waves: error: the input file of the start time ' &
+        // 'has no wave partitions (phs0, ptm0, pdir0, ...)'
+      stop 1
+    end if
+
+    if (.not. config % restart) then
+      do i = is, ie
+        call partitions % spectrum(grid % mi(i), grid % ni(i), om, pm, self % f, self % th, &
+                                   self % dth, self % kdk(:,i), self % e(:,:,i))
+      end do
+      call self % stokes % compute(self % e(:,:,is:ie), self % cth, self % sth)
+      if (nproc == 0) write(*,'(a,i0,a)') 'umwm: waves: initial spectrum from ', partitions % num, &
+        ' wave partitions'
+    end if
+
+    ! the sea cells next to the edges, which are land, of a regional domain
+    self % num_boundary = 0
+    if (.not. config % isglobal) then
+      do i = is, ie
+        if (on_boundary(i)) self % num_boundary = self % num_boundary + 1
+      end do
+    end if
+    allocate(self % boundary(self % num_boundary))
+    allocate(self % e_boundary_b(om,pm,self % num_boundary), &
+             self % e_boundary_f(om,pm,self % num_boundary))
+    j = 0
+    do i = is, ie
+      if (j == self % num_boundary) exit
+      if (.not. on_boundary(i)) cycle
+      j = j + 1
+      self % boundary(j) = i
+      self % prescribed(i) = .true.
+      call partitions % spectrum(grid % mi(i), grid % ni(i), om, pm, self % f, self % th, &
+                                 self % dth, self % kdk(:,i), self % e_boundary_f(:,:,j))
+    end do
+    self % e_boundary_b = self % e_boundary_f
+
+    self % num_boundary_all = self % num_boundary
+#ifdef MPI
+    call mpi_allreduce(self % num_boundary, self % num_boundary_all, 1, MPI_INTEGER, MPI_SUM, &
+                       MPI_COMM_WORLD, ierr)
+#endif
+    if (nproc == 0 .and. .not. config % isglobal) write(*,'(a,i0,a)') 'umwm: waves: ', &
+      self % num_boundary_all, ' open boundary cells'
+
+    end associate
+
+  contains
+
+    logical function on_boundary(i)
+      integer, intent(in) :: i
+      m = self % grid % mi(i)
+      n = self % grid % ni(i)
+      on_boundary = .not. self % config % isglobal &
+        .and. (m == 2 .or. m == self % grid % mm - 1 .or. n == 2 .or. n == self % grid % nm - 1) &
+        .and. self % forcing % partitions % valid(m, n)
+    end function on_boundary
+
+  end subroutine initialize_waves
+
+
+  subroutine update_boundaries(self, timestr)
+    ! Advances the spectra of the open boundaries to the forcing time
+    ! timestr, from the wave partitions of its input file.
+    class(domain_type), intent(inout) :: self
+    character(*), intent(in) :: timestr
+    integer :: i, j
+
+    if (self % num_boundary == 0) return
+    if (.not. self % forcing % partitions_read) then
+      write(*,'(a)') 'umwm: waves: error: the input file of ' // timestr // ' has no wave ' &
+        // 'partitions (phs0, ptm0, pdir0, ...), which the open boundaries need'
+      stop 1
+    end if
+
+    associate(om => self % spectrum % num_frequencies, pm => self % spectrum % num_directions)
+    self % e_boundary_b = self % e_boundary_f
+    do j = 1, self % num_boundary
+      i = self % boundary(j)
+      call self % forcing % partitions % spectrum(self % grid % mi(i), self % grid % ni(i), &
+        om, pm, self % f, self % th, self % dth, self % kdk(:,i), self % e_boundary_f(:,:,j))
+    end do
+    end associate
+
+  end subroutine update_boundaries
+
+
+  subroutine apply_boundaries(self)
+    ! Sets the spectrum of the open boundary cells to that of the wave
+    ! partitions, interpolated in time to the model time.
+    class(domain_type), intent(inout) :: self
+    real :: alpha
+    integer :: j, o, p, om, pm
+
+    if (self % num_boundary == 0) return
+    alpha = self % sumt / self % config % dtg
+    om = self % spectrum % num_frequencies
+    pm = self % spectrum % num_directions
+    !$acc parallel loop collapse(3)
+    do j = 1, self % num_boundary
+      do p = 1, pm
+        do o = 1, om
+          self % e(o,p,self % boundary(j)) = (1 - alpha) * self % e_boundary_b(o,p,j) &
+                                           + alpha * self % e_boundary_f(o,p,j)
+        end do
+      end do
+    end do
+
+  end subroutine apply_boundaries
+
+
   subroutine run(self)
     ! Integrates the model from the current time to the stop time.
     class(domain_type), intent(inout) :: self
@@ -584,6 +730,8 @@ contains
     ! externally, and this call is not used.
 #ifndef ESMF
     call forcing % update(config, timestr, grid)
+    if (self % num_boundary_all > 0 .and. .not. config % steady) &
+      call self % update_boundaries(timestr)
 #endif
 
     ! inner time loop: global time step
@@ -601,6 +749,7 @@ contains
 #else
       call self % step()
 #endif
+      call self % apply_boundaries()
 
       if (self % first) then
 
@@ -821,6 +970,7 @@ contains
                           self % cothkd(:,i), self % kdk(:,i), config % snl_fac, &
                           self % snl_bins, self % snl_frac, self % sbf(:,i), &
                           self % sdt(:,i), self % sdv(:,i), self % sice(:,i))
+      if (self % prescribed(i)) self % physics_time_step(i) = huge(1.)
 
     end do
 
@@ -870,6 +1020,12 @@ contains
 
     associate(config => self % config, &
               om => self % spectrum % num_frequencies, pm => self % spectrum % num_directions)
+
+    ! the prescribed spectrum of a boundary cell is kept, and propagated
+    if (self % prescribed(i)) then
+      self % ef(:,:,i) = self % e(:,:,i)
+      return
+    end if
 
     call self % wind_input(i, om, ssin)
     if (store) &
