@@ -74,7 +74,7 @@ cache-keys = [
 
 [tool.setuptools]
 package-dir = {"" = "python"}
-packages = ["umwm"]
+packages = ["umwm", "umwm.sources"]
 include-package-data = false
 
 [tool.setuptools.dynamic]
