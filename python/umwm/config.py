@@ -714,11 +714,12 @@ def namelist_path(path) -> Path:
 def sibling_namelist(path, name: str) -> Path:
     """The namelist file ``name``, such as ``spectrum.nml``, next to the main
     namelist ``path``, with the prefix of its name if it ends with
-    ``main.nml``: ``umwmout_spectrum.nml`` next to ``umwmout_main.nml``, the
-    copies the model writes to an output directory. The model finds them in
-    the same way."""
+    ``_main.nml``: ``umwmout_spectrum.nml`` next to ``umwmout_main.nml``, the
+    copies the model writes to an output directory. A main namelist of
+    another name, such as ``main.nml`` or ``domain.nml``, has no prefix. The
+    model finds them in the same way."""
     path = Path(path)
-    prefix = path.name[:-len("main.nml")] if path.name.endswith("main.nml") else ""
+    prefix = path.name[:-len("main.nml")] if path.name.endswith("_main.nml") else ""
     return path.with_name(prefix + name)
 
 

@@ -103,12 +103,17 @@ def test_run_in_the_configuration_directory(library, tmp_path, capsys, monkeypat
     for output in (config_dir, config_dir / "input"):
         assert len(umwm.output_files(output)) == 2 and set(umwm.spectrum_output_files(output)) == {"upwind", "top", "lee", "away"}
         assert (output / "umwmout_main.nml").is_file() and (output / "umwmout_spectrum.nml").is_file()
-    # run again from the copies of the namelists, in place
+    # run again from the copies of the namelists, in place, but not with
+    # changes, which would replace them
     assert main(["run", "umwmout_main.nml", "-i", "input", *settings]) == 0
     capsys.readouterr()
+    assert main(["run", "umwmout_main.nml", "-i", "input", "-s", "forcing_constant.wspd0=15", *settings]) == 1
+    assert "is the copy of the namelists in the output directory" in capsys.readouterr().err
     assert main(["clean", "."]) == 0 and main(["clean", "input"]) == 0
     assert "removed" in capsys.readouterr().out
-    assert sorted(path for path in config_dir.rglob("*") if path.is_file()) == sorted(files)
+    copies = [output / name for output in (config_dir, config_dir / "input")
+              for name in ("umwmout_main.nml", "umwmout_spectrum.nml")]
+    assert sorted(path for path in config_dir.rglob("*") if path.is_file()) == sorted([*files, *copies])
     assert (config_dir / "input" / "umwm.gridtopo").read_bytes() == (case.input_dir / "umwm.gridtopo").read_bytes()
 
 
@@ -162,8 +167,8 @@ def test_run_log_and_clean(library, tmp_path, capsys):
     assert main(["run", str(config_dir), "-o", str(output), "--check"]) == 0
     assert f"output to {output}" in capsys.readouterr().out
     assert main(["clean", str(output), "--keep-restart"]) == 0
-    assert "removed 4 file(s)" in capsys.readouterr().out  # 2 output files, the grid, and the namelist
-    assert umwm.output_files(output) == [] and list(output.iterdir()) == []
+    assert "removed 3 file(s)" in capsys.readouterr().out  # 2 output files and the grid
+    assert umwm.output_files(output) == [] and list(output.iterdir()) == [output / "umwmout_main.nml"]
     assert main(["clean", str(tmp_path / "nothing")]) == 1
 
 

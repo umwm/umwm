@@ -333,7 +333,7 @@ contains
   function sibling_path(self, name) result(res)
     ! The path of the file name in the directory of the main namelist, such
     ! as the spectrum.nml and exclude.nml namelists that accompany it, with
-    ! the prefix of the main namelist if its name ends with main.nml: the
+    ! the prefix of the main namelist if its name ends with _main.nml: the
     ! copies umwmout_main.nml and umwmout_spectrum.nml of an output
     ! directory go together.
     class(config_type), intent(in) :: self
@@ -346,17 +346,19 @@ contains
 
   pure function sibling_namelist(path, name) result(res)
     ! The path of the namelist file name next to the main namelist at path,
-    ! with the prefix of its name before main.nml, if it ends with main.nml.
+    ! with the prefix of its name before main.nml if it ends with _main.nml,
+    ! such as umwmout_; a main namelist of another name, such as main.nml
+    ! or domain.nml, has none.
     character(len=*), intent(in) :: path, name
     character(len=:), allocatable :: res
-    character(len=*), parameter :: main = 'main.nml'
+    character(len=*), parameter :: suffix = '_main.nml'
     integer :: slash, n
 
     slash = index(path, '/', back=.true.)
     n = len(path)
-    if (n - slash >= len(main)) then
-      if (path(n-len(main)+1:n) == main) then
-        res = path(1:n-len(main)) // name
+    if (n - slash >= len(suffix)) then
+      if (path(n-len(suffix)+1:n) == suffix) then
+        res = path(1:n-len('main.nml')) // name
         return
       end if
     end if

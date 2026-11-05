@@ -210,6 +210,8 @@ contains
       here % sibling_path('exclude.nml') == 'exclude.nml' .and. &
       copy % sibling_path('spectrum.nml') == 'runs/seamount/umwmout_spectrum.nml' .and. &
       sibling_namelist('cases/lake.nml', 'spectrum.nml') == 'cases/spectrum.nml' .and. &
+      sibling_namelist('cases/domain.nml', 'spectrum.nml') == 'cases/spectrum.nml' .and. &
+      sibling_namelist('_main.nml', 'exclude.nml') == '_exclude.nml' .and. &
       config % input_path('umwm.grid') == 'input/umwm.grid' .and. &
       here % input_path('umwm.gridtopo') == '../examples/seamount/input/umwm.gridtopo' .and. &
       config % output_path('umwmout.grid') == './umwmout.grid' .and. &

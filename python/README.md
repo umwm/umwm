@@ -446,7 +446,10 @@ and prints a summary of the run; `--log` and `--quiet` send the output of
 the model to a file or discard it. Under `mpiexec`, `umwm run` runs the
 model in parallel, and `umwm run -n 4` launches `mpiexec -n 4` itself (the
 launcher command can be set with `UMWM_MPIEXEC`). `umwm clean` removes the
-files the model writes to an output directory, and nothing else. `umwm
+output and restart files the model writes to an output directory, and
+nothing else: it keeps the copies of the namelists, which may be run again
+as a configuration (but not with `-s` overrides in place, which would
+replace them; `umwm run` refuses that). `umwm
 config --describe` documents the namelist variables, and `umwm config A
 --diff B` compares two configurations.
 

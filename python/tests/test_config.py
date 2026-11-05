@@ -179,6 +179,8 @@ def test_from_namelist_directory(tmp_path):
     assert Config.from_namelist(copy).spectrum_points == config.spectrum_points
     assert config.write(config_dir) == config_dir / "main.nml"
     assert sibling_namelist(tmp_path / "lake.nml", "exclude.nml") == tmp_path / "exclude.nml"
+    assert sibling_namelist(tmp_path / "domain.nml", "spectrum.nml") == tmp_path / "spectrum.nml"
+    assert sibling_namelist(tmp_path / "run_main.nml", "spectrum.nml") == tmp_path / "run_spectrum.nml"
     with pytest.raises(FileNotFoundError, match="no main.nml in the configuration directory"):
         Config.from_namelist(tmp_path)
     with pytest.raises(FileNotFoundError, match="configuration not found"):

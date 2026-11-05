@@ -501,8 +501,10 @@ def build_parser() -> argparse.ArgumentParser:
     output.set_defaults(func=command_output)
 
     clean = subparsers.add_parser("clean", help="remove the output and restart files of a run",
-                                  description="Remove the files the model writes to an output directory "
-                                              "(umwmout_*, umwmspc_* and umwmrst_*), and nothing else.")
+                                  description="Remove the output and restart files the model writes to an "
+                                              "output directory (umwmout_*.nc, umwmout.grid, umwmspc_*.nc and "
+                                              "umwmrst_*.nc), and nothing else: the copies of the namelists, "
+                                              "umwmout_main.nml and the others, are kept.")
     clean.add_argument("output", nargs="?", default=".", metavar="OUTPUT",
                        help="the output directory (default: current directory)")
     clean.add_argument("--keep-output", action="store_true", help="keep the gridded and spectrum output")

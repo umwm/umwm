@@ -20,8 +20,8 @@
 ! parallel, whose processes divide it between them, with its input files
 ! prepared first, as a parallel run does not prepare them, where CONFIG is
 ! the directory of this case:
-!   umwm forcing era5 CONFIG
-!   mpiexec -n 64 umwm CONFIG -o OUTPUT
+!   umwm forcing era5 CONFIG -i INPUT
+!   mpiexec -n 64 umwm CONFIG -o OUTPUT -i INPUT
 &DOMAIN
   isGlobal     = .true.                ! Global (.T.) or regional (.F.)
   mm           = 1440                  ! Domain size in x: 0 to 359.75E, periodic

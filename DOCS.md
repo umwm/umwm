@@ -28,7 +28,7 @@ and calls its `initialize`, `run`, and `finalize` procedures, with the
 configuration given on the command line: a directory with `main.nml`, or a
 main namelist file. The `spectrum.nml` and `exclude.nml` namelists are read
 from the directory of the main namelist, with its prefix if its name ends
-with `main.nml` (`umwmout_spectrum.nml` next to `umwmout_main.nml`). The
+with `_main.nml` (`umwmout_spectrum.nml` next to `umwmout_main.nml`). The
 input files are read from the input directory, `CONFIG/input` or the
 directory given with `-i`, and the output and restart files are written to
 the output directory, given with `-o` or else the current directory, with

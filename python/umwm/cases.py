@@ -79,12 +79,17 @@ class Case:
     def domain(self, output_dir=None, **kwargs):
         """A :class:`~umwm.Domain` of the case, writing its output to
         ``output_dir`` (by default a directory named after the case) and
-        reading the input files of the case from its ``input`` directory,
-        unless ``kwargs`` give another ``input_dir``; ``kwargs`` are passed
-        to the domain."""
+        reading the input files of the case from its ``input`` directory, or,
+        for a case that prepares its input files from a data source, from
+        ``input`` in the output directory, where they are prepared, so that
+        the case is not written to; unless ``kwargs`` give another
+        ``input_dir``. ``kwargs`` are passed to the domain."""
         from .domain import Domain
 
-        return Domain(self.namelist, Path(output_dir or self.name), **kwargs)
+        output_dir = Path(output_dir or self.name)
+        if kwargs.get("input_dir") is None and self.config().source_name is not None:
+            kwargs["input_dir"] = output_dir / "input"
+        return Domain(self.namelist, output_dir, **kwargs)
 
     def copy_inputs(self, directory, overwrite=False) -> list[Path]:
         """Copy the input files of the case into ``directory``, an input

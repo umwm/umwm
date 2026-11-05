@@ -41,8 +41,10 @@ mpiexec -n 2 ./umwm examples/jonswap -o runs/jonswap-parallel   # in parallel
 A run writes its output files, and copies of the namelists of the case,
 `umwmout_main.nml` and `umwmout_spectrum.nml`, to the output directory, over
 the output of any earlier run there, so give each run its own output
-directory to keep their output apart. A run leaves the case as it is. The
-executable lists the cases of `examples/` of the current directory or of
+directory to keep their output apart. A run leaves the case as it is,
+except that the ERA5 cases prepare their input files in their `input/`
+directory unless `-i` gives another, as in the [ERA5 cases](#era5-cases)
+below. The executable lists the cases of `examples/` of the current directory or of
 the directory of the executable, also when it is started through `PATH` or
 a symbolic link, or of `$UMWM_EXAMPLES`.
 
@@ -89,7 +91,7 @@ with umwm.Domain(config, output_dir="runs/jonswap15") as domain:
 The ERA5 cases need the Python package, with the dependencies of ERA5
 (`pip install '.[era5]'` in the UMWM repository), and network access to the
 ARCO ERA5 store of Google; the `umwm` executable prepares their input files
-with it, in `input/` of the current directory (see [ERA5 cases](#era5-cases)).
+with it, in the input directory (see [ERA5 cases](#era5-cases)).
 
 ## Fetch-limited and duration-limited growth
 
@@ -269,15 +271,16 @@ rebuilds its initial spectrum (`waves`), with the significant wave height,
 mean period, mean direction and directional spread of each.
 
 ```
-./umwm examples/era5-helene -o runs/helene                 # prepares input/, then runs
-umwm run examples/era5-global-1deg -o runs/global          # the same with the Python tool
+./umwm examples/era5-helene -o runs/helene -i runs/helene/input      # prepares the inputs, then runs
+umwm run examples/era5-global-1deg -o runs/global -i runs/global/input   # with the Python tool
 umwm init --case era5-helene milton -s domain.starttimestr="2024-10-09 00:00:00" \
   -s domain.stoptimestr="2024-10-10 00:00:00"              # another hurricane
 ./umwm milton -o runs/milton
 ```
 
-The input files are prepared in the input directory of the configuration,
-such as `examples/era5-helene/input`, or the directory given with `-i`.
+The input files are prepared in the input directory: the directory given
+with `-i`, as above, which leaves the case as it is, or else the `input/`
+directory of the configuration, such as `milton/input`.
 
 **`era5-helene`**: hurricane Helene crossing the Gulf of Mexico on 26
 September 2024, at the 0.25 degrees of ERA5, for 24 hours. The domain is
@@ -326,8 +329,8 @@ memory between them, with its input files prepared first on a node with
 network access, as a parallel run does not prepare them:
 
 ```
-umwm forcing era5 examples/era5-global-0.25deg
-mpiexec -n 64 ./umwm examples/era5-global-0.25deg -o runs/global
+umwm forcing era5 examples/era5-global-0.25deg -i runs/global/input
+mpiexec -n 64 ./umwm examples/era5-global-0.25deg -o runs/global -i runs/global/input
 ```
 
 ## Adding a case

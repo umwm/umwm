@@ -176,23 +176,29 @@ class Domain:
         The namelist file the configuration was read from is copied with its
         comments when the configuration still matches it. The configuration
         directory is never written to, as the copies are named apart from its
-        namelists. Only the root process writes; all processes wait for it.
+        namelists; and a configuration that is the copy in the output
+        directory, run again there, raises ``ConfigError`` rather than being
+        replaced by a changed configuration. Only the root process writes;
+        all processes wait for it.
         """
+        path = self.namelist_path
+        files = {path: self.config.namelist_text(self._source_namelist)}
+        for name, points, text in (
+                ("spectrum.nml", self.config.spectrum_points, self.config.spectrum_points_text),
+                ("exclude.nml", self.config.exclude_points, self.config.exclude_points_text)):
+            files[sibling_namelist(path, name)] = text() if points else None
+        changes = [copy for copy, content in files.items()
+                   if (copy.read_text(encoding="utf-8") if copy.is_file() else None) != content]
+        if changes and self._source_namelist == path:
+            raise ConfigError(
+                f"the configuration {path} is the copy of the namelists in the output directory, which the changes "
+                f"to the configuration would replace; edit it, or run it with another output directory")
         if self.rank == 0:
-            path = self.namelist_path
-            text = self.config.namelist_text(self._source_namelist)
-            if not (path.is_file() and path.read_text(encoding="utf-8") == text):
-                path.write_text(text, encoding="utf-8")
-            for name, points, text in (
-                    ("spectrum.nml", self.config.spectrum_points, self.config.spectrum_points_text),
-                    ("exclude.nml", self.config.exclude_points, self.config.exclude_points_text)):
-                copy = sibling_namelist(path, name)
-                if points:
-                    content = text()
-                    if not (copy.is_file() and copy.read_text(encoding="utf-8") == content):
-                        copy.write_text(content, encoding="utf-8")
-                elif copy.is_file():
+            for copy in changes:
+                if files[copy] is None:
                     copy.unlink()
+                else:
+                    copy.write_text(files[copy], encoding="utf-8")
         self.barrier()
         return self.namelist_path
 
@@ -264,8 +270,8 @@ class Domain:
             missing.append(gridtopo)
         elif config.grid.gridfromfile and not (gridtopo.is_file() or (self.input_dir / "umwm.grid").is_file()):
             missing.append(self.input_dir / "umwm.grid")
-        if config.grid.filllakes and not config.exclude_points:
-            missing.append(sibling_namelist(self._source_namelist or self.output_dir / "main.nml", "exclude.nml"))
+        if config.grid.filllakes and not config.exclude_points and self._source_namelist is not None:
+            missing.append(sibling_namelist(self._source_namelist, "exclude.nml"))
         if config.forcing_from_file:
             for name in forcing_files(config):
                 path = self.input_dir / name
@@ -286,6 +292,9 @@ class Domain:
         config = self.config
         mm, nm = config.domain.mm, config.domain.nm
         problems = [f"missing {path}" for path in self.missing_inputs()]
+        if config.grid.filllakes and not config.exclude_points and self._source_namelist is None:
+            problems.append("grid.filllakes is set, but there are no cells of enclosed seas to exclude: set "
+                            "config.exclude_points")
 
         def check(path: Path, variables: list[str], minimum_rank: int) -> None:
             if not path.is_file():
@@ -462,8 +471,9 @@ class Domain:
     close = finalize
 
     def clean(self, output: bool = True, restart: bool = True) -> list[Path]:
-        """Remove the files the model writes to the output directory, and
-        nothing else (see :func:`clean_output`), and return their paths."""
+        """Remove the output and restart files the model writes to the output
+        directory, keeping the copies of the namelists, and nothing else (see
+        :func:`clean_output`); return their paths."""
         removed = []
         if self.rank == 0:
             removed = clean_output(self.output_dir, output=output, restart=restart)
@@ -798,19 +808,21 @@ def run(config=None, output_dir=None, **kwargs) -> Domain:
     return domain
 
 
-OUTPUT_FILES = ("umwmout_*.nc", "umwmspc_*.nc", "umwmout.grid", NAMELIST_COPY, "umwmout_spectrum.nml",
-                "umwmout_exclude.nml")
-"""The files that a run writes to its output directory, besides its restart files."""
+OUTPUT_FILES = ("umwmout_*.nc", "umwmspc_*.nc", "umwmout.grid")
+"""The output files that a run writes to its output directory, besides its
+restart files and the copies of its namelists, which :func:`clean_output`
+keeps, as they may be run again as a configuration."""
 
 RESTART_FILES = ("umwmrst_*.nc",)
 """The restart files that a run writes to its output directory."""
 
 
 def clean_output(directory, output: bool = True, restart: bool = True) -> list[Path]:
-    """Remove the files the model writes to the output directory
-    ``directory``, and nothing else: with ``output``, those of
-    :data:`OUTPUT_FILES`, and with ``restart``, the restart files. Return
-    their paths."""
+    """Remove the output and restart files the model writes to the output
+    directory ``directory``, and nothing else: with ``output``, those of
+    :data:`OUTPUT_FILES`, and with ``restart``, the restart files. The copies
+    of the namelists, ``umwmout_main.nml`` and the others, are kept. Return
+    the paths of the files removed."""
     patterns = (OUTPUT_FILES if output else ()) + (RESTART_FILES if restart else ())
     removed = []
     for pattern in patterns:

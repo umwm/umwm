@@ -145,14 +145,15 @@ def test_case_runs(library, tmp_path, name):
     output directory, and writes its output there, leaving the case as it
     is. The cases that prepare their input files from ERA5 run only with
     UMWM_TEST_ERA5 set, as they read it over the network, and prepare them
-    in a temporary input directory."""
+    in the input directory of the output directory."""
     case = umwm.get_case(name)
     sourced = case.config().source_name is not None
     if sourced and not os.environ.get("UMWM_TEST_ERA5"):
         pytest.skip(f"{name} prepares its input files from ERA5; set UMWM_TEST_ERA5=1 to read it")
     before = sorted(path.relative_to(case.directory) for path in case.directory.rglob("*"))
-    input_dir = tmp_path / "input" if sourced else None
-    with case.domain(tmp_path / name, input_dir=input_dir, quiet=True) as domain:
+    with case.domain(tmp_path / name, quiet=True) as domain:
+        if sourced:  # prepared in the output directory, not in the case
+            assert domain.input_dir == (tmp_path / name / "input").resolve()
         domain.advance()
         swh = domain.grid_field("swh")
         sea = domain.grid_field("seamask") == 1
@@ -165,6 +166,17 @@ def test_case_runs(library, tmp_path, name):
         assert set(domain.spectrum_output()) == {point.name for point in domain.config.spectrum_points}
         assert umwm.output_files(domain.output_dir)
     assert sorted(path.relative_to(case.directory) for path in case.directory.rglob("*")) == before
+
+
+def test_sourced_case_prepares_in_the_output_directory(library, tmp_path):
+    """A domain of a case that prepares its input files from a data source
+    prepares them in the output directory, not in the case; the other cases
+    read theirs from the case, and input_dir chooses another directory."""
+    helene = umwm.get_case("era5-helene")
+    assert helene.domain(tmp_path / "helene").input_dir == (tmp_path / "helene" / "input").resolve()
+    assert helene.domain(tmp_path / "x", input_dir=tmp_path / "in").input_dir == (tmp_path / "in").resolve()
+    seamount = umwm.get_case("seamount")
+    assert seamount.domain(tmp_path / "seamount").input_dir == seamount.input_dir.resolve()
 
 
 def test_refraction_gradients(library, tmp_path):

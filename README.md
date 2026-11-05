@@ -290,15 +290,16 @@ the model or beforehand, for example before a parallel run on nodes without
 network access:
 
 ```
-./umwm examples/era5-helene -o runs/helene           # hurricane Helene in the Gulf of Mexico
-umwm run examples/era5-global-1deg -o runs/global    # the global ocean at 1 degree
-umwm init --case era5-helene gulf                    # a configuration to edit
-umwm forcing era5 gulf                               # prepare its input files in gulf/input
-mpiexec -n 8 ./umwm gulf -o runs/gulf                # and run it in parallel
+./umwm examples/era5-helene -o runs/helene -i runs/helene/input         # hurricane Helene
+umwm run examples/era5-global-1deg -o runs/global -i runs/global/input  # the global ocean at 1 degree
+umwm init --case era5-helene gulf                                       # a configuration to edit
+umwm forcing era5 gulf                                                  # its input files, in gulf/input
+mpiexec -n 8 ./umwm gulf -o runs/gulf                                   # and run it in parallel
 ```
 
-The input files are prepared in the input directory of the configuration,
-`CONFIG/input`, or the directory given with `-i`.
+The input files are prepared in the input directory: the directory given
+with `-i`, or else the `input/` directory of the configuration, such as
+`gulf/input`; with `-i`, the example cases are left as they are.
 
 The example cases `era5-helene`, `era5-global-1deg` and `era5-global-0.25deg`
 are templates for other regions and times. [DOCS.md](DOCS.md#wave-partitions-initial-state-and-open-boundaries)

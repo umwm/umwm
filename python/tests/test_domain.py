@@ -287,12 +287,27 @@ def test_summary_clean_and_directory_config(library, short_config, tmp_path):
     assert domain.output_dir == output_dir.resolve() and domain.config_dir == output_dir.resolve()
     assert domain.config.domain.stoptimestr == "2026-01-01 02:00:00"
     assert domain.config.spectrum_points[0].name == "center"
+    # it runs again in place, but a change would replace it
+    domain.config.forcing_constant.wspd0 = 3.0
+    with pytest.raises(umwm.ConfigError, match="copy of the namelists in the output directory"):
+        domain.write_namelists()
     removed = domain.clean(restart=False)
-    assert {path.name for path in removed} >= {"umwmout.grid", "umwmout_2026-01-01_00:00:00.nc", "umwmout_main.nml",
-                                               "umwmout_spectrum.nml"}
+    assert {path.name for path in removed} >= {"umwmout.grid", "umwmout_2026-01-01_00:00:00.nc"}
     assert domain.output_files() == [] and len(domain.restart_files()) == 2
     assert domain.clean() and domain.restart_files() == []
-    assert domain.clean() == [] and list(output_dir.iterdir()) == []
+    assert domain.clean() == []
+    assert sorted(path.name for path in output_dir.iterdir()) == ["umwmout_main.nml", "umwmout_spectrum.nml"]
+
+
+def test_filllakes_needs_exclude_points(library, short_config, tmp_path):
+    """A configuration made in Python that fills lakes needs its exclude
+    points, which no file in the output directory can give."""
+    short_config.grid.filllakes = True
+    domain = umwm.Domain(short_config, tmp_path / "run")
+    assert domain.missing_inputs() == []
+    assert any("set config.exclude_points" in problem for problem in domain.input_problems())
+    with pytest.raises(ValueError, match="config.exclude_points"):
+        domain.check_inputs()
 
 
 def test_input_problems(library, rankine_config, tmp_path):
