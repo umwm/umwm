@@ -12,18 +12,6 @@
 ! umwm forcing era5 prepare them with the umwm Python package and its era5
 ! dependencies (pip install '.[era5]'). The wave partitions are read at the
 ! start time only.
-!
-! It runs in about 15 minutes in serial, and in 5 minutes on 4 processes.
-! Against ERA5, the significant wave height of the model starts within 1 cm
-! (root mean square difference), and differs by 0.37 m (17%) after 6 hours
-! and 0.51 m (23%) after 24 hours: the total wave energy decreases by 12% in
-! the first 6 hours, and then holds, as the model damps the swell that
-! travels across or against the wind (sin_diss1) faster than ERA5.
-!
-! Spectra are written hourly at the NDBC buoys 46006 (Gulf of Alaska), 51101
-! (northwest of Hawaii), 44011 (Georges Bank) and 42003 (east Gulf of
-! Mexico, where hurricane Helene passed), and in the Southern Ocean south of
-! Australia, at the points of spectrum.nml.
 &DOMAIN
   isGlobal     = .true.                ! Global (.T.) or regional (.F.)
   mm           = 360                   ! Domain size in x: 0 to 359E, periodic
@@ -95,7 +83,7 @@
   fice_uth      = 0.75 ! Sea ice fraction - upper threshold for attenuation
 /
 &OUTPUT
-  outgrid       = 6   ! Gridded output interval  [hours]
+  outgrid       = 1   ! Gridded output interval  [hours]
   outspec       = 1   ! Spectrum output interval [hours]
   outrst        = 0   ! Restart output interval  [hours]
   xpl           = 121 ! Grid cell in x for stdout (screen): 120E

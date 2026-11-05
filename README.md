@@ -1,6 +1,6 @@
 # University of Miami Wave Model (UMWM)
 
-A tiny, fast, parallel spectral ocean wave model.
+A tiny, ultrafast, parallel spectral ocean wave model for CPUs and GPUs.
 
 This is the reference implementation of UMWM, 
 described by [Donelan et al. (2012)](https://doi.org/10.1029/2011JC007787),

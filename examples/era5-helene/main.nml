@@ -14,19 +14,6 @@
 ! (source = 'era5') when the model runs, reading about 1 GB of ERA5 fields:
 ! the umwm executable, umwm run, and umwm forcing era5 prepare them with the
 ! umwm Python package and its era5 dependencies (pip install '.[era5]').
-!
-! ERA5 resolves the core of a hurricane poorly: its wind peaks at 32 m/s,
-! far below the 60 m/s of Helene, and the significant wave height at 10.7 m
-! in ERA5 and 11.0 m in the model, on 26 September at 18 UTC. Against ERA5,
-! the significant wave height of the model starts within 1 cm (root mean
-! square difference), and differs by 0.4 m (17%) after 12 hours and 0.7 m
-! (28%) after 24 hours, most under the strongest winds, where the model
-! grows the waves by its own physics; from rest instead, it differs by
-! 1.8 m at the start, 0.6 m after 12 hours and 0.7 m after 24 hours.
-!
-! Spectra are written hourly at the NDBC buoys 42001 (mid Gulf), 42003 (east
-! Gulf), 42036 (west Tampa) and 42039 (Pensacola), at the points of
-! spectrum.nml.
 &DOMAIN
   isGlobal     = .false.               ! Global (.T.) or regional (.F.)
   mm           = 79                    ! Domain size in x: 98.5W to 79W
