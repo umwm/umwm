@@ -6,10 +6,10 @@ include ../mk/config.mk
 
 SRC_DIR := ../src
 TESTS := test_dispersion test_spectrum test_config test_grid test_forcing \
-         test_source_functions test_advection test_domain
+         test_partitions test_source_functions test_advection test_domain
 MODEL_OBJS := datetime_module.o umwm_advection.o umwm_config.o umwm_constants.o \
               umwm_dispersion.o umwm_domain.o umwm_domain_acc.o umwm_domain_output.o umwm_env.o \
-              umwm_forcing.o umwm_grid.o umwm_io.o umwm_mpi.o umwm_physics.o \
+              umwm_forcing.o umwm_grid.o umwm_io.o umwm_mpi.o umwm_partitions.o umwm_physics.o \
               umwm_restart.o umwm_sheltering.o umwm_source_functions.o \
               umwm_spectrum.o umwm_stokes.o umwm_stress.o umwm_util.o
 PYTHON ?= python
@@ -34,6 +34,7 @@ test: $(TESTS)
 	./test_config
 	./test_grid
 	./test_forcing
+	./test_partitions
 	./test_source_functions
 	./test_advection
 	./test_domain
@@ -48,10 +49,13 @@ test_config: test_config.f90 tuff.o umwm_constants.o umwm_source_functions.o umw
 	$(FC) $(CPPFLAGS) $(FCFLAGS) -I. -I$(SRC_DIR) -o $@ $^ $(LDLIBS)
 
 test_grid: test_grid.f90 tuff.o umwm_constants.o umwm_source_functions.o umwm_config.o umwm_spectrum.o umwm_env.o umwm_util.o umwm_grid.o
+	$(FC) $(CPPFLAGS) $(FCFLAGS) $(NETCDF_FFLAGS) -I. -I$(SRC_DIR) -o $@ $^ $(NETCDF_FLIBS) $(LDLIBS)
+
+test_forcing: test_forcing.f90 tuff.o umwm_constants.o umwm_source_functions.o umwm_config.o umwm_spectrum.o umwm_env.o umwm_util.o umwm_grid.o umwm_partitions.o umwm_forcing.o
 	$(FC) $(CPPFLAGS) $(FCFLAGS) -I. -I$(SRC_DIR) -o $@ $^ $(NETCDF_FLIBS) $(LDLIBS)
 
-test_forcing: test_forcing.f90 tuff.o umwm_constants.o umwm_source_functions.o umwm_config.o umwm_spectrum.o umwm_env.o umwm_util.o umwm_grid.o umwm_forcing.o
-	$(FC) $(CPPFLAGS) $(FCFLAGS) -I. -I$(SRC_DIR) -o $@ $^ $(NETCDF_FLIBS) $(LDLIBS)
+test_partitions: test_partitions.f90 tuff.o umwm_constants.o umwm_dispersion.o umwm_env.o umwm_util.o umwm_partitions.o
+	$(FC) $(CPPFLAGS) $(FCFLAGS) $(NETCDF_FFLAGS) -I. -I$(SRC_DIR) -o $@ $^ $(NETCDF_FLIBS) $(LDLIBS)
 
 test_source_functions: test_source_functions.f90 tuff.o umwm_constants.o umwm_source_functions.o umwm_env.o
 	$(FC) $(CPPFLAGS) $(FCFLAGS) -I. -I$(SRC_DIR) -o $@ $^ $(LDLIBS)
@@ -60,7 +64,7 @@ test_advection: test_advection.f90 tuff.o umwm_constants.o umwm_dispersion.o umw
 	$(FC) $(CPPFLAGS) $(FCFLAGS) -I. -I$(SRC_DIR) -o $@ $^ $(LDLIBS)
 
 test_domain: test_domain.f90 tuff.o $(MODEL_OBJS)
-	$(FC) $(CPPFLAGS) $(FCFLAGS) -I. -I$(SRC_DIR) -o $@ $^ $(NETCDF_FLIBS) $(LDLIBS)
+	$(FC) $(CPPFLAGS) $(FCFLAGS) $(NETCDF_FFLAGS) -I. -I$(SRC_DIR) -o $@ $^ $(NETCDF_FLIBS) $(LDLIBS)
 
 test_forcing test_domain: | $(RANKINE_FORCING_STAMP)
 
@@ -90,7 +94,8 @@ umwm_config.o: umwm_constants.o umwm_source_functions.o
 umwm_dispersion.o: umwm_constants.o
 umwm_spectrum.o: umwm_constants.o
 umwm_grid.o: umwm_config.o umwm_constants.o umwm_env.o umwm_spectrum.o umwm_util.o
-umwm_forcing.o: umwm_config.o umwm_grid.o
+umwm_forcing.o: umwm_config.o umwm_grid.o umwm_partitions.o umwm_util.o
+umwm_partitions.o: umwm_util.o
 umwm_mpi.o: umwm_env.o umwm_grid.o
 umwm_io.o: datetime_module.o umwm_env.o umwm_grid.o umwm_mpi.o
 umwm_restart.o: umwm_env.o umwm_grid.o umwm_io.o umwm_spectrum.o umwm_util.o
@@ -101,7 +106,7 @@ umwm_stokes.o: umwm_constants.o
 umwm_stress.o: umwm_constants.o
 umwm_domain.o: datetime_module.o umwm_advection.o umwm_config.o umwm_constants.o \
                umwm_dispersion.o umwm_env.o umwm_forcing.o umwm_grid.o umwm_io.o \
-               umwm_mpi.o umwm_physics.o umwm_restart.o umwm_sheltering.o \
+               umwm_mpi.o umwm_partitions.o umwm_physics.o umwm_restart.o umwm_sheltering.o \
                umwm_source_functions.o umwm_spectrum.o umwm_stokes.o umwm_stress.o \
                umwm_util.o
 umwm_domain_output.o: umwm_domain.o umwm_io.o
@@ -123,6 +128,8 @@ clean:
 	$(RM) -r umwm_inline.lib
 	$(RM) $(TESTS) *.o *.mod *.smod $(RANKINE_FORCING_STAMP) \
 	  input/umwmin_2026-01-01_00:00:00.nc \
-	  input/umwmin_2026-01-01_01:00:00.nc output/umwmout.grid
+	  input/umwmin_2026-01-01_01:00:00.nc output/umwmout.grid \
+	  output/test_partitions.nc
+	$(RM) -r output/waves_global output/waves_regional
 
 clean_all: clean

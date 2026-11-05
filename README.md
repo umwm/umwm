@@ -1,6 +1,6 @@
 # University of Miami Wave Model (UMWM)
 
-A tiny, fast, parallel spectral ocean wave model.
+A tiny, ultrafast, parallel spectral ocean wave model for CPUs and GPUs.
 
 This is the reference implementation of UMWM, 
 described by [Donelan et al. (2012)](https://doi.org/10.1029/2011JC007787),
@@ -236,6 +236,61 @@ named after it:
 umwm cases
 umwm run --case mars-jezero-lake
 ```
+
+### Running from ERA5
+
+UMWM starts from, and is forced by, the [ERA5](https://doi.org/10.1002/qj.3803)
+reanalysis on a regional or global longitude-latitude grid, with no other
+program to run: the namelist names the grid and the data source, and the
+model prepares its missing input files from ERA5 before it runs, and again
+those it prepared for another grid, such as for another case in the same
+directory.
+
+```
+&GRID
+  gridFromFile = .F.
+  topoFromFile = .T.               ! the bathymetry of the ERA5 wave model
+  lon0 = -98.5, lat0 = 17.5        ! cell (1,1) of a regular lon-lat grid
+  dlon = 0.25,  dlat = 0.25        ! its spacing in degrees
+  ...
+/
+&FORCING
+  winds = .T., air_density = .T., seaice = .T.
+  waves = .T.                      ! wave spectrum from the ERA5 wave partitions
+  source = 'era5'                  ! prepare the missing input files from ERA5
+  ...
+/
+```
+
+The input files are prepared from the
+[analysis-ready, cloud-optimized ERA5 store](https://cloud.google.com/storage/docs/public-datasets/era5)
+of Google, read anonymously over HTTPS, on the grid of the namelist: the
+bathymetry, the hourly wind, air density and sea ice, and the wave
+partitions, the wind sea and three swells. The model rebuilds its initial
+spectrum from the partitions, with the significant wave height, mean
+period, mean direction and directional spread of each, and in a regional
+domain it propagates the spectrum of the ERA5 partitions in from its open
+boundaries throughout the run.
+
+The `umwm` executable prepares the files with the Python package (below)
+installed with the dependencies of ERA5, `pip install '.[era5]'`; set
+`UMWM_PYTHON` to the Python interpreter that has it if that is not
+`python3`. The Python command-line tool prepares them as well, when it runs
+the model or beforehand, for example before a parallel run on nodes without
+network access:
+
+```
+./umwm --case era5-helene                    # hurricane Helene in the Gulf of Mexico
+umwm run --case era5-global-1deg             # the global ocean at 1 degree
+umwm init --case era5-helene runs/gulf       # a run directory to edit
+umwm forcing era5 runs/gulf                  # prepare its input files
+cd runs/gulf && mpiexec -n 8 ../../umwm      # and run it in parallel
+```
+
+The example cases `era5-helene`, `era5-global-1deg` and `era5-global-0.25deg`
+are templates for other regions and times. [DOCS.md](DOCS.md#wave-partitions-initial-state-and-open-boundaries)
+describes the spectra of the partitions, the open boundaries, and how to add
+another data source, such as NCEP GFS with its WAVEWATCH III wave model.
 
 ### Python interface
 

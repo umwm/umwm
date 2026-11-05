@@ -7,6 +7,7 @@ Subcommands::
     umwm run [NAMELIST|WORKDIR]    run the model in a run directory
     umwm cases [NAME]              list the example cases, or describe one
     umwm forcing rankine           write idealized hurricane forcing files
+    umwm forcing era5 [NAMELIST]   prepare the input files of a run from ERA5
     umwm output [SOURCE]           summarize or plot the output files
     umwm clean [WORKDIR]           remove the output and restart files of a run
     umwm info                      show the library and package information
@@ -131,7 +132,12 @@ def command_init(args) -> int:
     if case is not None:
         for path in case.copy_inputs(workdir / "input", overwrite=args.force):
             print(f"umwm: copied {path.name} into {path.parent}")
-    print(f"umwm: run directory {workdir} is ready; put input files in {workdir / 'input'} and run 'umwm run {workdir}'")
+    if config.source_name is not None:
+        print(f"umwm: run directory {workdir} is ready; run 'umwm run {workdir}', which prepares the input files "
+              f"from {config.source_name}, or prepare them now with 'umwm forcing {config.source_name} {workdir}'")
+    else:
+        print(f"umwm: run directory {workdir} is ready; put input files in {workdir / 'input'} and run "
+              f"'umwm run {workdir}'")
     return 0
 
 
@@ -231,10 +237,26 @@ def _run_case(args) -> int:
 def _run_domain(domain, args) -> int:
     if args.check:
         domain.config.validate()
-        domain.check_inputs()
+        source = domain.config.source_name
+        missing = domain.missing_inputs() if source is not None else []
+        stale = []
+        if source is not None:
+            from .sources.prepare import pending_inputs
+
+            bathymetry, files = pending_inputs(domain.config, domain.input_dir)
+            pending = ([domain.input_dir / "umwm.gridtopo"] if bathymetry else []) + [path for _, path in files]
+            stale = [path for path in pending if path.is_file()]
+        if not missing and not stale:
+            domain.check_inputs()
         if domain.rank == 0:
             print(domain.summary())
-            print("umwm: configuration and input files are in place")
+            if missing or stale:
+                files = " and ".join(([f"{len(missing)} missing input file(s)"] if missing else [])
+                                     + ([f"{len(stale)} input file(s) prepared for another grid"] if stale else []))
+                print(f"umwm: configuration is valid; {files} will be prepared from {source} when the model "
+                      f"runs, or now with 'umwm forcing {source}'")
+            else:
+                print("umwm: configuration and input files are in place")
         return 0
     domain.run(until=args.until)
     if domain.rank == 0:
@@ -279,6 +301,31 @@ def command_forcing_rankine(args) -> int:
     for path in paths:
         print(f"umwm: wrote {path}")
     print("umwm: use with forcing.winds, currents, air_density and water_density set to .true.")
+    return 0
+
+
+def command_forcing_source(args) -> int:
+    """Prepare the input files of a run from a data source."""
+    from .sources import prepare_inputs
+
+    workdir = Path(args.workdir).resolve() if args.workdir else None
+    if args.target and Path(args.target).is_dir():
+        workdir = workdir or Path(args.target).resolve()
+        namelist = namelist_path(args.target)
+    elif args.target:
+        namelist = Path(args.target)
+    else:
+        namelist = namelist_path(workdir or Path.cwd())
+    workdir = workdir or Path.cwd()
+    config = _load_config(namelist, args.settings)
+    input_dir = Path(args.input_dir) if args.input_dir else workdir / "input"
+    options = {"workers": args.workers}
+    if args.url:
+        options["url"] = args.url
+    paths = prepare_inputs(config, input_dir, source=args.source, force=args.force, **options)
+    if not paths and not config.forcing_from_file and not config.grid.topofromfile:
+        print(f"umwm: {namelist} reads no input files: set forcing.winds, air_density, seaice or waves, "
+              "or grid.topofromfile")
     return 0
 
 
@@ -468,6 +515,29 @@ def build_parser() -> argparse.ArgumentParser:
     rankine.add_argument("--center-lat", type=float, default=0.0, help="latitude of the grid center (default: %(default)s)")
     rankine.set_defaults(func=command_forcing_rankine)
 
+    from .sources import SOURCES
+
+    for info in SOURCES.values():
+        source = forcing_commands.add_parser(
+            info.name, help=f"prepare the input files of a run from {info.name}",
+            description=f"Prepare the input files of a run that are missing from its input directory, from "
+                        f"{info.description}: those that the namelist reads (with grid.topofromfile, the "
+                        "bathymetry, and the forcing of forcing.winds, air_density, seaice and waves), on its "
+                        "grid (grid.lon0, lat0, dlon and dlat, or the grid file of grid.gridfromfile), at its "
+                        "times. The model does it itself when forcing.source names the data source. Needs "
+                        f"pip install 'umwm[{info.extra}]'.")
+        source.add_argument("target", nargs="?", metavar="NAMELIST|WORKDIR",
+                            help="the main.nml file, or the run directory (default: WORKDIR/namelists/main.nml)")
+        source.add_argument("-w", "--workdir", help="the run directory (default: current directory)")
+        source.add_argument("-i", "--input-dir", metavar="DIR",
+                            help="write the input files to this directory (default: WORKDIR/input)")
+        _add_set_option(source)
+        source.add_argument("-f", "--force", action="store_true", help="replace the input files that exist")
+        source.add_argument("--url", help=f"the location of the dataset (default: that of the {info.name} source)")
+        source.add_argument("--workers", type=int, default=16,
+                            help="concurrent reads from the dataset (default: %(default)s)")
+        source.set_defaults(func=command_forcing_source, source=info.name)
+
     output = subparsers.add_parser("output", help="summarize or plot the output files",
                                    description="Open the gridded output of a run directory, an output directory, "
                                                "a file, or a glob with xarray and print, summarize, or plot it.")
@@ -503,7 +573,7 @@ def main(argv=None) -> int:
     try:
         return int(args.func(args) or 0)
     except (ConfigError, NamelistError, FileNotFoundError, FileExistsError, KeyError, ValueError, ImportError,
-            RuntimeError) as error:
+            RuntimeError, OSError) as error:
         message = error.args[0] if isinstance(error, KeyError) and error.args else error
         print(f"umwm: error: {message}", file=sys.stderr)
         return 1

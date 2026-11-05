@@ -1,3 +1,5 @@
+import os
+
 import numpy as np
 import pytest
 
@@ -5,7 +7,7 @@ import umwm
 from umwm.config import unset_variables
 
 CASES = ["fetch-limited", "duration-limited", "jonswap", "wave-tank", "titan-ontario-lacus", "mars-jezero-lake",
-         "seamount", "eddy-field"]
+         "seamount", "eddy-field", "era5-helene", "era5-global-1deg", "era5-global-0.25deg"]
 WITH_INPUTS = {"seamount": ["umwm.gridtopo"], "eddy-field": ["umwmin.nc"]}
 
 
@@ -33,14 +35,18 @@ def test_list_cases(repo_root, tmp_path, monkeypatch):
 @pytest.mark.parametrize("name", CASES)
 def test_case_namelist_is_complete_and_valid(name):
     """Every case sets every namelist variable, so that the model, whose
-    defaults differ from those of the package, reads the same configuration."""
+    defaults differ from those of the package, reads the same configuration.
+    A case brings the input files it reads, unless it prepares them from a
+    data source, which is the case of the cases with time-varying forcing."""
     case = umwm.get_case(name)
     unset = unset_variables(case.namelist.read_text(encoding="utf-8"))
     assert not unset, f"{name} does not set {unset}"
     config = case.config()
     config.validate()
-    assert (config.forcing_from_file or config.grid.topofromfile) == (case.input_dir is not None)
-    assert config.forcing.steady or not config.forcing_from_file
+    sourced = config.source_name is not None
+    assert (config.forcing_from_file or config.grid.topofromfile) == (case.input_dir is not None or sourced)
+    assert not (sourced and case.input_dir is not None)
+    assert config.forcing.steady or not config.forcing_from_file or sourced
     assert not (config.grid.gridfromfile or config.domain.restart)
     assert config.output.outrst == 0
     assert config.spectrum_points and all(point.by_index for point in config.spectrum_points)
@@ -135,12 +141,19 @@ def test_case_inputs(library, tmp_path, name):
 @pytest.mark.parametrize("name", CASES)
 def test_case_runs(library, tmp_path, name):
     """Each case runs for one global time step from its namelist, which is
-    copied with its comments into the run directory, and writes its output."""
+    copied with its comments into the run directory, and writes its output.
+    The cases that prepare their input files from ERA5 run only with
+    UMWM_TEST_ERA5 set, as they read it over the network."""
     case = umwm.get_case(name)
+    if case.config().source_name is not None and not os.environ.get("UMWM_TEST_ERA5"):
+        pytest.skip(f"{name} prepares its input files from ERA5; set UMWM_TEST_ERA5=1 to read it")
     with case.domain(tmp_path / name, quiet=True) as domain:
         domain.advance()
         swh = domain.grid_field("swh")
-        assert np.all(np.isfinite(swh[1:-1, 1:-1])) and np.nanmin(swh) > 0
+        sea = domain.grid_field("seamask") == 1
+        # the sea ice of the real cases stops the waves
+        assert np.all(np.isfinite(swh[sea])) and (np.nanmin(swh) > 0 or domain.config.forcing.seaice)
+        assert np.nanmin(swh) >= 0
         assert domain.namelist_path.read_text(encoding="utf-8") == case.namelist.read_text(encoding="utf-8")
         assert set(domain.spectrum_output()) == {point.name for point in domain.config.spectrum_points}
         assert umwm.output_files(domain.workdir)

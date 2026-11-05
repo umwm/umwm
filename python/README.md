@@ -172,6 +172,52 @@ existing directory of input files as `workdir/input`.
 `write_rankine_forcing` writes hourly files for an idealized, translating
 hurricane vortex, the test case of the model; see `python/examples/rankine.py`.
 
+With `config.forcing.waves`, the model starts from the spectrum of the wave
+partitions of the input file of the start time, and sets the spectrum of
+the open boundaries of a regional domain from those of every input file:
+for each partition p (0 to 9; 0 is the wind sea), the significant wave
+height `phs<p>` (-1 where there are no wave data), the mean period Tm-1,0
+`ptm<p>` (or the peak period `ptp<p>`), the mean direction of propagation
+`pdir<p>`, counterclockwise from east in radians, and optionally the
+directional spread `pspr<p>` and the JONSWAP peak enhancement `pgam<p>`;
+`write_forcing` takes them as keyword arguments:
+
+```python
+domain.write_forcing(time, uw=uw, vw=vw, phs0=1.0, ptm0=5.0, pdir0=0.0,
+                     phs1=2.0, ptp1=14.0, pdir1=np.pi / 2, pspr1=0.2)
+```
+
+### Data sources
+
+With `config.forcing.source = "era5"`, the input files of the configuration
+that are missing, or that it prepared for another grid, are prepared from
+the ERA5 reanalysis when the domain is initialized, by `Domain.initialize`
+(and so `umwm run`), as the `umwm` executable does: the bathymetry with
+`config.grid.topofromfile`, and the forcing files with the fields of
+`winds`, `air_density`, `seaice` and `waves`, on the longitude-latitude grid
+of `config.grid.lon0`, `lat0`, `dlon` and `dlat` (or of the grid file of
+`gridfromfile`). They are read from the analysis-ready, cloud-optimized Zarr
+store of Google, or the store that `UMWM_ERA5_URL` points to, and need the
+optional dependencies of the `era5` extra (`pip install '.[era5]'`: zarr,
+fsspec, aiohttp).
+
+```python
+config = umwm.Config.from_case("era5-helene")       # hurricane Helene, Gulf of Mexico
+config.domain.starttimestr = "2024-10-09 00:00:00"  # or another time: Milton
+config.domain.stoptimestr = "2024-10-10 00:00:00"
+with umwm.Domain(config, "runs/milton") as domain:
+    domain.run()                                    # prepares the input files, then runs
+
+umwm.sources.prepare_inputs(config, "runs/milton/input")    # or beforehand
+domain.prepare_inputs(force=True)                           # again, replacing them
+```
+
+The data sources are listed in `umwm.sources.SOURCES`; each reads its dataset
+in the standard names of `umwm.sources.base`, and the preparation of
+`umwm.sources.prepare` interpolates them to the grid of the model, converts
+the wave partitions, and writes the files (see the
+[technical reference](../DOCS.md#data-sources-of-the-input-files)).
+
 ### Example cases
 
 The [example cases](../examples/README.md) of the repository are idealized
@@ -294,8 +340,8 @@ namelist variable names, and the defaults of `namelists/main.nml`.
 | --- | --- | --- |
 | `config.domain` | `DomainConfig` | `isglobal`, `mm`, `nm`, `om`, `pm`, `fmin`, `fmax`, `fprog`, `starttimestr`, `stoptimestr`, `reftimestr`, `dtg`, `restart` |
 | `config.physics` | `PhysicsConfig` | `g`, `nu_air`, `nu_water`, `sfct`, `kappa`, `z`, `gustiness`, `dmin`, `explim`, `sin_fac`, `sin_diss1`, `sin_diss2`, `sds_fac`, `sds_power`, `mss_fac`, `snl_fac`, `sdt_fac`, `sbf_fac`, `sbp_fac`, `fcut_fac` |
-| `config.grid` | `GridConfig` | `gridfromfile`, `delx`, `dely`, `topofromfile`, `dpt`, `fillestuaries`, `filllakes` |
-| `config.forcing` | `ForcingConfig` | `winds`, `currents`, `air_density`, `water_density`, `seaice` |
+| `config.grid` | `GridConfig` | `gridfromfile`, `delx`, `dely`, `topofromfile`, `dpt`, `fillestuaries`, `filllakes`, `lon0`, `lat0`, `dlon`, `dlat` |
+| `config.forcing` | `ForcingConfig` | `winds`, `currents`, `air_density`, `water_density`, `seaice`, `waves`, `steady`, `source` |
 | `config.forcing_constant` | `ForcingConstantConfig` | `wspd0`, `wdir0`, `uc0`, `vc0`, `rhoa0`, `rhow0`, `fice0`, `fice_lth`, `fice_uth` |
 | `config.output` | `OutputConfig` | `outgrid`, `outspec`, `outrst`, `xpl`, `ypl`, `stokes` |
 | `config.stokes` | `StokesConfig` | `depths` |
@@ -334,6 +380,7 @@ umwm config [NAMELIST | --case NAME] [-s GROUP.NAME=VALUE ...] [-o FILE] [--json
 umwm run [NAMELIST|WORKDIR] [-w WORKDIR] [-c NAME] [-i INPUT_DIR] [-s GROUP.NAME=VALUE ...] [-n N] [--until TIME] [--log FILE] [-q] [--check]
 umwm cases [NAME]
 umwm forcing rankine [-w WORKDIR] [--hours N] [--nx N --ny N --dx M --dy M] [--vmax V --rmw R ...]
+umwm forcing era5 [NAMELIST|WORKDIR] [-w WORKDIR] [-i INPUT_DIR] [-s GROUP.NAME=VALUE ...] [-f] [--url URL] [--workers N]
 umwm output [SOURCE] [-v VAR ...] [--stats] [--spectrum] [--plot VAR [--time T] [--level L] [--save FILE]]
 umwm clean [WORKDIR] [--keep-output] [--keep-restart]
 umwm info
@@ -369,7 +416,17 @@ umwm config --case mars --diff defaults          # what the case changes
 
 `umwm run` reads `namelists/main.nml` of the run directory (the current
 directory by default) like the `umwm` executable does; `-s` overrides are
-written back to the namelist so that the run is reproducible. `--check`
+written back to the namelist so that the run is reproducible. With a data
+source (`forcing.source`), it prepares the missing input files first, and
+`umwm forcing era5` prepares them without running, for example before a
+parallel run of the `umwm` executable on nodes without network access:
+
+```
+umwm init --case era5-helene runs/gulf -s domain.stoptimestr="2024-09-27 12:00:00"
+umwm forcing era5 runs/gulf          # the input files, from ERA5
+cd runs/gulf && mpiexec -n 8 ../../umwm
+```
+ `--check`
 validates the configuration and the input files without running and prints
 a summary of the run; `--log` and `--quiet` send the output of the model to
 a file or discard it. Under `mpiexec`, `umwm run` runs the model in

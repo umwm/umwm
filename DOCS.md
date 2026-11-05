@@ -8,7 +8,8 @@ This file is a technical reference for the physics implemented in the University
 | --- | --- | --- |
 | Model domain and loop | `src/umwm_domain.f90` | `domain_type` owns the model state, initializes it, and runs the time loop: source functions, source integration, advection, refraction, stress, Stokes drift, diagnostics, and output. |
 | Output and output-time physics | `src/umwm_domain_output.f90` | Integrated diagnostics, ocean-side stress and energy fluxes, gridded and spectrum NetCDF output. |
-| Forcing state | `src/umwm_forcing.f90` | `forcing_type` owns mutable wind, current, density, sea-ice, remapped, and interpolation-scratch fields. |
+| Forcing state | `src/umwm_forcing.f90` | `forcing_type` owns mutable wind, current, density, sea-ice, remapped, and interpolation-scratch fields, and the wave partitions of the last input file read. |
+| Wave partitions | `src/umwm_partitions.f90` | `partitions_type` with the wave partitions of an input file (`forcing.waves`), and the parametric spectra that rebuild the wave spectrum from them, for the initial state and the open boundaries. |
 | Source functions | `src/umwm_source_functions.f90` | Wind input, wave breaking, nonlinear downshifting, turbulence, and sea-ice attenuation. |
 | Source integration | `src/umwm_physics.f90` | Exponential source update, diagnostic spectral tail, physics time step limit. |
 | Propagation, refraction, and frequency shift | `src/umwm_advection.f90` | First-order upstream advection of the wave action in geographic, directional, and frequency space. |
@@ -18,7 +19,8 @@ This file is a technical reference for the physics implemented in the University
 | Dispersion | `src/umwm_dispersion.f90` | Capillary-gravity dispersion relation, wavenumber solve, angular frequency, and group speed. |
 | Initialization and precomputed factors | `src/umwm_domain.f90` | Runtime allocation, spectral coordinates, wave kinematics, integration weights, dissipation constants, CFL limits. |
 | Parallel environment and halo exchange | `src/umwm_env.f90`, `src/umwm_mpi.f90` | Process rank and count; halo exchange and gathering of tile fields. |
-| Command line | `src/umwm_cli.f90` | Arguments of the `umwm` executable: the main namelist to run, by path or as an example case of `examples/` (`--case`), and the check of the run directory. |
+| Command line | `src/umwm_cli.f90` | Arguments of the `umwm` executable: the main namelist to run, by path or as an example case of `examples/` (`--case`), the check of the run directory, and the preparation of the missing input files from a data source (`forcing.source`) with the Python package. |
+| Data sources | `python/umwm/sources/` | Preparation of the input files on the grid of the model from a reanalysis or forecast: the ERA5 source (`era5.py`), the regridding (`regrid.py`), the wave partitions (`waves.py`), and the files (`prepare.py`). |
 | C API | `src/umwm_capi.f90` | `bind(c)` procedures for foreign-language callers: the domain lifecycle through an opaque handle, and access to the domain fields by name as pointers into the model memory. Used by the Python package in `python/`. |
 
 The main program instantiates one `domain_type` from `src/umwm_domain.f90`
@@ -1521,6 +1523,243 @@ Sea-ice controls:
 | --- | --- | --- | --- |
 | `depths` | `0.1 0.2 ... 100` | m | Positive-down depth levels where `u_stokes`, `v_stokes`, and `d_stokes` diagnostics are computed. |
 
+`GRID` controls of a regular longitude-latitude grid, which the model
+makes when `gridFromFile = .F.` and `dlon` and `dlat` are positive, instead
+of the Cartesian grid of `delx` and `dely`:
+
+| Parameter | Default | Units | Role |
+| --- | ---: | --- | --- |
+| `lon0`, `lat0` | `0` | degrees | Longitude and latitude of cell (1,1). |
+| `dlon`, `dlat` | `0` | degrees | Spacing in longitude and latitude; `0` for a Cartesian grid. A global grid (`isGlobal`) has `mm*dlon` = 360. |
+
+Wave partition and data source controls of the `FORCING` namelist:
+
+| Parameter | Default | Role |
+| --- | --- | --- |
+| `waves` | `.F.` | Wave partitions from the input files: the initial spectrum, unless restarting, and the spectrum of the open boundaries of a regional domain. |
+| `source` | `'none'` | Data source of the input files, such as `'era5'`: the missing input files are prepared from it before the run. `'none'` reads input files provided in the input directory. |
+
+## Wave Partitions: Initial State and Open Boundaries
+
+Reanalyses and forecasts rarely archive the wave spectrum; they describe the
+wave field by integrated parameters of its partitions, the wind sea and a few
+swell systems. With `waves = .T.` in the `FORCING` namelist, the model reads
+the partitions from the input files, and rebuilds its spectrum from them: at
+the start time for the initial state, instead of starting from rest, and at
+every forcing time at the open boundaries of a regional domain.
+
+### Partitions in the input files
+
+The partitions are variables of the input files `umwmin_<time>.nc` (or
+`umwmin.nc` with `steady`), on the grid like the other forcing fields, one
+set per partition $p$ = 0 to 9 (by convention, 0 is the wind sea):
+
+| Variable | Units | Meaning |
+| --- | --- | --- |
+| `phs<p>` | m | Significant wave height $H_p$; `0` where the partition is absent, and negative (`-1`) where there are no wave data, such as on land or sea ice in the dataset. |
+| `ptm<p>` | s | Mean period $T_{m-1,0} = m_{-1}/m_0$, the energy period; or, instead, |
+| `ptp<p>` | s | the peak period $T_p$. |
+| `pdir<p>` | rad | Mean direction of propagation $\bar\phi_p$, counterclockwise from east, in the direction convention of the model. |
+| `pspr<p>` | rad | Directional spread $\sigma_p = \sqrt{2(1-M_1)}$ (Kuik et al., 1988); optional, 0.5 rad by default. |
+| `pgam<p>` | 1 | Peak enhancement $\gamma_p$ of the JONSWAP spectrum; optional, 3.3 by default. |
+
+The values must be finite, as the model is compiled with fast math, which
+may not tell a NaN; the Python package writes missing values as `-1` for
+`phs<p>` and `0` for the others.
+
+### Parametric spectrum of a partition
+
+The spectrum of a partition is a JONSWAP spectrum in frequency times a
+$\cos^{2s}$ distribution in direction (Longuet-Higgins et al., 1963):
+
+$$
+S_p(f,\phi) \propto
+f^{-5}\exp\left[-\frac{5}{4}\left(\frac{f_p}{f}\right)^4\right]
+\gamma_p^{\exp\left[-(f-f_p)^2/(2\sigma_J^2 f_p^2)\right]}
+\cos^{2s}\left(\frac{\phi-\bar\phi_p}{2}\right),
+$$
+
+with $\sigma_J$ = 0.07 below and 0.09 above the peak frequency $f_p$. The
+first circular moment of the distribution in direction is
+$M_1 = s/(s+1)$, so that the spread $\sigma_p$ gives
+
+$$
+s = \frac{2}{\sigma_p^2} - 1,
+$$
+
+from 0 (isotropic, $\sigma_p = \sqrt 2$) to 20000 ($\sigma_p$ = 0.01 rad).
+
+The spectrum is built on the discrete frequencies $f_o$ of the model: with a
+mean period, the peak frequency is found by fixed-point iteration,
+$f_p \leftarrow f_p\,T(f_p)/T_{m-1,0}$, where $T(f_p)$ is the mean period
+$m_{-1}/m_0$ of the discrete spectrum, from $f_p = 0.9/T_{m-1,0}$, within
+$[f_1/2, f_{om}]$, so that the discrete spectrum has the given mean period
+whatever the frequency resolution. The variance of the partition is then
+distributed over the bins as
+
+$$
+E_{o,q}\,k_o\,dk_o\,d\phi
+= \frac{H_p^2}{16}\,
+\frac{f_o S_p(f_o)}{\sum_{o'} f_{o'} S_p(f_{o'})}\,
+\frac{D(\phi_q)}{\sum_{q'} D(\phi_{q'})},
+$$
+
+since the frequency bins have the width $f_o\,\Delta\ln f$, in the weights
+$k\,dk\,d\phi$ of the significant wave height of the model, with the
+wavenumbers of the depth of the cell. The discrete spectrum thus has the
+significant wave height $H_p$ exactly, in deep and shallow water, its mean
+period, and its mean direction and spread to the resolution of the
+directions. The partitions add up: the spectrum of a cell is the sum of
+those of its partitions, and is `tiny` where it has none.
+
+`src/umwm_partitions.f90` implements the partitions and their spectra, and
+`tests/test_partitions.f90` tests the significant wave height, mean period,
+mean direction, and spread of the discrete spectra.
+
+### Initial state
+
+Unless restarting, the model starts from the spectrum of the partitions of
+the input file of the start time, which must have them. The first time step
+is then, as from rest, of zero length: it sets the diagnostic range of the
+spectrum to the equilibrium of the model, and the stress and friction
+velocity of the initial spectrum, before the output of the start time. A
+restart reads the spectrum of the restart file instead, and the partitions
+serve the open boundaries.
+
+The partitions of a dataset describe the wave field of its own wave model,
+and the model adjusts it to its own physics in the first hours. From ERA5,
+the global wave energy decreases by 7% in the first hour and 12% in six
+hours, and then holds: the model damps the swell that travels across or
+against the local wind (`sin_diss1`) much faster than the wave model of
+ERA5, which removes the components of the swell more than 90 degrees from
+the wind in a few hours, most in the trade winds that the swell of the
+Southern Ocean crosses.
+
+### Open boundaries
+
+The edges of a domain are land. In a regional domain (not `isGlobal`), the
+sea cells next to its edges where the input file of the start time has wave
+data (`phs<p>` not negative) are open boundaries: their spectrum is that of
+the partitions of the input files, which they propagate into the domain.
+At each forcing time, the model rebuilds the spectrum of the boundary cells
+from the partitions of the new input file, which must have them, and after
+each source time step it sets their spectrum to
+
+$$
+E = (1-\alpha)\,E_b + \alpha\,E_f,\qquad \alpha = \frac{t - t_b}{t_f - t_b},
+$$
+
+between the spectra $E_b$ and $E_f$ of the backward and forward forcing
+times, as the forcing fields are interpolated. The source functions of the
+boundary cells are not integrated, since their spectrum is prescribed, and
+they do not limit the source time step: the spectrum of a dataset is out of
+equilibrium with the source functions of the model, and its fast relaxation
+would otherwise hold the time step of the whole domain to a few seconds.
+In the output, the wind input and nonlinear transfer of the boundary cells
+are therefore zero, and their spectrum keeps the parametric shape of the
+partitions up to the highest frequency, rather than the equilibrium range
+that the source functions set in the other cells.
+A global domain has no open boundaries. In ESMF coupled mode, the input
+files are not read after the start time, and the boundaries keep the
+spectrum of the start time.
+
+## Data Sources of the Input Files
+
+The model reads its forcing, grid, and wave partitions from NetCDF files in
+its input directory. A data source prepares these files from a reanalysis or
+a forecast, on the grid of the model, so that a run from such a dataset
+needs no other program: with `source = 'era5'` in the `FORCING` namelist,
+the input files of the configuration that are missing are prepared before
+the run, by
+
+- the `umwm` executable, whose root process runs the Python package,
+  `$UMWM_PYTHON -m umwm.cli forcing SOURCE NAMELIST --input-dir INPUT_DIR`
+  (`python3` by default), and checks that the files are then in place;
+- `umwm run` and `umwm.Domain.initialize` of the Python package; and
+- `umwm forcing SOURCE [NAMELIST|WORKDIR]`, beforehand, for example on a
+  node with network access before a parallel run on compute nodes.
+
+The namelist says which files the model reads, as without a source: the
+grid of `lon0`, `lat0`, `dlon` and `dlat` in `GRID` (or a grid file with
+`gridFromFile`), the bathymetry with `topoFromFile`, and the forcing
+fields with `winds`, `air_density`, `seaice` and `waves` in `FORCING`. The
+files that exist are kept, such as a bathymetry from a finer dataset, unless
+they are for another grid, such as those of another case prepared in the
+same input directory: fields of another size than `mm` by `nm`, or, with
+`lon` and `lat`, first and last cells at other coordinates than those of the
+grid (within 0.001 degrees). The files for another grid that the preparation
+wrote (their `history` attribute starts with `prepared by umwm`) are
+prepared again; the others stop the preparation with an error, rather than
+being replaced. The model also stops with an error at an input file whose
+fields are not of `mm` by `nm` cells, whatever its source, rather than read
+part of it.
+
+### ERA5
+
+The `era5` source reads ERA5 (Hersbach et al., 2020), the hourly reanalysis
+of ECMWF from 1940, from the analysis-ready, cloud-optimized Zarr store of
+Google Cloud Public Datasets (Carver and Merose, 2023), on a regular 0.25
+degree grid, anonymously over HTTPS, where each variable is a chunk of the
+whole globe per hour (`UMWM_ERA5_URL` sets another store, such as a local
+copy). It provides:
+
+| Input | ERA5 variables |
+| --- | --- |
+| Bathymetry | `model_bathymetry` of the wave model, sea where at least half of the weight of the bilinear interpolation is on its sea |
+| `winds` | `10m_u_component_of_wind`, `10m_v_component_of_wind` |
+| `air_density` | `air_density_over_the_oceans` |
+| `seaice` | `sea_ice_cover` |
+| `waves`, partition 0 | wind sea: `significant_height_of_wind_waves`, `mean_period_of_wind_waves`, `mean_direction_of_wind_waves`, `wave_spectral_directional_width_for_wind_waves` |
+| `waves`, partitions 1-3 | first, second and third swell: `significant_wave_height_of_*_swell_partition`, `mean_wave_period_of_*_swell_partition`, `mean_wave_direction_of_*_swell_partition`, and `wave_spectral_directional_width_for_swell` |
+| `waves`, partition 4 | the residual of the whole wave field: `significant_height_of_combined_wind_waves_and_swell`, `mean_wave_period`, `mean_wave_direction`, `wave_spectral_directional_width` |
+
+The mean periods of ERA5 are $T_{m-1,0}$, its directions are where the
+waves come from, clockwise from north, and its directional spreads are
+$\sqrt{2(1-M_1)}$ at the spectral peak (Bidlot, 2020). ERA5 does not
+provide currents or water density, which keep the constant values of
+`FORCING_CONSTANT`.
+
+### Preparation
+
+The preparation, common to all sources (`python/umwm/sources/prepare.py`):
+
+1. reads the fields of the source at the times it needs, a block of times
+   at a time, restricted to the latitudes of the grid of the model;
+2. interpolates them bilinearly to the cells of the model, periodic in
+   longitude, leaving out the corners without data, and in time, linearly,
+   between the times of the source; the wave partitions are those of the
+   nearest time;
+3. converts the wave partitions: directions to the convention of the model,
+   and, where the partitions have less energy than the whole wave field
+   (they are interpolated separately in the dataset), adds the difference as
+   a residual partition with the period, direction and spread of the whole
+   wave field, or scales them down where they have more, so that the model
+   starts from the significant wave height of the dataset; the period,
+   direction and spread of a partition are interpolated weighted by its
+   energy at the corners;
+4. writes `umwm.gridtopo` and the forcing files, with the wave partitions at
+   the start time, and at every time if the domain is regional with sea
+   cells next to its edges, its open boundaries.
+
+### Adding a data source
+
+A source is a class of `python/umwm/sources` that reads its dataset in the
+standard names and conventions of `python/umwm/sources/base.py` (`u10`,
+`v10`, `rhoa`, `fice`, `depth`, and the partitions `hs<p>`, `tm<p>` or
+`tp<p>`, `dir<p>` and `spr<p>`, with `hs`, `tm`, `dir` and `spr` of the whole
+wave field), declared in `SOURCES` of `python/umwm/sources/__init__.py` with
+the inputs it provides and its dependencies, as a pip extra of the package;
+the preparation, the namelist, and the command-line tools then serve it as
+they serve ERA5. For example, an NCEP GFS source would read the 10 m wind,
+the air density from the pressure, temperature and humidity, and the sea
+ice of the GFS atmosphere, and the wave partitions of its WAVEWATCH III
+wave model (GFS-Wave: the wind sea `WVHGT`, `WVPER`, `WVDIR` and the swell
+`SWELL`, `SWPER`, `SWDIR` of three partitions), from GRIB2 files with byte
+ranges of their index files, from NOMADS or from the NOAA Open Data
+Dissemination buckets, with the peak or mean period of WAVEWATCH III
+(`tp<p>` or `tm<p>`), and the default spread where it has none; the forecast
+cycle is that of the start time.
+
 ## Output Fields Relevant to Physics
 
 Gridded output includes forcing, integrated wave quantities, stress, and
@@ -1605,11 +1844,17 @@ test-local binaries, object files, and module files.
 The physics basis and manual equations are from UMWM manual version 2,
 sections 1 through 4 and 9. The cited references are:
 
+- Bidlot, J.-R., 2020: Ocean wave model output parameters. ECMWF, Reading, United Kingdom. https://confluence.ecmwf.int/download/attachments/59774192/wave_parameters.pdf.
+- Carver, R. W., and A. Merose, 2023: ARCO-ERA5: An analysis-ready cloud-optimized reanalysis dataset. *22nd Conference on AI for Environmental Science*, American Meteorological Society, Denver, CO.
 - Donelan, M. A., and W. J. Plant, 2009: A threshold for wind-wave growth. *Journal of Geophysical Research*, 114, C07012. https://doi.org/10.1029/2008JC005238.
 - Donelan, M. A., M. Curcic, S. S. Chen, and A. K. Magnusson, 2012: Modeling waves and wind stress. *Journal of Geophysical Research*, 117, C00J23. https://doi.org/10.1029/2011JC007787.
+- Hasselmann, K., et al., 1973: Measurements of wind-wave growth and swell decay during the Joint North Sea Wave Project (JONSWAP). *Ergänzungsheft zur Deutschen Hydrographischen Zeitschrift*, Reihe A, 8(12), 95 pp.
+- Hersbach, H., et al., 2020: The ERA5 global reanalysis. *Quarterly Journal of the Royal Meteorological Society*, 146, 1999-2049. https://doi.org/10.1002/qj.3803.
 - Jeffreys, H., 1924: On the formation of waves by wind. *Proceedings of the Royal Society A*, 107, 189-206.
 - Jeffreys, H., 1925: On the formation of waves by wind, II. *Proceedings of the Royal Society A*, 110, 341-347.
 - Kenyon, K. E., 1971: Wave refraction in ocean currents. *Deep Sea Research and Oceanographic Abstracts*, 18, 1023-1034. https://doi.org/10.1016/0011-7471(71)90006-4.
 - Komen, G. J., L. Cavaleri, M. Donelan, K. Hasselmann, S. Hasselmann, and P. A. E. M. Janssen, 1994: *Dynamics and Modelling of Ocean Waves*. Cambridge University Press, 532 pp.
+- Kuik, A. J., G. Ph. van Vledder, and L. H. Holthuijsen, 1988: A method for the routine analysis of pitch-and-roll buoy wave data. *Journal of Physical Oceanography*, 18, 1020-1034. https://doi.org/10.1175/1520-0485(1988)018<1020:AMFTRA>2.0.CO;2.
+- Longuet-Higgins, M. S., D. E. Cartwright, and N. D. Smith, 1963: Observations of the directional spectrum of sea waves using the motions of a floating buoy. In *Ocean Wave Spectra*, Prentice-Hall, 111-136.
 - Pierson, W. L., and L. Moskowitz, 1964: A proposed spectral form for fully developed wind seas based on the similarity theory of S. A. Kitaigorodskii. *Journal of Geophysical Research*, 69, 5181-5190.
 - Shemdin, O. H., K. Hasselmann, S. V. Hsiao, and K. Herterich, 1978: Non-linear and linear bottom interaction effects in shallow water. In A. Favre and K. Hasselmann (eds.), *Turbulent Fluxes Through the Sea Surface, Wave Dynamics, and Prediction*, Plenum, New York, 347-372.

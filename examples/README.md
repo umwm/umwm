@@ -1,25 +1,28 @@
 # UMWM example cases
 
-A gallery of idealized cases, ready to run: the wind and the other
-parameters are constant, and most cases need no input files. Each case is a
-directory with its `main.nml` namelist, whose leading comments describe the
-case, and the `spectrum.nml` points of its spectrum output; `cases.txt`
-lists the cases. The `seamount` and `eddy-field` cases bring their input
-files, a bathymetry and steady currents, in their `input/` directory, with
-the `make_input.py` script that writes them.
+A gallery of cases, ready to run: idealized cases, where the wind and the
+other parameters are constant, and most cases need no input files, and two
+real cases from the ERA5 reanalysis, which prepare their input files from
+it when they run. Each case is a directory with its `main.nml` namelist,
+whose leading comments describe the case, and the `spectrum.nml` points of
+its spectrum output; `cases.txt` lists the cases. The `seamount` and
+`eddy-field` cases bring their input files, a bathymetry and steady
+currents, in their `input/` directory, with the `make_input.py` script that
+writes them.
 
-| Case | What it shows | Grid | Run time |
-| --- | --- | --- | ---: |
-| [`fetch-limited`](fetch-limited/main.nml) | Growth with fetch to full development, 20 m/s wind | 1000 km at 10 km, 48 h | 25 s |
-| [`duration-limited`](duration-limited/main.nml) | Growth with time of a uniform sea, 20 m/s wind | one sea cell, 48 h | 1 s |
-| [`jonswap`](jonswap/main.nml) | Fetch-limited growth over the fetches of JONSWAP, 10 m/s wind | 100 km at 1 km, 12 h | 15 s |
-| [`wave-tank`](wave-tank/main.nml) | Waves in a laboratory wind-wave tank, 10 m/s wind | 10 m at 20 cm, 2 min | 15 s |
-| [`titan-ontario-lacus`](titan-ontario-lacus/main.nml) | Methane-ethane waves on a lake of Titan, 1.5 m/s wind | 230 x 75 km at 5 km, 24 h | 60 s |
-| [`mars-jezero-lake`](mars-jezero-lake/main.nml) | Waves on the ancient lake of Jezero crater, Mars, 5 m/s wind | 40 x 40 km at 1 km, 12 h | 20 s |
-| [`seamount`](seamount/main.nml) | Waves over a Gaussian seamount, 20 m/s wind | 100 x 160 km at 2.5 km, 12 h | 45 s |
-| [`eddy-field`](eddy-field/main.nml) | Waves through steady mesoscale eddies, 20 m/s wind | 200 x 300 km at 4 km, 15 h | 70 s |
-
-The run times are approximate, for a serial run on one core.
+| Case | What it shows | Grid |
+| --- | --- | --- |
+| [`fetch-limited`](fetch-limited/main.nml) | Growth with fetch to full development, 20 m/s wind | 1000 km at 10 km, 48 h |
+| [`duration-limited`](duration-limited/main.nml) | Growth with time of a uniform sea, 20 m/s wind | one sea cell, 48 h |
+| [`jonswap`](jonswap/main.nml) | Fetch-limited growth over the fetches of JONSWAP, 10 m/s wind | 100 km at 1 km, 12 h |
+| [`wave-tank`](wave-tank/main.nml) | Waves in a laboratory wind-wave tank, 10 m/s wind | 10 m at 20 cm, 2 min |
+| [`titan-ontario-lacus`](titan-ontario-lacus/main.nml) | Methane-ethane waves on a lake of Titan, 1.5 m/s wind | 230 x 75 km at 5 km, 24 h |
+| [`mars-jezero-lake`](mars-jezero-lake/main.nml) | Waves on the ancient lake of Jezero crater, Mars, 5 m/s wind | 40 x 40 km at 1 km, 12 h |
+| [`seamount`](seamount/main.nml) | Waves over a Gaussian seamount, 20 m/s wind | 100 x 160 km at 2.5 km, 12 h |
+| [`eddy-field`](eddy-field/main.nml) | Waves through steady mesoscale eddies, 20 m/s wind | 200 x 300 km at 4 km, 15 h |
+| [`era5-helene`](era5-helene/main.nml) | Hurricane Helene in the Gulf of Mexico, from ERA5, with open boundaries | 79 x 57 at 0.25 degrees, 24 h |
+| [`era5-global-1deg`](era5-global-1deg/main.nml) | The global ocean, from ERA5 | 360 x 157 at 1 degree, 24 h |
+| [`era5-global-0.25deg`](era5-global-0.25deg/main.nml) | The global ocean at the resolution of ERA5, about 22 GB of memory | 1440 x 625 at 0.25 degrees, 24 h |
 
 ## Running a case
 
@@ -91,6 +94,11 @@ with umwm.Domain(config, workdir="runs/jonswap15") as domain:
     output = domain.output()
     spectra = domain.spectrum_output()      # {"fetch010km": Dataset, ...}
 ```
+
+The ERA5 cases need the Python package, with the dependencies of ERA5
+(`pip install '.[era5]'` in the UMWM repository), and network access to the
+ARCO ERA5 store of Google; the `umwm` executable prepares their input files
+with it, in `input/` of the current directory (see [ERA5 cases](#era5-cases)).
 
 ## Fetch-limited and duration-limited growth
 
@@ -256,18 +264,96 @@ seamount, and the number, sizes, speeds, and random seed of the eddies.
 After changing them, `python make_input.py` in the case directory writes the
 input file again.
 
+## ERA5 cases
+
+These cases start from, and are forced by, the ERA5 reanalysis, on a
+longitude-latitude grid (`lon0`, `lat0`, `dlon` and `dlat` in `&GRID`), with
+the bathymetry of the ERA5 wave model (`topoFromFile`). With `source =
+'era5'` in `&FORCING`, the input files are prepared from the analysis-ready,
+cloud-optimized ERA5 store of Google Cloud before the model runs, by the
+`umwm` executable, by `umwm run`, or beforehand by `umwm forcing era5`: the
+bathymetry, the hourly wind, air density and sea ice, and the wave
+partitions of ERA5, the wind sea and three swells, from which the model
+rebuilds its initial spectrum (`waves`), with the significant wave height,
+mean period, mean direction and directional spread of each.
+
+```
+mkdir -p runs/helene/output && cd runs/helene
+../../umwm --case era5-helene                        # prepares input/, then runs
+umwm run --case era5-global-1deg                     # in ./era5-global-1deg
+umwm init --case era5-helene runs/milton -s domain.starttimestr="2024-10-09 00:00:00" \
+  -s domain.stoptimestr="2024-10-10 00:00:00"        # another hurricane
+```
+
+**`era5-helene`**: hurricane Helene crossing the Gulf of Mexico on 26
+September 2024, at the 0.25 degrees of ERA5, for 24 hours. The domain is
+regional, and its open boundaries, the Yucatan Channel, the Straits of
+Florida and the western Caribbean, take the spectrum of the ERA5 partitions
+throughout the run. The preparation reads about 1 GB of ERA5 fields, as the
+ARCO store has a chunk of the whole globe per hour and variable. ERA5
+resolves the core of a hurricane poorly: its wind peaks at 32 m/s, far below
+the 60 m/s of Helene, and the significant wave height at 10.7 m in ERA5 and
+11.0 m in the model. Against ERA5 interpolated to the grid of the model, the
+significant wave height of the model differs by:
+
+| Time | From ERA5 | From rest |
+| ---: | ---: | ---: |
+| 0 h | 0.007 m (0.4%) | 1.78 m |
+| 6 h | 0.26 m (13%) | 0.72 m |
+| 12 h | 0.40 m (17%) | 0.62 m |
+| 24 h | 0.68 m (28%) | 0.72 m |
+
+(root mean square difference over the sea cells, and relative to the mean
+of ERA5), most under the strongest winds, where the model grows the waves by
+its own physics; within three cells of the open boundaries, it differs by
+0.15 m or less throughout.
+
+**`era5-global-1deg`**: the global ocean at 1 degree, from 78S to 78N, for 24
+hours from the same time, with 38500 sea cells. The domain is periodic in
+longitude and has no open boundaries: its edges, the rows at 78S and 78N,
+are land. The preparation reads 0.24 GB of ERA5 fields, the wave partitions
+at the start time only. A parallel run, such as
+`mpiexec -n 4 ./umwm --case era5-global-1deg`, gives the same results as a
+serial one. Against ERA5, the significant wave height of the model differs
+by 0.009 m (0.4%) at the start, 0.37 m (17%) after 6 hours and 0.51 m (23%)
+after 24 hours, and is lower by 0.2 m on average from 6 hours on: the total
+wave energy decreases by 7% in the first hour and 12% in six hours, and
+then holds, as the model damps the swell that travels across or
+against the local wind (the damping of `sin_diss1`; Donelan et al., 2012)
+much faster than the ERA5 wave model, most in the trade winds of the
+southern hemisphere, which the long swell of the Southern Ocean crosses.
+
+**`era5-global-0.25deg`**: the same run at 0.25 degrees, the grid of ERA5,
+whose points are the cells of the model, with 619000 sea cells, 16 times as
+many. The preparation writes 0.6 GB of input files from the same 0.24 GB of
+ERA5 fields. The model needs about 22 GB of memory: run it on a computer
+with that memory, or in parallel on a cluster, whose processes divide the
+memory between them, with its input files prepared first on a node with
+network access, as a parallel run does not prepare them:
+
+```
+umwm init --case era5-global-0.25deg runs/global
+umwm forcing era5 runs/global
+cd runs/global && mpiexec -n 64 ../../umwm
+```
+
 ## Adding a case
 
 A case is a directory with a complete `main.nml`, which sets every
 namelist variable, and optionally a `spectrum.nml`, listed in `cases.txt`
 with a one-line description. Its input files, if any, go in its `input/`
 directory; forcing read from file should be steady (`forcing.steady`), so
-that one file of the start time is enough. The test suite of the Python
-package checks that every case listed is complete and valid, and that its
-input files match its grid.
+that one file of the start time is enough, unless the case prepares its
+input files from a data source (`forcing.source`), as the ERA5 cases do. The
+test suite of the Python package checks that every case listed is complete
+and valid, and that its input files match its grid; it runs the ERA5 cases
+only with `UMWM_TEST_ERA5=1`.
 
 ## References
 
+- Donelan, M. A., M. Curcic, S. S. Chen, and A. K. Magnusson, 2012: Modeling
+  waves and wind stress, *J. Geophys. Res. Oceans*, **117**, C00J23,
+  doi:10.1029/2011JC007787.
 - Detelich, C. E., et al., 2026: Modeling the seasonality of wind-driven
   hydrocarbon waves in Titan's polar lakes, *J. Geophys. Res. Planets*,
   **131**(5), e2026JE009693, doi:10.1029/2026JE009693.

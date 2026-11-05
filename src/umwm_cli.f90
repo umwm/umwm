@@ -1,11 +1,15 @@
 module umwm_cli
   ! Command-line interface of the umwm executable: selects the main namelist
   ! to run, given as a path or as the name of an example case of the
-  ! examples gallery, and checks the run directory.
+  ! examples gallery, and checks the run directory; prepares the missing
+  ! input files of a configuration with a data source, such as ERA5.
 
-  use iso_c_binding, only: c_associated, c_char, c_null_char, c_ptr
+  use datetime_module, only: datetime, strptime, timedelta
+  use iso_c_binding, only: c_associated, c_char, c_int, c_null_char, c_ptr
   use iso_fortran_env, only: output_unit
-  use umwm_env, only: nproc
+  use umwm_config, only: config_type
+  use umwm_env, only: mpisize, nproc
+  use umwm_grid, only: input_grid_problem
 #ifdef MPI
   use mpi
 #endif
@@ -13,7 +17,7 @@ module umwm_cli
   implicit none
 
   private
-  public :: parse_command_line
+  public :: parse_command_line, prepare_inputs, first_pending_input
 
   character(*), parameter :: default_namelist = 'namelists/main.nml'
   character(*), parameter :: cases_index = 'cases.txt'
@@ -30,6 +34,11 @@ module umwm_cli
       character(kind=c_char), intent(in) :: path(*)
       character(kind=c_char), intent(out) :: resolved(*)
     end function c_realpath
+    integer(c_int) function c_access(path, mode) bind(c, name='access')
+      import :: c_char, c_int
+      character(kind=c_char), intent(in) :: path(*)
+      integer(c_int), value :: mode
+    end function c_access
   end interface
 
 contains
@@ -38,7 +47,9 @@ contains
     ! Sets namelist to the main namelist to run: the path given as the
     ! argument, the main.nml of the example case given with --case, or
     ! namelists/main.nml by default; and input_dir to the directory of the
-    ! input files: input/ of the case, or input/ of the current directory.
+    ! input files: input/ of the case if it has one, or input/ of the
+    ! current directory, where the input files of a case with a data source
+    ! are prepared.
     ! run is .false. when the program should stop without running, after
     ! showing the help or the list of cases. Invalid arguments, an unknown
     ! case, or a missing output directory stop the program with an error.
@@ -83,7 +94,8 @@ contains
     if (allocated(case_name)) then
       if (allocated(namelist)) call fail('give either a namelist or --case, not both')
       namelist = case_namelist(case_name)
-      input_dir = namelist(1:index(namelist, '/', back=.true.)) // 'input'
+      if (path_exists(namelist(1:index(namelist, '/', back=.true.)) // 'input')) &
+        input_dir = namelist(1:index(namelist, '/', back=.true.)) // 'input'
     else if (.not. allocated(namelist)) then
       namelist = default_namelist
     end if
@@ -292,6 +304,11 @@ contains
       'the input/, output/ and restart/ directories of the run; an example case', &
       'reads its input files, if it has any, from its own input/ directory.', &
       '', &
+      'With a data source in the FORCING namelist, such as source = ''era5'', the', &
+      'missing input files, and those it prepared for another grid, are prepared', &
+      'before the run with the umwm Python package:', &
+      '$UMWM_PYTHON -m umwm.cli forcing SOURCE NAMELIST (python3 by default).', &
+      '', &
       '  NAMELIST          the main namelist to run (default: ' // default_namelist // ')', &
       '  -c, --case NAME   run the example case NAME; a unique prefix of the name', &
       '                    is enough, such as --case titan', &
@@ -342,6 +359,171 @@ contains
     character(*), intent(in) :: path
     inquire(file=path, exist=file_exists)
   end function file_exists
+
+
+  logical function path_exists(path)
+    ! Whether a file or directory exists at path, by the POSIX access.
+    character(*), intent(in) :: path
+    path_exists = c_access(path // c_null_char, 0_c_int) == 0
+  end function path_exists
+
+
+  subroutine prepare_inputs(namelist, input_dir)
+    ! Prepares the input files that the configuration of namelist reads and
+    ! that are missing from input_dir, or that are for another grid, from the
+    ! data source of its forcing (source in the FORCING namelist, such as
+    ! 'era5'), with the umwm Python package: the root process runs
+    !   $UMWM_PYTHON -m umwm.cli forcing SOURCE NAMELIST --input-dir INPUT_DIR
+    ! with python3 by default, which prepares again the files for another
+    ! grid that it prepared, and stops at those it did not. Does nothing
+    ! without a data source or files to prepare, and stops with an error if
+    ! they cannot be prepared, or in a parallel run, which does not start
+    ! Python: its input files are prepared beforehand. An invalid
+    ! configuration is left to the domain to report.
+    character(*), intent(in) :: namelist, input_dir
+    type(config_type) :: config
+    character(:), allocatable :: pending, reason, source, command
+    character(256) :: message
+    integer :: stat, exitstat, cmdstat
+#ifdef MPI
+    integer :: ierr
+#endif
+
+    config = config_type(namelist)
+    if (.not. config % read_ok) return
+    if (.not. config % has_source()) return
+    if (.not. config % validate(stop_on_error=.false., rank=-1)) return
+    config % input_dir = input_dir
+    pending = first_pending_input(config, reason)
+    if (len(pending) == 0) return
+
+    source = trim(adjustl(config % source))
+    command = 'umwm forcing ' // shell_quote(source) // ' ' // shell_quote(namelist) &
+      // ' --input-dir ' // shell_quote(input_dir)
+    if (mpisize > 1) call fail('input file ' // pending // ' ' // reason // '. A parallel run ' &
+      // 'does not prepare its input files; prepare them beforehand with: ' // command)
+
+    stat = 0
+    if (nproc == 0) then
+      command = environment('UMWM_PYTHON', 'python3') // ' -m umwm.cli forcing ' &
+        // shell_quote(source) // ' ' // shell_quote(namelist) // ' --input-dir ' &
+        // shell_quote(input_dir)
+      write(*, '(a)') 'umwm: input file ' // pending // ' ' // reason // '; preparing the ' &
+        // 'input files from ' // source // ' with:', '  ' // command
+      flush(output_unit)
+      message = ''
+      call execute_command_line(command, exitstat=exitstat, cmdstat=cmdstat, cmdmsg=message)
+      if (cmdstat /= 0) then
+        stat = 1
+        write(*, '(a)') 'umwm: ' // trim(message)
+      else if (exitstat /= 0) then
+        stat = 1
+      end if
+    end if
+#ifdef MPI
+    call mpi_bcast(stat, 1, MPI_INTEGER, 0, MPI_COMM_WORLD, ierr)
+#endif
+    if (stat /= 0) call fail('the input files could not be prepared from ' // source // '; see ' &
+      // 'the error above. Their preparation needs the umwm Python package, with the ' &
+      // 'dependencies of the data source (pip install ".[' // source // ']" in the UMWM ' &
+      // 'repository): set UMWM_PYTHON to the Python interpreter that has it, or prepare the ' &
+      // 'input files beforehand with: umwm forcing ' // source // ' ' // namelist)
+
+    pending = first_pending_input(config, reason)
+    if (len(pending) > 0) call fail('input file ' // pending // ' ' // reason // &
+                                    ', after the preparation of the input files from ' // source)
+
+  end subroutine prepare_inputs
+
+
+  function first_pending_input(config, reason) result(path)
+    ! The first input file that a valid configuration reads that does not
+    ! exist, or that is for another grid (see input_grid_problem of
+    ! umwm_grid): the grid and bathymetry, and the forcing files of the start
+    ! time and of the end of every global time step; empty if there is none.
+    ! reason tells why it is pending. Restart files are not input files.
+    type(config_type), intent(in) :: config
+    character(:), allocatable, intent(out) :: reason
+    character(:), allocatable :: path
+    type(datetime) :: time, stop_time
+
+    path = ''
+    reason = ''
+    if (config % topofromfile) then
+      if (pending(config % input_path('umwm.gridtopo'))) return
+    else if (config % gridfromfile) then
+      if (file_exists(config % input_path('umwm.gridtopo'))) then
+        if (pending(config % input_path('umwm.gridtopo'))) return
+      else
+        if (pending(config % input_path('umwm.grid'))) return
+      end if
+    end if
+    if (config % forcing_from_file()) then
+      if (config % steady) then
+        if (pending(config % input_path('umwmin.nc'))) return
+      else
+        time = strptime(config % starttimestr, '%Y-%m-%d %H:%M:%S')
+        stop_time = strptime(config % stoptimestr, '%Y-%m-%d %H:%M:%S')
+        do
+          if (pending(config % input_path('umwmin_' // time % strftime('%Y-%m-%d_%H:%M:%S') &
+                                          // '.nc'))) return
+          if (.not. time < stop_time) exit
+          time = time + timedelta(seconds=nint(config % dtg))
+        end do
+      end if
+    end if
+    path = ''
+    reason = ''
+
+  contains
+
+    logical function pending(file)
+      ! Whether file is missing or for another grid, setting path and reason.
+      character(*), intent(in) :: file
+      path = file
+      if (.not. file_exists(file)) then
+        reason = 'is missing'
+      else
+        reason = input_grid_problem(config, file)
+        if (len(reason) > 0) reason = 'is for another grid: ' // reason
+      end if
+      pending = len(reason) > 0
+    end function pending
+
+  end function first_pending_input
+
+
+  function environment(name, default) result(value)
+    ! The value of the environment variable name, or default if it is not
+    ! set or empty.
+    character(*), intent(in) :: name, default
+    character(:), allocatable :: value
+    integer :: length, stat
+    call get_environment_variable(name, length=length, status=stat)
+    if (stat /= 0 .or. length == 0) then
+      value = default
+      return
+    end if
+    allocate(character(length) :: value)
+    call get_environment_variable(name, value=value)
+  end function environment
+
+
+  function shell_quote(text) result(quoted)
+    ! text quoted for the POSIX shell, between single quotes.
+    character(*), intent(in) :: text
+    character(:), allocatable :: quoted
+    integer :: n
+    quoted = "'"
+    do n = 1, len(text)
+      if (text(n:n) == "'") then
+        quoted = quoted // "'\''"
+      else
+        quoted = quoted // text(n:n)
+      end if
+    end do
+    quoted = quoted // "'"
+  end function shell_quote
 
 
   subroutine fail(message)

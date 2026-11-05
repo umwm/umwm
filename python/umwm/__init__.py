@@ -18,7 +18,9 @@ its C API and views its memory without copying. ``umwm.list_cases()`` lists
 the example cases, idealized configurations with constant forcing,
 ``umwm.Config.from_case("jonswap")`` reads the configuration of one, and
 ``umwm.get_case("seamount").domain(workdir)`` is a domain of one with a copy
-of its input files, for the cases that have them.
+of its input files, for the cases that have them. With a data source of the
+input files, such as ``config.forcing.source = "era5"``, the domain prepares
+its missing input files from it; see :mod:`umwm.sources`.
 """
 
 from ._library import LibraryNotFoundError, barrier, find_library, flush_denormals, library, mpi, rank, size
@@ -39,6 +41,8 @@ from .domain import Domain, run
 from .fields import FIELDS
 from .forcing import forcing_filename, forcing_files, write_forcing, write_forcing_dataset, write_grid, write_rankine_forcing
 from .plotting import plot_field
+from . import sources
+from .sources import SourceError, prepare_inputs
 from .output import (
     open_grid,
     open_output,
@@ -57,7 +61,7 @@ __all__ = [
     "OutputConfig", "StokesConfig", "FIELDS",
     "Case", "list_cases", "get_case", "examples_dir",
     "write_forcing", "write_forcing_dataset", "write_grid", "write_rankine_forcing", "forcing_filename", "forcing_files",
-    "plot_field",
+    "plot_field", "sources", "prepare_inputs", "SourceError",
     "open_output", "open_spectrum_output", "open_restart", "open_grid",
     "output_files", "restart_files", "spectrum_output_files",
     "library", "find_library", "LibraryNotFoundError", "rank", "size", "mpi", "barrier", "flush_denormals",

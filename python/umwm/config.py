@@ -116,6 +116,12 @@ class GridConfig:
     dpt: float = field(default=1000.0, metadata=_doc("Constant water depth if not from file", "m"))
     fillestuaries: bool = field(default=False, metadata=_doc("Fill cells with 3 land neighbours"))
     filllakes: bool = field(default=False, metadata=_doc("Fill the enclosed seas listed in exclude.nml"))
+    lon0: float = field(default=0.0, metadata=_doc("Longitude of cell (1,1) of a lon-lat grid", "degrees_east"))
+    lat0: float = field(default=0.0, metadata=_doc("Latitude of cell (1,1) of a lon-lat grid", "degrees_north"))
+    dlon: float = field(default=0.0, metadata=_doc(
+        "Longitude spacing of a regular lon-lat grid if not from file; 0 for a grid of delx", "degrees"))
+    dlat: float = field(default=0.0, metadata=_doc(
+        "Latitude spacing of a regular lon-lat grid if not from file; 0 for a grid of dely", "degrees"))
 
 
 @dataclass
@@ -127,7 +133,11 @@ class ForcingConfig:
     air_density: bool = field(default=False, metadata=_doc("Air density input from file"))
     water_density: bool = field(default=False, metadata=_doc("Water density input from file"))
     seaice: bool = field(default=False, metadata=_doc("Sea ice fraction input from file"))
+    waves: bool = field(default=False, metadata=_doc(
+        "Wave partitions from file: initial spectrum, and spectrum at the open boundaries of a regional domain"))
     steady: bool = field(default=False, metadata=_doc("Forcing from file is steady: read once from input/umwmin.nc"))
+    source: str = field(default="none", metadata=_doc(
+        "Data source of the input files, prepared from it when missing: 'none' or 'era5'"))
 
 
 @dataclass
@@ -205,7 +215,8 @@ GROUPS = OrderedDict(
 )
 """Namelist group names of ``main.nml`` in file order and their dataclasses."""
 
-MODEL_DEFAULTS = frozenset({"domain.reftimestr", "physics.fcut_fac", "forcing.steady"})
+MODEL_DEFAULTS = frozenset({"domain.reftimestr", "physics.fcut_fac", "forcing.steady", "grid.lon0", "grid.lat0",
+                            "grid.dlon", "grid.dlat", "forcing.waves", "forcing.source"})
 """Namelist variables that a ``main.nml`` file may leave out, which the model
 defaults to the same values as the package; it defaults most of the others
 to zero."""
@@ -425,9 +436,22 @@ class Config:
 
     @property
     def forcing_from_file(self) -> bool:
-        """Whether any forcing field is read from the input files."""
+        """Whether any forcing field, or the wave partitions, are read from the input files."""
         forcing = self.forcing
-        return any([forcing.winds, forcing.currents, forcing.air_density, forcing.water_density, forcing.seaice])
+        return any([forcing.winds, forcing.currents, forcing.air_density, forcing.water_density, forcing.seaice,
+                    forcing.waves])
+
+    @property
+    def lonlat_grid(self) -> bool:
+        """Whether the model makes a regular lon-lat grid from ``grid.lon0``, ``lat0``, ``dlon`` and ``dlat``."""
+        return not self.grid.gridfromfile and (self.grid.dlon > 0 or self.grid.dlat > 0)
+
+    @property
+    def source_name(self) -> str | None:
+        """The data source of the input files (``forcing.source``) in lower case, or None
+        if they are provided rather than prepared from a source."""
+        name = self.forcing.source.strip().lower()
+        return None if name in ("", "none") else name
 
     # ---- validation ---------------------------------------------------------
 
@@ -477,6 +501,18 @@ class Config:
             errors.append("delx and dely must be > 0")
         if not grid.topofromfile and grid.dpt <= 0:
             errors.append("dpt must be > 0")
+        if self.lonlat_grid:
+            if grid.dlon <= 0 or grid.dlat <= 0:
+                errors.append("dlon and dlat must both be > 0 for a lon-lat grid")
+            else:
+                if grid.lat0 < -90 or grid.lat0 + (domain.nm - 1) * grid.dlat > 90:
+                    errors.append("the latitudes lat0 to lat0 + (nm - 1) * dlat must be within [-90, 90]")
+                if domain.isglobal and abs(domain.mm * grid.dlon - 360) > 0.01 * grid.dlon:
+                    errors.append("a global lon-lat grid must have mm * dlon = 360")
+        if self.source_name is not None:
+            from .sources import source_problems
+
+            errors.extend(source_problems(self))
         if constant.rhoa0 <= 0 or constant.rhow0 <= 0:
             errors.append("rhoa0 and rhow0 must be > 0")
         if not all(0 <= value <= 1 for value in (constant.fice0, constant.fice_lth, constant.fice_uth)):
