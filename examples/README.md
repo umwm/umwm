@@ -10,22 +10,19 @@ its spectrum output; `cases.txt` lists the cases. The `seamount` and
 currents, in their `input/` directory, with the `make_input.py` script that
 writes them.
 
-| Case | What it shows | Grid | Run time |
-| --- | --- | --- | ---: |
-| [`fetch-limited`](fetch-limited/main.nml) | Growth with fetch to full development, 20 m/s wind | 1000 km at 10 km, 48 h | 25 s |
-| [`duration-limited`](duration-limited/main.nml) | Growth with time of a uniform sea, 20 m/s wind | one sea cell, 48 h | 1 s |
-| [`jonswap`](jonswap/main.nml) | Fetch-limited growth over the fetches of JONSWAP, 10 m/s wind | 100 km at 1 km, 12 h | 15 s |
-| [`wave-tank`](wave-tank/main.nml) | Waves in a laboratory wind-wave tank, 10 m/s wind | 10 m at 20 cm, 2 min | 15 s |
-| [`titan-ontario-lacus`](titan-ontario-lacus/main.nml) | Methane-ethane waves on a lake of Titan, 1.5 m/s wind | 230 x 75 km at 5 km, 24 h | 60 s |
-| [`mars-jezero-lake`](mars-jezero-lake/main.nml) | Waves on the ancient lake of Jezero crater, Mars, 5 m/s wind | 40 x 40 km at 1 km, 12 h | 20 s |
-| [`seamount`](seamount/main.nml) | Waves over a Gaussian seamount, 20 m/s wind | 100 x 160 km at 2.5 km, 12 h | 45 s |
-| [`eddy-field`](eddy-field/main.nml) | Waves through steady mesoscale eddies, 20 m/s wind | 200 x 300 km at 4 km, 15 h | 70 s |
-| [`era5-helene`](era5-helene/main.nml) | Hurricane Helene in the Gulf of Mexico, from ERA5, with open boundaries | 79 x 57 at 0.25 degrees, 24 h | 75 s |
-| [`era5-global-1deg`](era5-global-1deg/main.nml) | The global ocean, from ERA5 | 360 x 157 at 1 degree, 24 h | 15 min |
-| [`era5-global-0.25deg`](era5-global-0.25deg/main.nml) | The global ocean at the resolution of ERA5, about 22 GB of memory | 1440 x 625 at 0.25 degrees, 24 h | 4.5 h |
-
-The run times are approximate, for a serial run on one core; those of the
-ERA5 cases include the preparation of their input files, about 15 s.
+| Case | What it shows | Grid |
+| --- | --- | --- |
+| [`fetch-limited`](fetch-limited/main.nml) | Growth with fetch to full development, 20 m/s wind | 1000 km at 10 km, 48 h |
+| [`duration-limited`](duration-limited/main.nml) | Growth with time of a uniform sea, 20 m/s wind | one sea cell, 48 h |
+| [`jonswap`](jonswap/main.nml) | Fetch-limited growth over the fetches of JONSWAP, 10 m/s wind | 100 km at 1 km, 12 h |
+| [`wave-tank`](wave-tank/main.nml) | Waves in a laboratory wind-wave tank, 10 m/s wind | 10 m at 20 cm, 2 min |
+| [`titan-ontario-lacus`](titan-ontario-lacus/main.nml) | Methane-ethane waves on a lake of Titan, 1.5 m/s wind | 230 x 75 km at 5 km, 24 h |
+| [`mars-jezero-lake`](mars-jezero-lake/main.nml) | Waves on the ancient lake of Jezero crater, Mars, 5 m/s wind | 40 x 40 km at 1 km, 12 h |
+| [`seamount`](seamount/main.nml) | Waves over a Gaussian seamount, 20 m/s wind | 100 x 160 km at 2.5 km, 12 h |
+| [`eddy-field`](eddy-field/main.nml) | Waves through steady mesoscale eddies, 20 m/s wind | 200 x 300 km at 4 km, 15 h |
+| [`era5-helene`](era5-helene/main.nml) | Hurricane Helene in the Gulf of Mexico, from ERA5, with open boundaries | 79 x 57 at 0.25 degrees, 24 h |
+| [`era5-global-1deg`](era5-global-1deg/main.nml) | The global ocean, from ERA5 | 360 x 157 at 1 degree, 24 h |
+| [`era5-global-0.25deg`](era5-global-0.25deg/main.nml) | The global ocean at the resolution of ERA5, about 22 GB of memory | 1440 x 625 at 0.25 degrees, 24 h |
 
 ## Running a case
 
@@ -315,13 +312,13 @@ its own physics; within three cells of the open boundaries, it differs by
 hours from the same time, with 38500 sea cells. The domain is periodic in
 longitude and has no open boundaries: its edges, the rows at 78S and 78N,
 are land. The preparation reads 0.24 GB of ERA5 fields, the wave partitions
-at the start time only. It runs in about 15 minutes in serial, and in 5
-minutes on 4 processes (`mpiexec -n 4 ./umwm --case era5-global-1deg`),
-with the same results. Against ERA5, the significant wave height of the
-model differs by 0.009 m (0.4%) at the start, 0.37 m (17%) after 6 hours and
-0.51 m (23%) after 24 hours, and is lower by 0.2 m on average from 6 hours
-on: the total wave energy decreases by 7% in the first hour and 12% in six
-hours, and then holds, as the model damps the swell that travels across or
+at the start time only. A parallel run, such as
+`mpiexec -n 4 ./umwm --case era5-global-1deg`, gives the same results as a
+serial one. Against ERA5, the significant wave height of the model differs
+by 0.009 m (0.4%) at the start, 0.37 m (17%) after 6 hours and 0.51 m (23%)
+after 24 hours, and is lower by 0.2 m on average from 6 hours on: the total
+wave energy decreases by 7% in the first hour and 12% in six hours, and
+then holds, as the model damps the swell that travels across or
 against the local wind (the damping of `sin_diss1`; Donelan et al., 2012)
 much faster than the ERA5 wave model, most in the trade winds of the
 southern hemisphere, which the long swell of the Southern Ocean crosses.
