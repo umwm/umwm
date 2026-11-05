@@ -1655,6 +1655,10 @@ boundary cells are not integrated, since their spectrum is prescribed, and
 they do not limit the source time step: the spectrum of a dataset is out of
 equilibrium with the source functions of the model, and its fast relaxation
 would otherwise hold the time step of the whole domain to a few seconds.
+In the output, the wind input and nonlinear transfer of the boundary cells
+are therefore zero, and their spectrum keeps the parametric shape of the
+partitions up to the highest frequency, rather than the equilibrium range
+that the source functions set in the other cells.
 A global domain has no open boundaries. In ESMF coupled mode, the input
 files are not read after the start time, and the boundaries keep the
 spectrum of the start time.
@@ -1679,7 +1683,16 @@ The namelist says which files the model reads, as without a source: the
 grid of `lon0`, `lat0`, `dlon` and `dlat` in `GRID` (or a grid file with
 `gridFromFile`), the bathymetry with `topoFromFile`, and the forcing
 fields with `winds`, `air_density`, `seaice` and `waves` in `FORCING`. The
-files that exist are kept, such as a bathymetry from a finer dataset.
+files that exist are kept, such as a bathymetry from a finer dataset, unless
+they are for another grid, such as those of another case prepared in the
+same input directory: fields of another size than `mm` by `nm`, or, with
+`lon` and `lat`, first and last cells at other coordinates than those of the
+grid (within 0.001 degrees). The files for another grid that the preparation
+wrote (their `history` attribute starts with `prepared by umwm`) are
+prepared again; the others stop the preparation with an error, rather than
+being replaced. The model also stops with an error at an input file whose
+fields are not of `mm` by `nm` cells, whatever its source, rather than read
+part of it.
 
 ### ERA5
 

@@ -1,9 +1,11 @@
 module umwm_forcing
 
+  use iso_fortran_env, only: output_unit
   use netcdf
   use umwm_config, only: config_type
   use umwm_grid, only: grid_type
   use umwm_partitions, only: partitions_type
+  use umwm_util, only: input_size_problem
 
   implicit none
 
@@ -204,12 +206,8 @@ contains
     if (self % readfile) call forcing_nc_check(nf90_open(nc_infile, nf90_nowrite, ncid), nc_infile)
 
     if (config % winds) then
-      call forcing_nc_check(nf90_inq_varid(ncid, 'uw', varid))
-      call forcing_nc_check(nf90_get_var(ncid, varid, self % uwf, &
-        start=[1, 1, 1], count=[config % mm, config % nm, 1]))
-      call forcing_nc_check(nf90_inq_varid(ncid, 'vw', varid))
-      call forcing_nc_check(nf90_get_var(ncid, varid, self % vwf, &
-        start=[1, 1, 1], count=[config % mm, config % nm, 1]))
+      call read_field('uw', self % uwf)
+      call read_field('vw', self % vwf)
     else
       self % wspd_2d = config % wspd0
       self % wdir_2d = config % wdir0
@@ -218,12 +216,8 @@ contains
     end if
 
     if (config % currents) then
-      call forcing_nc_check(nf90_inq_varid(ncid, 'uc', varid))
-      call forcing_nc_check(nf90_get_var(ncid, varid, self % ucf, &
-        start=[1, 1, 1], count=[config % mm, config % nm, 1]))
-      call forcing_nc_check(nf90_inq_varid(ncid, 'vc', varid))
-      call forcing_nc_check(nf90_get_var(ncid, varid, self % vcf, &
-        start=[1, 1, 1], count=[config % mm, config % nm, 1]))
+      call read_field('uc', self % ucf)
+      call read_field('vc', self % vcf)
     else
       self % ucf = config % uc0
       self % vcf = config % vc0
@@ -232,9 +226,7 @@ contains
     end if
 
     if (config % seaice) then
-      call forcing_nc_check(nf90_inq_varid(ncid, 'fice', varid))
-      call forcing_nc_check(nf90_get_var(ncid, varid, self % ficef, &
-        start=[1, 1, 1], count=[config % mm, config % nm, 1]))
+      call read_field('fice', self % ficef)
     else
       self % fice_2d = config % fice0
       self % fice = config % fice0
@@ -246,18 +238,14 @@ contains
     end where
 
     if (config % air_density) then
-      call forcing_nc_check(nf90_inq_varid(ncid, 'rhoa', varid))
-      call forcing_nc_check(nf90_get_var(ncid, varid, self % rhoa_2d, &
-        start=[1, 1, 1], count=[config % mm, config % nm, 1]))
+      call read_field('rhoa', self % rhoa_2d)
     else
       self % rhoa_2d = config % rhoa0
       self % rhoa = config % rhoa0
     end if
 
     if (config % water_density) then
-      call forcing_nc_check(nf90_inq_varid(ncid, 'rhow', varid))
-      call forcing_nc_check(nf90_get_var(ncid, varid, self % rhow_2d, &
-        start=[1, 1, 1], count=[config % mm, config % nm, 1]))
+      call read_field('rhow', self % rhow_2d)
     else
       self % rhow_2d = config % rhow0
       self % rhow = config % rhow0
@@ -277,6 +265,25 @@ contains
     self % rhowf = grid % remap_mn2i(self % rhow_2d)
     self % rhorat = self % rhoa / self % rhow
     call self % apply_wind_speed_floor()
+
+  contains
+
+    subroutine read_field(name, field)
+      ! Reads the field name of the input file, of the grid's mm x nm cells.
+      character(*), intent(in) :: name
+      real, intent(out) :: field(:,:)
+      character(:), allocatable :: problem
+      call forcing_nc_check(nf90_inq_varid(ncid, name, varid), nc_infile)
+      problem = input_size_problem(ncid, name, config % mm, config % nm)
+      if (len(problem) > 0) then
+        write(*, '(a)') 'umwm: forcing: error: ' // nc_infile // ': ' // problem &
+          // '; the file is for another grid'
+        flush(output_unit)
+        error stop 1
+      end if
+      call forcing_nc_check(nf90_get_var(ncid, varid, field, start=[1, 1, 1], &
+                                         count=[config % mm, config % nm, 1]), nc_infile)
+    end subroutine read_field
 
   end subroutine forcing_load
 

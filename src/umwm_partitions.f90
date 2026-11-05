@@ -27,6 +27,7 @@ module umwm_partitions
   ! the given one exactly, whatever the depth and the spectral resolution.
 
   use netcdf
+  use umwm_util, only: input_size_problem
 
   implicit none
 
@@ -119,6 +120,9 @@ contains
       character(*), intent(in) :: name
       real, intent(out) :: field(mm,nm)
       integer :: id, stat
+      character(:), allocatable :: problem
+      problem = input_size_problem(ncid, name, mm, nm)
+      if (len(problem) > 0) call fail(problem // '; the file is for another grid')
       stat = nf90_inq_varid(ncid, name, id)
       if (stat == nf90_noerr) stat = nf90_get_var(ncid, id, field, start=[1, 1, 1], &
                                                   count=[mm, nm, 1])

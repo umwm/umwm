@@ -12,7 +12,9 @@ use umwm_spectrum, only: spectrum_type
 implicit none
 
 private
-public :: grid_type
+public :: grid_type, input_grid_problem
+
+real, parameter :: corner_tolerance = 1e-3 ! [deg] of the corners of an input file
 
 type :: grid_type
   integer :: mm = 0
@@ -231,6 +233,7 @@ subroutine define_grid(self, config)
 
   integer :: m, n
   integer :: ncid, varid, stat
+  character(:), allocatable :: grid_path
 
   real, allocatable :: abscoslat(:,:), lon_tmp(:,:), rotx(:,:), roty(:,:)
   real, allocatable :: rlon(:,:), rlat(:,:)
@@ -239,7 +242,8 @@ subroutine define_grid(self, config)
 
   if (config % gridfromfile) then
 
-    stat = nf90_open(config % input_path('umwm.gridtopo'), nf90_nowrite, ncid)
+    grid_path = config % input_path('umwm.gridtopo')
+    stat = nf90_open(grid_path, nf90_nowrite, ncid)
 
     if (stat /= 0) then
 
@@ -248,7 +252,8 @@ subroutine define_grid(self, config)
                             // ' not found; trying ' // config % input_path('umwm.grid'))
       end if
 
-      stat = nf90_open(config % input_path('umwm.grid'), nf90_nowrite, ncid)
+      grid_path = config % input_path('umwm.grid')
+      stat = nf90_open(grid_path, nf90_nowrite, ncid)
 
       if (stat /= 0) then
 
@@ -263,6 +268,7 @@ subroutine define_grid(self, config)
 
     end if
 
+    call check_input_size(ncid, grid_path, 'lon', self % mm, self % nm)
     call grid_nc_check(nf90_inq_varid(ncid, 'lon', varid))
     call grid_nc_check(nf90_get_var(ncid, varid, self % lon))
     call grid_nc_check(nf90_inq_varid(ncid, 'lat', varid))
@@ -403,6 +409,7 @@ subroutine define_grid(self, config)
   if (config % topofromfile) then ! read depth field from file
 
     call grid_nc_check(nf90_open(config % input_path('umwm.gridtopo'), nf90_nowrite, ncid))
+    call check_input_size(ncid, config % input_path('umwm.gridtopo'), 'z', self % mm, self % nm)
     call grid_nc_check(nf90_inq_varid(ncid, 'z', varid))
     call grid_nc_check(nf90_get_var(ncid, varid, self % d_2d))
     call grid_nc_check(nf90_close(ncid))
@@ -1155,6 +1162,153 @@ pure elemental real function lon_midpoint(a, b) result(res)
   res = 0.5 * (a + b)
   if (abs(b - a) > pi) res = res + pi
 end function lon_midpoint
+
+
+function input_grid_problem(config, path) result(problem)
+  ! Why the input file path is not for the grid of the configuration: its
+  ! fields are not of mm x nm cells, or, if it has lon and lat, those of its
+  ! first and last cells are not those of the grid, when the grid is a
+  ! longitude-latitude grid, made from the namelist or read from its grid
+  ! file. Empty if it is for the grid as far as these tell, and if it
+  ! cannot be opened, which its reader reports.
+  use netcdf, only: nf90_close, nf90_noerr, nf90_nowrite, nf90_open
+  use umwm_util, only: input_size_problem
+
+  type(config_type), intent(in) :: config
+  character(*), intent(in) :: path
+  character(:), allocatable :: problem
+  character(4), parameter :: fields(10) = [character(4) :: 'lon', 'lat', 'z', 'uw', 'vw', &
+                                           'uc', 'vc', 'fice', 'rhoa', 'rhow']
+  real :: expected(2,2), found(2,2) ! (lon and lat, first and last cell)
+  integer :: ncid, n, stat
+
+  problem = ''
+  if (nf90_open(path, nf90_nowrite, ncid) /= nf90_noerr) return
+
+  do n = 1, size(fields) + 10
+    if (n <= size(fields)) then
+      problem = input_size_problem(ncid, trim(fields(n)), config % mm, config % nm)
+    else
+      problem = input_size_problem(ncid, 'phs' // achar(iachar('0') + n - size(fields) - 1), &
+                                   config % mm, config % nm)
+    end if
+    if (len(problem) > 0) exit
+  end do
+
+  if (len(problem) == 0) then
+    if (grid_corners(config, path, expected)) then
+      if (file_corners(ncid, config % mm, config % nm, found)) then
+        if (any(abs(modulo(found(1,:) - expected(1,:) + 180., 360.) - 180.) > corner_tolerance) &
+            .or. any(abs(found(2,:) - expected(2,:)) > corner_tolerance)) then
+          problem = 'its first and last cells are at ' // coordinates(found(:,1)) // ' and ' &
+                    // coordinates(found(:,2)) // ', but those of the grid are at ' &
+                    // coordinates(expected(:,1)) // ' and ' // coordinates(expected(:,2))
+        end if
+      end if
+    end if
+  end if
+
+  stat = nf90_close(ncid)
+
+contains
+
+  function coordinates(point) result(text)
+    real, intent(in) :: point(2)
+    character(:), allocatable :: text
+    character(16) :: lon, lat
+    write(lon, '(f12.3)') point(1)
+    write(lat, '(f12.3)') point(2)
+    text = '(' // trim(adjustl(lon)) // ', ' // trim(adjustl(lat)) // ')'
+  end function coordinates
+
+end function input_grid_problem
+
+
+logical function grid_corners(config, path, corners) result(known)
+  ! The longitude and latitude of the first and last cells, corners(:,1)
+  ! and corners(:,2), of the grid of the configuration: made from lon0,
+  ! lat0, dlon and dlat, or read from its grid file, umwm.gridtopo or else
+  ! umwm.grid, unless path is that file. .false. for a Cartesian grid, or a
+  ! grid file that cannot be read.
+  use netcdf, only: nf90_close, nf90_noerr, nf90_nowrite, nf90_open
+
+  type(config_type), intent(in) :: config
+  character(*), intent(in) :: path
+  real, intent(out) :: corners(2,2)
+  character(:), allocatable :: grid_file
+  logical :: exists
+  integer :: ncid, stat
+
+  known = .false.
+  corners = 0
+  if (config % lonlat_grid()) then
+    corners(1,1) = modulo(config % lon0 + 180., 360.) - 180.
+    corners(2,1) = config % lat0
+    corners(1,2) = modulo(config % lon0 + (config % mm - 1) * config % dlon + 180., 360.) - 180.
+    corners(2,2) = config % lat0 + (config % nm - 1) * config % dlat
+    known = .true.
+  else if (config % gridfromfile) then
+    grid_file = config % input_path('umwm.gridtopo')
+    inquire(file=grid_file, exist=exists)
+    if (.not. exists) grid_file = config % input_path('umwm.grid')
+    if (grid_file == path) return
+    if (nf90_open(grid_file, nf90_nowrite, ncid) /= nf90_noerr) return
+    known = file_corners(ncid, config % mm, config % nm, corners)
+    stat = nf90_close(ncid)
+  end if
+
+end function grid_corners
+
+
+logical function file_corners(ncid, mm, nm, corners) result(found)
+  ! The longitude and latitude of the first and last cells of the open
+  ! input file ncid, of mm x nm cells, corners(:,1) and corners(:,2); .false.
+  ! if it has no lon and lat of at least two dimensions.
+  use netcdf, only: nf90_get_var, nf90_inq_varid, nf90_inquire_variable, nf90_noerr
+
+  integer, intent(in) :: ncid, mm, nm
+  real, intent(out) :: corners(2,2)
+  character(3), parameter :: names(2) = ['lon', 'lat']
+  integer :: varid, ndims, k
+  integer, allocatable :: start(:)
+
+  found = .false.
+  corners = 0
+  do k = 1, 2
+    if (nf90_inq_varid(ncid, names(k), varid) /= nf90_noerr) return
+    if (nf90_inquire_variable(ncid, varid, ndims=ndims) /= nf90_noerr) return
+    if (ndims < 2) return
+    allocate(start(ndims))
+    start = 1
+    if (nf90_get_var(ncid, varid, corners(k,1), start=start) /= nf90_noerr) return
+    start(1:2) = [mm, nm]
+    if (nf90_get_var(ncid, varid, corners(k,2), start=start) /= nf90_noerr) return
+    deallocate(start)
+  end do
+  found = .true.
+
+end function file_corners
+
+
+subroutine check_input_size(ncid, path, name, mm, nm)
+  ! Stops with an error if the field name of the input file path, open as
+  ! ncid, is not on a grid of mm x nm cells: the file is for another grid.
+  use iso_fortran_env, only: output_unit
+  use umwm_env, only: nproc
+  use umwm_util, only: input_size_problem, raiseexception
+
+  integer, intent(in) :: ncid, mm, nm
+  character(*), intent(in) :: path, name
+  character(:), allocatable :: problem
+
+  problem = input_size_problem(ncid, name, mm, nm)
+  if (len(problem) == 0) return
+  if (nproc == 0) call raiseexception('abort', 'grid', path // ': ' // problem &
+                                      // '; the file is for another grid')
+  flush(output_unit)
+  error stop 1
+
+end subroutine check_input_size
 
 
 subroutine grid_nc_check(stat)

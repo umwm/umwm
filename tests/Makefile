@@ -49,12 +49,12 @@ test_config: test_config.f90 tuff.o umwm_constants.o umwm_source_functions.o umw
 	$(FC) $(CPPFLAGS) $(FCFLAGS) -I. -I$(SRC_DIR) -o $@ $^ $(LDLIBS)
 
 test_grid: test_grid.f90 tuff.o umwm_constants.o umwm_source_functions.o umwm_config.o umwm_spectrum.o umwm_env.o umwm_util.o umwm_grid.o
-	$(FC) $(CPPFLAGS) $(FCFLAGS) -I. -I$(SRC_DIR) -o $@ $^ $(NETCDF_FLIBS) $(LDLIBS)
+	$(FC) $(CPPFLAGS) $(FCFLAGS) $(NETCDF_FFLAGS) -I. -I$(SRC_DIR) -o $@ $^ $(NETCDF_FLIBS) $(LDLIBS)
 
 test_forcing: test_forcing.f90 tuff.o umwm_constants.o umwm_source_functions.o umwm_config.o umwm_spectrum.o umwm_env.o umwm_util.o umwm_grid.o umwm_partitions.o umwm_forcing.o
 	$(FC) $(CPPFLAGS) $(FCFLAGS) -I. -I$(SRC_DIR) -o $@ $^ $(NETCDF_FLIBS) $(LDLIBS)
 
-test_partitions: test_partitions.f90 tuff.o umwm_constants.o umwm_dispersion.o umwm_env.o umwm_partitions.o
+test_partitions: test_partitions.f90 tuff.o umwm_constants.o umwm_dispersion.o umwm_env.o umwm_util.o umwm_partitions.o
 	$(FC) $(CPPFLAGS) $(FCFLAGS) $(NETCDF_FFLAGS) -I. -I$(SRC_DIR) -o $@ $^ $(NETCDF_FLIBS) $(LDLIBS)
 
 test_source_functions: test_source_functions.f90 tuff.o umwm_constants.o umwm_source_functions.o umwm_env.o
@@ -94,7 +94,8 @@ umwm_config.o: umwm_constants.o umwm_source_functions.o
 umwm_dispersion.o: umwm_constants.o
 umwm_spectrum.o: umwm_constants.o
 umwm_grid.o: umwm_config.o umwm_constants.o umwm_env.o umwm_spectrum.o umwm_util.o
-umwm_forcing.o: umwm_config.o umwm_grid.o umwm_partitions.o
+umwm_forcing.o: umwm_config.o umwm_grid.o umwm_partitions.o umwm_util.o
+umwm_partitions.o: umwm_util.o
 umwm_mpi.o: umwm_env.o umwm_grid.o
 umwm_io.o: datetime_module.o umwm_env.o umwm_grid.o umwm_mpi.o
 umwm_restart.o: umwm_env.o umwm_grid.o umwm_io.o umwm_spectrum.o umwm_util.o

@@ -190,15 +190,16 @@ domain.write_forcing(time, uw=uw, vw=vw, phs0=1.0, ptm0=5.0, pdir0=0.0,
 ### Data sources
 
 With `config.forcing.source = "era5"`, the input files of the configuration
-that are missing are prepared from the ERA5 reanalysis when the domain is
-initialized, by `Domain.initialize` (and so `umwm run`), as the `umwm`
-executable does: the bathymetry with `config.grid.topofromfile`, and the
-forcing files with the fields of `winds`, `air_density`, `seaice` and
-`waves`, on the longitude-latitude grid of `config.grid.lon0`, `lat0`,
-`dlon` and `dlat` (or of the grid file of `gridfromfile`). They are read
-from the analysis-ready, cloud-optimized Zarr store of Google, or the store
-that `UMWM_ERA5_URL` points to, and need the optional dependencies of the
-`era5` extra (`pip install '.[era5]'`: zarr, fsspec, aiohttp).
+that are missing, or that it prepared for another grid, are prepared from
+the ERA5 reanalysis when the domain is initialized, by `Domain.initialize`
+(and so `umwm run`), as the `umwm` executable does: the bathymetry with
+`config.grid.topofromfile`, and the forcing files with the fields of
+`winds`, `air_density`, `seaice` and `waves`, on the longitude-latitude grid
+of `config.grid.lon0`, `lat0`, `dlon` and `dlat` (or of the grid file of
+`gridfromfile`). They are read from the analysis-ready, cloud-optimized Zarr
+store of Google, or the store that `UMWM_ERA5_URL` points to, and need the
+optional dependencies of the `era5` extra (`pip install '.[era5]'`: zarr,
+fsspec, aiohttp).
 
 ```python
 config = umwm.Config.from_case("era5-helene")       # hurricane Helene, Gulf of Mexico

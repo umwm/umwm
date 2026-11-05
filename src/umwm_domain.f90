@@ -637,7 +637,9 @@ contains
     if (.not. self % forcing % partitions_read) then
       write(*,'(a)') 'umwm: waves: error: the input file of ' // timestr // ' has no wave ' &
         // 'partitions (phs0, ptm0, pdir0, ...), which the open boundaries need'
-      stop 1
+      ! only the processes with boundary cells get here: error stop ends the
+      ! others too, rather than leaving them in the next collective
+      error stop 1
     end if
 
     associate(om => self % spectrum % num_frequencies, pm => self % spectrum % num_directions)

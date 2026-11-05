@@ -277,6 +277,63 @@ def test_prepare_errors(era5_store, tmp_path):
         prepare_inputs(umwm.Config(), tmp_path)
 
 
+def test_prepare_for_another_grid(era5_store, tmp_path):
+    """The input files that umwm prepared for another grid, such as those of
+    another case in the same directory, are prepared again; one that it did
+    not prepare stops the preparation, rather than being replaced."""
+    from umwm.forcing import write_forcing
+    from umwm.sources import prepare_inputs
+    from umwm.sources.prepare import input_grid_problem, pending_inputs
+
+    def quiet(message):
+        pass
+
+    prepare_inputs(era5_config(isglobal=True), tmp_path, url=str(era5_store), log=quiet)
+    regional = era5_config()
+    messages = []
+    bathymetry, files = pending_inputs(regional, tmp_path, log=messages.append)
+    assert bathymetry and [path.name for _, path in files] == ["umwmin_2024-01-01_00:00:00.nc",
+                                                                "umwmin_2024-01-01_01:00:00.nc"]
+    assert len(messages) == 1 and "3 input file(s)" in messages[0]
+    assert "umwm.gridtopo: lon is 36 x 13, but the grid is 21 x 11 (mm x nm)" in messages[0]
+    assert len(prepare_inputs(regional, tmp_path, url=str(era5_store), log=quiet)) == 3
+    with xr.open_dataset(tmp_path / "umwm.gridtopo") as grid:
+        assert grid.z.shape == (11, 21) and grid.lon.values[0, 0] == 70.0
+    assert pending_inputs(regional, tmp_path) == (False, [])
+
+    # another region of the same size, which only the coordinates tell
+    assert input_grid_problem(tmp_path / "umwm.gridtopo", (11, 21), ((70.0, -30.0), (90.0, -20.0))) is None
+    assert input_grid_problem(tmp_path / "umwm.gridtopo", (11, 21), ((-290.0, -30.0), (-270.0, -20.0))) is None
+    assert input_grid_problem(tmp_path / "umwm.gridtopo", (11, 21), ((80.0, -30.0), (100.0, -20.0))) == (
+        "its first and last cells are at (70.000, -30.000) and (90.000, -20.000), but those of the grid are at "
+        "(80.000, -30.000) and (100.000, -20.000)")
+    shifted = era5_config()
+    shifted.grid.lon0 = 80.0
+    bathymetry, files = pending_inputs(shifted, tmp_path)
+    assert bathymetry and len(files) == 2
+
+    # a file for another grid that umwm did not prepare is not replaced
+    handmade = tmp_path / "handmade"
+    write_forcing(handmade, START, uw=np.zeros((5, 5)), vw=np.zeros((5, 5)))
+    with pytest.raises(SourceError, match="for another grid: uw is 5 x 5, but the grid is 21 x 11.*not replaced"):
+        pending_inputs(regional, handmade)
+
+
+def test_domain_from_another_grid(library, era5_store, tmp_path, monkeypatch):
+    """A domain whose input directory has the input files of another grid,
+    prepared by umwm, prepares them again; run --check tells so."""
+    monkeypatch.setenv("UMWM_ERA5_URL", str(era5_store))
+    from umwm.sources import prepare_inputs
+
+    prepare_inputs(era5_config(isglobal=True), tmp_path / "run" / "input", log=lambda message: None)
+    with umwm.Domain(era5_config(), tmp_path / "run", quiet=True) as domain:
+        assert domain._inputs_to_prepare()
+        domain.initialize()
+        assert not domain._inputs_to_prepare()
+        domain.diagnostics()
+        assert np.allclose(domain.grid_field("swh")[1:-1, 1:-1], math.sqrt(5.25), rtol=1e-4)
+
+
 def test_domain_from_era5(library, era5_store, tmp_path, monkeypatch):
     """A domain with ERA5 as its source prepares its input files and starts
     from the significant wave height of ERA5, with open boundaries."""
@@ -304,6 +361,12 @@ def test_cli_forcing_era5(era5_store, tmp_path, capsys):
     assert sorted(path.name for path in (workdir / "input").iterdir())[0] == "umwm.gridtopo"
     assert main(["forcing", "era5", str(workdir), "--url", str(era5_store)]) == 0
     assert "in place" in capsys.readouterr().out
+    # the files of another grid, prepared by umwm, are prepared again
+    other = era5_config()
+    other.grid.lon0 = 80.0
+    other.write(workdir / "namelists" / "main.nml")
+    assert main(["run", str(workdir), "--check"]) == 0
+    assert "3 input file(s) prepared for another grid will be prepared from era5" in capsys.readouterr().out
     assert main(["forcing", "era5", str(workdir), "-s", "forcing.currents=.true.", "--url", str(era5_store)]) == 1
     assert "does not provide currents" in capsys.readouterr().err
 

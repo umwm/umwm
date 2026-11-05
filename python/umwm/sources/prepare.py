@@ -15,32 +15,120 @@ from .base import FORCING_FIELDS, wave_fields
 from .regrid import Regridder, fill_missing, model_grid, open_boundary_cells
 from .waves import regrid_partitions, standard_partitions
 
-__all__ = ["prepare_inputs", "pending_inputs", "MEMORY_LIMIT"]
+__all__ = ["prepare_inputs", "pending_inputs", "input_grid_problem", "MEMORY_LIMIT", "CORNER_TOLERANCE"]
 
 MEMORY_LIMIT = 512 * 2**20
 """The bytes of source fields read at a time."""
 
+CORNER_TOLERANCE = 1e-3
+"""The largest difference [degrees] of the longitude or latitude of the first
+or last cell of an input file from that of the grid of the model, for the file
+to be for the grid, as in the model."""
 
-def pending_inputs(config, input_dir, force: bool = False) -> tuple[bool, list[tuple[datetime, Path]]]:
+PREPARED = "prepared by umwm"
+"""The start of the history attribute of the input files that umwm prepared."""
+
+_GRID_FIELDS = ("lon", "lat", "z", "uw", "vw", "uc", "vc", "fice", "rhoa", "rhow") + tuple(f"phs{p}" for p in range(10))
+
+
+def input_grid_problem(path, shape, corners=None) -> str | None:
+    """Why the input file at ``path`` is not for a grid of ``shape`` ``(nm,
+    mm)``, or None if it is, as far as these tell: its fields are of another
+    shape, or, if it has ``lon`` and ``lat`` and ``corners`` are given, those
+    of its first and last cells are not ``corners``, the ``(lon, lat)`` of the
+    first and last cells of the grid. The model checks its input files in the
+    same way."""
+    from netCDF4 import Dataset
+
+    with Dataset(path) as dataset:
+        variables = dataset.variables
+        for name in _GRID_FIELDS:
+            if name in variables and variables[name].ndim >= 2:
+                found = tuple(variables[name].shape[-2:])
+                if found != tuple(shape):
+                    return (f"{name} is {found[1]} x {found[0]}, but the grid is {shape[1]} x {shape[0]} "
+                            "(mm x nm)")
+        if corners is None or not all(name in variables and variables[name].ndim >= 2 for name in ("lon", "lat")):
+            return None
+        lon, lat = variables["lon"], variables["lat"]
+        index = (0,) * (lon.ndim - 2)
+        found = [(float(lon[index + (0, 0)]), float(lat[index + (0, 0)])),
+                 (float(lon[index + (-1, -1)]), float(lat[index + (-1, -1)]))]
+    if all(abs((flon - glon + 180.0) % 360.0 - 180.0) <= CORNER_TOLERANCE and abs(flat - glat) <= CORNER_TOLERANCE
+           for (flon, flat), (glon, glat) in zip(found, corners)):
+        return None
+
+    def text(point):
+        return f"({point[0]:.3f}, {point[1]:.3f})"
+
+    return (f"its first and last cells are at {text(found[0])} and {text(found[1])}, but those of the grid "
+            f"are at {text(corners[0])} and {text(corners[1])}")
+
+
+def _prepared_by_umwm(path) -> bool:
+    """Whether umwm prepared the input file at ``path``, as its history tells."""
+    from netCDF4 import Dataset
+
+    with Dataset(path) as dataset:
+        return str(getattr(dataset, "history", "")).startswith(PREPARED)
+
+
+def pending_inputs(config, input_dir, force: bool = False, log=None) -> tuple[bool, list[tuple[datetime, Path]]]:
     """The input files of a configuration to prepare in ``input_dir``: whether
-    the bathymetry ``umwm.gridtopo`` (with ``grid.topofromfile``), and the
-    forcing files with their times, that do not exist, or all with ``force``."""
+    the bathymetry ``umwm.gridtopo`` (with ``grid.topofromfile``) is to be
+    prepared, and the forcing files with their times. They are those that do
+    not exist, and those for another grid (see :func:`input_grid_problem`)
+    that umwm prepared, which are prepared again, as ``log`` tells; or all
+    of them with ``force``. A file for another grid that umwm did not
+    prepare raises :class:`SourceError`, rather than being replaced."""
     input_dir = Path(input_dir)
-    bathymetry = config.grid.topofromfile and (force or not (input_dir / "umwm.gridtopo").is_file())
-    if not config.forcing_from_file:
-        return bathymetry, []
-    if config.forcing.steady:
-        times = [config.start_time]
-    else:
-        times = config.step_times(include_start=True)
-    files = [(time, input_dir / forcing_filename(time, config.forcing.steady)) for time in times]
-    return bathymetry, [(time, path) for time, path in files if force or not path.is_file()]
+    grid = {}
+    stale = []
+
+    def expected():
+        # the shape of the grid, and its first and last cells if it is a lon-lat grid
+        if not grid:
+            try:
+                lon, lat = model_grid(config, input_dir)
+            except (ValueError, OSError):
+                grid.update(shape=(config.domain.nm, config.domain.mm), corners=None)
+            else:
+                grid.update(shape=lon.shape, corners=((float(lon[0, 0]), float(lat[0, 0])),
+                                                      (float(lon[-1, -1]), float(lat[-1, -1]))))
+        return grid["shape"], grid["corners"]
+
+    def pending(path):
+        if force or not path.is_file():
+            return True
+        problem = input_grid_problem(path, *expected())
+        if problem is None:
+            return False
+        if not _prepared_by_umwm(path):
+            raise SourceError(f"the input file {path} is for another grid: {problem}. As umwm did not prepare it, "
+                              "it is not replaced: remove it, or prepare the input files in another directory")
+        stale.append((path, problem))
+        return True
+
+    bathymetry = config.grid.topofromfile and pending(input_dir / "umwm.gridtopo")
+    files = []
+    if config.forcing_from_file:
+        times = [config.start_time] if config.forcing.steady else config.step_times(include_start=True)
+        for time in times:
+            path = input_dir / forcing_filename(time, config.forcing.steady)
+            if pending(path):
+                files.append((time, path))
+    if stale and log is not None:
+        path, problem = stale[0]
+        log(f"umwm: {len(stale)} input file(s) in {input_dir} were prepared for another grid ({path.name}: "
+            f"{problem}); preparing them again")
+    return bathymetry, files
 
 
 def prepare_inputs(config, input_dir, source: str | None = None, *, force: bool = False, log=print,
                    **options) -> list[Path]:
     """Prepare the input files of a configuration that are missing from
-    ``input_dir``, or all of them with ``force``, from its data source
+    ``input_dir``, or that are for another grid, or all of them with
+    ``force`` (see :func:`pending_inputs`), from its data source
     (``forcing.source``), or from ``source``; ``options`` are those of the
     source, such as the ``url`` of its dataset. Returns the paths of the
     files written.
@@ -67,7 +155,7 @@ def prepare_inputs(config, input_dir, source: str | None = None, *, force: bool 
     if config.forcing.currents or config.forcing.water_density:
         raise SourceError(f"the data source {name} does not provide currents or water density")
     input_dir = Path(input_dir)
-    bathymetry, pending = pending_inputs(config, input_dir, force)
+    bathymetry, pending = pending_inputs(config, input_dir, force, log=log)
     if not bathymetry and not pending:
         log(f"umwm: {name}: the input files are in place in {input_dir}")
         return []

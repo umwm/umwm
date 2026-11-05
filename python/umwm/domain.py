@@ -64,8 +64,8 @@ class Domain:
     both initialize the domain if needed. :meth:`finalize` releases the
     model memory, and is also called on leaving a ``with`` block. With a
     data source of the input files (``forcing.source``, such as ``"era5"``),
-    :meth:`initialize` prepares the missing input files from it first; see
-    :meth:`prepare_inputs`.
+    :meth:`initialize` prepares the missing input files from it first, and
+    again those it prepared for another grid; see :meth:`prepare_inputs`.
 
     >>> with Domain(config, workdir="runs/case1") as domain:
     ...     domain.run()
@@ -232,11 +232,11 @@ class Domain:
 
     def prepare_inputs(self, source: str | None = None, force: bool = False, **options) -> list[Path]:
         """Prepare the input files of the configuration that are missing from the
-        input directory, or all of them with ``force``, from its data source
-        (``forcing.source``) or ``source``, and return their paths; see
-        :func:`umwm.sources.prepare.prepare_inputs` for the files and the
-        ``options``. Only the root process prepares them; all processes wait
-        for it, and get the paths."""
+        input directory, or that it prepared for another grid, or all of them
+        with ``force``, from its data source (``forcing.source``) or ``source``,
+        and return their paths; see :func:`umwm.sources.prepare.prepare_inputs`
+        for the files and the ``options``. Only the root process prepares them;
+        all processes wait for it, and get the paths."""
         from .sources import prepare_inputs
 
         paths = []
@@ -245,6 +245,18 @@ class Domain:
                 paths = prepare_inputs(self.config, self.input_dir, source=source, force=force, **options)
         self.barrier()
         return paths
+
+    def _inputs_to_prepare(self) -> bool:
+        """Whether input files of the configuration are missing, or are for
+        another grid and were prepared by umwm, which raises ``SourceError``
+        for one it did not prepare; see
+        :func:`umwm.sources.prepare.pending_inputs`."""
+        from .sources.prepare import pending_inputs
+
+        if self.missing_inputs():
+            return True
+        bathymetry, files = pending_inputs(self.config, self.input_dir)
+        return bathymetry or bool(files)
 
     def missing_inputs(self) -> list[Path]:
         """The input files the configuration requires that do not exist."""
@@ -339,13 +351,14 @@ class Domain:
 
     def initialize(self) -> "Domain":
         """Validate the configuration, prepare the missing input files from
-        its data source if it has one, check the inputs, write the namelists,
-        and initialize the model: construct the grids, load the forcing at
-        the start time, and compute the initial wave state."""
+        its data source if it has one, and again those it prepared for
+        another grid, check the inputs, write the namelists, and initialize
+        the model: construct the grids, load the forcing at the start time,
+        and compute the initial wave state."""
         if self._handle is not None:
             raise RuntimeError("the domain is already initialized")
         self.config.validate()
-        if self.config.source_name is not None and self.missing_inputs():
+        if self.config.source_name is not None and self._inputs_to_prepare():
             self.prepare_inputs()
         self.check_inputs()
         self.write_namelists()
@@ -533,7 +546,7 @@ class Domain:
         lines.append("  forcing: " + ("from input files: " + ", ".join(sources) + "; " if sources else "")
                      + "constant " + ", ".join(constants))
         if config.source_name is not None:
-            lines.append(f"  input files: prepared from {config.source_name} when missing")
+            lines.append(f"  input files: prepared from {config.source_name} when missing or for another grid")
 
         def interval(value):
             return "off" if value == 0 else "every global step" if value == -1 else f"every {value} h"

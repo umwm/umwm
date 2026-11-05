@@ -242,7 +242,9 @@ umwm run --case mars-jezero-lake
 UMWM starts from, and is forced by, the [ERA5](https://doi.org/10.1002/qj.3803)
 reanalysis on a regional or global longitude-latitude grid, with no other
 program to run: the namelist names the grid and the data source, and the
-model prepares its missing input files from ERA5 before it runs.
+model prepares its missing input files from ERA5 before it runs, and again
+those it prepared for another grid, such as for another case in the same
+directory.
 
 ```
 &GRID

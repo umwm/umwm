@@ -8,7 +8,8 @@ module umwm_cli
   use iso_c_binding, only: c_associated, c_char, c_int, c_null_char, c_ptr
   use iso_fortran_env, only: output_unit
   use umwm_config, only: config_type
-  use umwm_env, only: nproc
+  use umwm_env, only: mpisize, nproc
+  use umwm_grid, only: input_grid_problem
 #ifdef MPI
   use mpi
 #endif
@@ -16,7 +17,7 @@ module umwm_cli
   implicit none
 
   private
-  public :: parse_command_line, prepare_inputs, first_missing_input
+  public :: parse_command_line, prepare_inputs, first_pending_input
 
   character(*), parameter :: default_namelist = 'namelists/main.nml'
   character(*), parameter :: cases_index = 'cases.txt'
@@ -304,8 +305,9 @@ contains
       'reads its input files, if it has any, from its own input/ directory.', &
       '', &
       'With a data source in the FORCING namelist, such as source = ''era5'', the', &
-      'missing input files are prepared before the run with the umwm Python', &
-      'package: $UMWM_PYTHON -m umwm.cli forcing SOURCE NAMELIST (python3 by default).', &
+      'missing input files, and those it prepared for another grid, are prepared', &
+      'before the run with the umwm Python package:', &
+      '$UMWM_PYTHON -m umwm.cli forcing SOURCE NAMELIST (python3 by default).', &
       '', &
       '  NAMELIST          the main namelist to run (default: ' // default_namelist // ')', &
       '  -c, --case NAME   run the example case NAME; a unique prefix of the name', &
@@ -368,16 +370,19 @@ contains
 
   subroutine prepare_inputs(namelist, input_dir)
     ! Prepares the input files that the configuration of namelist reads and
-    ! that are missing from input_dir, from the data source of its forcing
-    ! (source in the FORCING namelist, such as 'era5'), with the umwm Python
-    ! package: the root process runs
+    ! that are missing from input_dir, or that are for another grid, from the
+    ! data source of its forcing (source in the FORCING namelist, such as
+    ! 'era5'), with the umwm Python package: the root process runs
     !   $UMWM_PYTHON -m umwm.cli forcing SOURCE NAMELIST --input-dir INPUT_DIR
-    ! with python3 by default. Does nothing without a data source or missing
-    ! input files, and stops with an error if they cannot be prepared. An
-    ! invalid configuration is left to the domain to report.
+    ! with python3 by default, which prepares again the files for another
+    ! grid that it prepared, and stops at those it did not. Does nothing
+    ! without a data source or files to prepare, and stops with an error if
+    ! they cannot be prepared, or in a parallel run, which does not start
+    ! Python: its input files are prepared beforehand. An invalid
+    ! configuration is left to the domain to report.
     character(*), intent(in) :: namelist, input_dir
     type(config_type) :: config
-    character(:), allocatable :: missing, source, command
+    character(:), allocatable :: pending, reason, source, command
     character(256) :: message
     integer :: stat, exitstat, cmdstat
 #ifdef MPI
@@ -389,17 +394,22 @@ contains
     if (.not. config % has_source()) return
     if (.not. config % validate(stop_on_error=.false., rank=-1)) return
     config % input_dir = input_dir
-    missing = first_missing_input(config)
-    if (len(missing) == 0) return
+    pending = first_pending_input(config, reason)
+    if (len(pending) == 0) return
 
     source = trim(adjustl(config % source))
+    command = 'umwm forcing ' // shell_quote(source) // ' ' // shell_quote(namelist) &
+      // ' --input-dir ' // shell_quote(input_dir)
+    if (mpisize > 1) call fail('input file ' // pending // ' ' // reason // '. A parallel run ' &
+      // 'does not prepare its input files; prepare them beforehand with: ' // command)
+
     stat = 0
     if (nproc == 0) then
       command = environment('UMWM_PYTHON', 'python3') // ' -m umwm.cli forcing ' &
         // shell_quote(source) // ' ' // shell_quote(namelist) // ' --input-dir ' &
         // shell_quote(input_dir)
-      write(*, '(a)') 'umwm: input file ' // missing // ' is missing; preparing the input ' &
-        // 'files from ' // source // ' with:', '  ' // command
+      write(*, '(a)') 'umwm: input file ' // pending // ' ' // reason // '; preparing the ' &
+        // 'input files from ' // source // ' with:', '  ' // command
       flush(output_unit)
       message = ''
       call execute_command_line(command, exitstat=exitstat, cmdstat=cmdstat, cmdmsg=message)
@@ -413,55 +423,74 @@ contains
 #ifdef MPI
     call mpi_bcast(stat, 1, MPI_INTEGER, 0, MPI_COMM_WORLD, ierr)
 #endif
-    if (stat /= 0) call fail('the input files could not be prepared from ' // source &
-      // '. Their preparation needs the umwm Python package, with the dependencies of the ' &
-      // 'data source (pip install ".[' // source // ']" in the UMWM repository); set ' &
-      // 'UMWM_PYTHON to the Python interpreter that has it, or prepare the input files ' &
-      // 'beforehand with: umwm forcing ' // source // ' ' // namelist)
+    if (stat /= 0) call fail('the input files could not be prepared from ' // source // '; see ' &
+      // 'the error above. Their preparation needs the umwm Python package, with the ' &
+      // 'dependencies of the data source (pip install ".[' // source // ']" in the UMWM ' &
+      // 'repository): set UMWM_PYTHON to the Python interpreter that has it, or prepare the ' &
+      // 'input files beforehand with: umwm forcing ' // source // ' ' // namelist)
 
-    missing = first_missing_input(config)
-    if (len(missing) > 0) call fail('input file ' // missing // &
-                                    ' is missing after its preparation from ' // source)
+    pending = first_pending_input(config, reason)
+    if (len(pending) > 0) call fail('input file ' // pending // ' ' // reason // &
+                                    ', after the preparation of the input files from ' // source)
 
   end subroutine prepare_inputs
 
 
-  function first_missing_input(config) result(path)
+  function first_pending_input(config, reason) result(path)
     ! The first input file that a valid configuration reads that does not
-    ! exist: the grid and bathymetry, and the forcing files of the start
-    ! time and of the end of every global time step; empty if none is
-    ! missing. Restart files are not input files.
+    ! exist, or that is for another grid (see input_grid_problem of
+    ! umwm_grid): the grid and bathymetry, and the forcing files of the start
+    ! time and of the end of every global time step; empty if there is none.
+    ! reason tells why it is pending. Restart files are not input files.
     type(config_type), intent(in) :: config
+    character(:), allocatable, intent(out) :: reason
     character(:), allocatable :: path
     type(datetime) :: time, stop_time
 
     path = ''
+    reason = ''
     if (config % topofromfile) then
-      if (.not. file_exists(config % input_path('umwm.gridtopo'))) &
-        path = config % input_path('umwm.gridtopo')
+      if (pending(config % input_path('umwm.gridtopo'))) return
     else if (config % gridfromfile) then
-      if (.not. (file_exists(config % input_path('umwm.gridtopo')) .or. &
-                 file_exists(config % input_path('umwm.grid')))) &
-        path = config % input_path('umwm.grid')
+      if (file_exists(config % input_path('umwm.gridtopo'))) then
+        if (pending(config % input_path('umwm.gridtopo'))) return
+      else
+        if (pending(config % input_path('umwm.grid'))) return
+      end if
     end if
-    if (len(path) > 0 .or. .not. config % forcing_from_file()) return
-
-    if (config % steady) then
-      if (.not. file_exists(config % input_path('umwmin.nc'))) path = config % input_path('umwmin.nc')
-      return
+    if (config % forcing_from_file()) then
+      if (config % steady) then
+        if (pending(config % input_path('umwmin.nc'))) return
+      else
+        time = strptime(config % starttimestr, '%Y-%m-%d %H:%M:%S')
+        stop_time = strptime(config % stoptimestr, '%Y-%m-%d %H:%M:%S')
+        do
+          if (pending(config % input_path('umwmin_' // time % strftime('%Y-%m-%d_%H:%M:%S') &
+                                          // '.nc'))) return
+          if (.not. time < stop_time) exit
+          time = time + timedelta(seconds=nint(config % dtg))
+        end do
+      end if
     end if
-
-    time = strptime(config % starttimestr, '%Y-%m-%d %H:%M:%S')
-    stop_time = strptime(config % stoptimestr, '%Y-%m-%d %H:%M:%S')
-    do
-      path = config % input_path('umwmin_' // time % strftime('%Y-%m-%d_%H:%M:%S') // '.nc')
-      if (.not. file_exists(path)) return
-      if (.not. time < stop_time) exit
-      time = time + timedelta(seconds=nint(config % dtg))
-    end do
     path = ''
+    reason = ''
 
-  end function first_missing_input
+  contains
+
+    logical function pending(file)
+      ! Whether file is missing or for another grid, setting path and reason.
+      character(*), intent(in) :: file
+      path = file
+      if (.not. file_exists(file)) then
+        reason = 'is missing'
+      else
+        reason = input_grid_problem(config, file)
+        if (len(reason) > 0) reason = 'is for another grid: ' // reason
+      end if
+      pending = len(reason) > 0
+    end function pending
+
+  end function first_pending_input
 
 
   function environment(name, default) result(value)

@@ -239,13 +239,22 @@ def _run_domain(domain, args) -> int:
         domain.config.validate()
         source = domain.config.source_name
         missing = domain.missing_inputs() if source is not None else []
-        if not missing:
+        stale = []
+        if source is not None:
+            from .sources.prepare import pending_inputs
+
+            bathymetry, files = pending_inputs(domain.config, domain.input_dir)
+            pending = ([domain.input_dir / "umwm.gridtopo"] if bathymetry else []) + [path for _, path in files]
+            stale = [path for path in pending if path.is_file()]
+        if not missing and not stale:
             domain.check_inputs()
         if domain.rank == 0:
             print(domain.summary())
-            if missing:
-                print(f"umwm: configuration is valid; {len(missing)} missing input file(s) will be prepared "
-                      f"from {source} when the model runs, or now with 'umwm forcing {source}'")
+            if missing or stale:
+                files = " and ".join(([f"{len(missing)} missing input file(s)"] if missing else [])
+                                     + ([f"{len(stale)} input file(s) prepared for another grid"] if stale else []))
+                print(f"umwm: configuration is valid; {files} will be prepared from {source} when the model "
+                      f"runs, or now with 'umwm forcing {source}'")
             else:
                 print("umwm: configuration and input files are in place")
         return 0
