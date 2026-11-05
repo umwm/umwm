@@ -7,7 +7,7 @@ import umwm
 from umwm.config import unset_variables
 
 CASES = ["fetch-limited", "duration-limited", "jonswap", "wave-tank", "titan-ontario-lacus", "mars-jezero-lake",
-         "seamount", "eddy-field", "era5-helene", "era5-global"]
+         "seamount", "eddy-field", "era5-helene", "era5-global-1deg", "era5-global-0.25deg"]
 WITH_INPUTS = {"seamount": ["umwm.gridtopo"], "eddy-field": ["umwmin.nc"]}
 
 

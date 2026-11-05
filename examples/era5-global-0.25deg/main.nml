@@ -1,21 +1,31 @@
-! UMWM example case: era5-global
+! UMWM example case: era5-global-0.25deg
 !
-! The global ocean at 1 degree, from ERA5: the model starts on 26 September
-! 2024 at 00 UTC from the wave spectrum rebuilt from the wave partitions of
-! ERA5 (the wind sea and three swells), and is forced for 24 hours by the
-! hourly ERA5 wind, air density and sea ice. The domain is periodic in
-! longitude and spans 78S to 78N, with the bathymetry of the ERA5 wave model;
-! the rows at 78S and 78N are land, and the model has no open boundaries.
+! The global ocean at 0.25 degrees, the grid of ERA5, from ERA5: as
+! era5-global-1deg, the model starts on 26 September 2024 at 00 UTC from the
+! wave spectrum rebuilt from the wave partitions of ERA5 (the wind sea and
+! three swells), and is forced for 24 hours by the hourly ERA5 wind, air
+! density and sea ice. The domain is periodic in longitude and spans 78S to
+! 78N, with the bathymetry of the ERA5 wave model; its cells are the points
+! of the ERA5 grid. The rows at 78S and 78N are land, and the model has no
+! open boundaries.
 !
 ! The input files are prepared from the ARCO ERA5 store of Google Cloud
 ! (source = 'era5') when the model runs: the umwm executable, umwm run, and
 ! umwm forcing era5 prepare them with the umwm Python package and its era5
 ! dependencies (pip install '.[era5]'). The wave partitions are read at the
 ! start time only.
+!
+! With 619000 sea cells, 16 times those of era5-global-1deg, the model needs
+! about 22 GB of memory: run it on a computer with that memory, or in
+! parallel, whose processes divide it between them, with its input files
+! prepared first, as a parallel run does not prepare them:
+!   umwm init --case era5-global-0.25deg runs/global
+!   umwm forcing era5 runs/global
+!   cd runs/global && mpiexec -n 64 ../../umwm
 &DOMAIN
   isGlobal     = .true.                ! Global (.T.) or regional (.F.)
-  mm           = 360                   ! Domain size in x: 0 to 359E, periodic
-  nm           = 157                   ! Domain size in y: 78S to 78N
+  mm           = 1440                  ! Domain size in x: 0 to 359.75E, periodic
+  nm           = 625                   ! Domain size in y: 78S to 78N
   om           = 37                    ! Number of frequency bins
   pm           = 36                    ! Number of directions
   fmin         = 0.0313                ! Lowest frequency bin [Hz]
@@ -50,16 +60,16 @@
 /
 &GRID
   gridFromFile  = .F.    ! Set to .T. if lon/lat fields are input from file
-  delx          = 100000 ! Grid spacing in x [m] if not a lon-lat grid
-  dely          = 100000 ! Grid spacing in y [m] if not a lon-lat grid
+  delx          = 25000  ! Grid spacing in x [m] if not a lon-lat grid
+  dely          = 25000  ! Grid spacing in y [m] if not a lon-lat grid
   topoFromFile  = .T.    ! Bathymetry from input/umwm.gridtopo, prepared from ERA5
   dpt           = 1000   ! Constant water depth [m] if topoFromFile = .F.
   fillEstuaries = .T.    ! Set to .T. to fill cells with 3 land neighbours
   fillLakes     = .F.    ! Set to .T. to fill user chosen seas/lakes
   lon0          = 0      ! Longitude of cell (1,1) [deg]
   lat0          = -78    ! Latitude of cell (1,1) [deg]
-  dlon          = 1      ! Lon-lat grid spacing [deg]
-  dlat          = 1      ! Lon-lat grid spacing [deg]
+  dlon          = 0.25   ! Lon-lat grid spacing [deg], that of ERA5
+  dlat          = 0.25   ! Lon-lat grid spacing [deg], that of ERA5
 /
 &FORCING
   winds         = .T.    ! Wind input from file
@@ -86,8 +96,8 @@
   outgrid       = 1   ! Gridded output interval  [hours]
   outspec       = 1   ! Spectrum output interval [hours]
   outrst        = 0   ! Restart output interval  [hours]
-  xpl           = 121 ! Grid cell in x for stdout (screen): 120E
-  ypl           = 29  ! Grid cell in y for stdout (screen): 50S
+  xpl           = 481 ! Grid cell in x for stdout (screen): 120E
+  ypl           = 113 ! Grid cell in y for stdout (screen): 50S
   stokes        = .f. ! Output Stokes drift velocity fields
 /
 &STOKES

@@ -11,4 +11,5 @@ mars-jezero-lake     Waves on the ancient lake of Jezero crater, Mars, 5 m/s win
 seamount             Wind waves over a Gaussian seamount, 100 x 160 km at 2.5 km, 20 m/s wind
 eddy-field           Wind waves through steady mesoscale eddies, 200 x 300 km at 4 km, 20 m/s wind
 era5-helene          Hurricane Helene in the Gulf of Mexico from ERA5, 0.25 degrees, 24 hours, open boundaries
-era5-global          The global ocean at 1 degree from ERA5, 24 hours
+era5-global-1deg     The global ocean at 1 degree from ERA5, 24 hours
+era5-global-0.25deg  The global ocean at 0.25 degrees from ERA5, 24 hours, about 22 GB of memory

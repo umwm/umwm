@@ -92,6 +92,8 @@ class BuildPy(build_py):
             return
         source = ROOT / "examples"
         destination = Path(self.build_lib) / "umwm" / "examples"
+        # a fresh copy, without the cases of an earlier build that were renamed or removed
+        shutil.rmtree(destination, ignore_errors=True)
         for pattern in EXAMPLES:
             for path in sorted(source.glob(pattern)):
                 target = destination / path.relative_to(source)

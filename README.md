@@ -281,14 +281,14 @@ network access:
 
 ```
 ./umwm --case era5-helene                    # hurricane Helene in the Gulf of Mexico
-umwm run --case era5-global                  # the global ocean at 1 degree
+umwm run --case era5-global-1deg             # the global ocean at 1 degree
 umwm init --case era5-helene runs/gulf       # a run directory to edit
 umwm forcing era5 runs/gulf                  # prepare its input files
 cd runs/gulf && mpiexec -n 8 ../../umwm      # and run it in parallel
 ```
 
-The two example cases, `era5-helene` and `era5-global`, are templates for
-other regions and times. [DOCS.md](DOCS.md#wave-partitions-initial-state-and-open-boundaries)
+The example cases `era5-helene`, `era5-global-1deg` and `era5-global-0.25deg`
+are templates for other regions and times. [DOCS.md](DOCS.md#wave-partitions-initial-state-and-open-boundaries)
 describes the spectra of the partitions, the open boundaries, and how to add
 another data source, such as NCEP GFS with its WAVEWATCH III wave model.
 

@@ -21,7 +21,8 @@ writes them.
 | [`seamount`](seamount/main.nml) | Waves over a Gaussian seamount, 20 m/s wind | 100 x 160 km at 2.5 km, 12 h | 45 s |
 | [`eddy-field`](eddy-field/main.nml) | Waves through steady mesoscale eddies, 20 m/s wind | 200 x 300 km at 4 km, 15 h | 70 s |
 | [`era5-helene`](era5-helene/main.nml) | Hurricane Helene in the Gulf of Mexico, from ERA5, with open boundaries | 79 x 57 at 0.25 degrees, 24 h | 75 s |
-| [`era5-global`](era5-global/main.nml) | The global ocean, from ERA5 | 360 x 157 at 1 degree, 24 h | 15 min |
+| [`era5-global-1deg`](era5-global-1deg/main.nml) | The global ocean, from ERA5 | 360 x 157 at 1 degree, 24 h | 15 min |
+| [`era5-global-0.25deg`](era5-global-0.25deg/main.nml) | The global ocean at the resolution of ERA5, about 22 GB of memory | 1440 x 625 at 0.25 degrees, 24 h | 4.5 h |
 
 The run times are approximate, for a serial run on one core; those of the
 ERA5 cases include the preparation of their input files, about 15 s.
@@ -282,7 +283,7 @@ mean period, mean direction and directional spread of each.
 ```
 mkdir -p runs/helene/output && cd runs/helene
 ../../umwm --case era5-helene                        # prepares input/, then runs
-umwm run --case era5-global                          # in ./era5-global
+umwm run --case era5-global-1deg                     # in ./era5-global-1deg
 umwm init --case era5-helene runs/milton -s domain.starttimestr="2024-10-09 00:00:00" \
   -s domain.stoptimestr="2024-10-10 00:00:00"        # another hurricane
 ```
@@ -310,20 +311,34 @@ of ERA5), most under the strongest winds, where the model grows the waves by
 its own physics; within three cells of the open boundaries, it differs by
 0.15 m or less throughout.
 
-**`era5-global`**: the global ocean at 1 degree, from 78S to 78N, for 24
+**`era5-global-1deg`**: the global ocean at 1 degree, from 78S to 78N, for 24
 hours from the same time, with 38500 sea cells. The domain is periodic in
 longitude and has no open boundaries: its edges, the rows at 78S and 78N,
 are land. The preparation reads 0.24 GB of ERA5 fields, the wave partitions
 at the start time only. It runs in about 15 minutes in serial, and in 5
-minutes on 4 processes (`mpiexec -n 4 ./umwm --case era5-global`), with the
-same results. Against ERA5, the significant wave height of the model
-differs by 0.009 m (0.4%) at the start, 0.37 m (17%) after 6 hours and
+minutes on 4 processes (`mpiexec -n 4 ./umwm --case era5-global-1deg`),
+with the same results. Against ERA5, the significant wave height of the
+model differs by 0.009 m (0.4%) at the start, 0.37 m (17%) after 6 hours and
 0.51 m (23%) after 24 hours, and is lower by 0.2 m on average from 6 hours
 on: the total wave energy decreases by 7% in the first hour and 12% in six
 hours, and then holds, as the model damps the swell that travels across or
 against the local wind (the damping of `sin_diss1`; Donelan et al., 2012)
 much faster than the ERA5 wave model, most in the trade winds of the
 southern hemisphere, which the long swell of the Southern Ocean crosses.
+
+**`era5-global-0.25deg`**: the same run at 0.25 degrees, the grid of ERA5,
+whose points are the cells of the model, with 619000 sea cells, 16 times as
+many. The preparation writes 0.6 GB of input files from the same 0.24 GB of
+ERA5 fields. The model needs about 22 GB of memory: run it on a computer
+with that memory, or in parallel on a cluster, whose processes divide the
+memory between them, with its input files prepared first on a node with
+network access, as a parallel run does not prepare them:
+
+```
+umwm init --case era5-global-0.25deg runs/global
+umwm forcing era5 runs/global
+cd runs/global && mpiexec -n 64 ../../umwm
+```
 
 ## Adding a case
 
