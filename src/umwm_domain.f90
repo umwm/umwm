@@ -192,20 +192,24 @@ module umwm_domain
 
 contains
 
-  subroutine initialize(self, path, stat, input_dir)
+  subroutine initialize(self, path, stat, input_dir, output_dir)
     ! Reads the configuration from the namelist file at path, and
     ! constructs the grids, forcing, and the initial wave state.
     ! If stat is present, it is set to 0 on success and to 1 if the
     ! configuration is invalid, in which case the domain is left
     ! uninitialized; otherwise an invalid configuration stops the program.
-    ! The input files are read from input_dir, input/ by default.
+    ! The input files are read from input_dir, input/ by default, and the
+    ! output and restart files are written to output_dir, the current
+    ! directory by default, which must exist; restart files are read from
+    ! it too.
     class(domain_type), intent(inout) :: self
     character(*), intent(in) :: path
     integer, intent(out), optional :: stat
-    character(*), intent(in), optional :: input_dir
+    character(*), intent(in), optional :: input_dir, output_dir
 
     self % config = config_type(path)
     if (present(input_dir)) self % config % input_dir = input_dir
+    if (present(output_dir)) self % config % output_dir = output_dir
     if (.not. self % config % validate(stop_on_error=.not. present(stat), rank=nproc)) then
       if (present(stat)) stat = 1
       return
@@ -226,7 +230,7 @@ contains
     call self % forcing % initialize(config, grid)
 
     call self % allocate_fields()
-    call output_grid(grid)
+    call output_grid(grid, config % output_path('umwmout.grid'))
     call self % forcing % load(config, config % starttimestr, grid)
     call self % initialize_physics()
     call self % initialize_pipeline()
@@ -716,7 +720,7 @@ contains
 
     ! read wave spectrum field from a restart file if necessary:
     if (self % first .and. config % restart) &
-      call restart_read(config % starttimestr, self % spectrum, grid, &
+      call restart_read(trim(config % output_dir), config % starttimestr, self % spectrum, grid, &
                         self % e(:,:,is:ie), self % ustar)
 
     ! report current and next checkpoint time:
@@ -822,10 +826,10 @@ contains
     ! restart output
     if (config % outrst > 0) then
       if (mod(current_time % gethour(), config % outrst) == 0 .and. fullhour) &
-        call restart_write(timestr, config % reftimestr, self % spectrum, grid, &
+        call restart_write(trim(config % output_dir), timestr, config % reftimestr, self % spectrum, grid, &
                            self % e(:,:,is:ie), self % k, self % ustar)
     else if (config % outrst == -1) then
-      call restart_write(timestr, config % reftimestr, self % spectrum, grid, &
+      call restart_write(trim(config % output_dir), timestr, config % reftimestr, self % spectrum, grid, &
                          self % e(:,:,is:ie), self % k, self % ustar)
     end if
 

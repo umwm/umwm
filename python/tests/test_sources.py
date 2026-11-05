@@ -351,23 +351,27 @@ def test_domain_from_era5(library, era5_store, tmp_path, monkeypatch):
 
 
 def test_cli_forcing_era5(era5_store, tmp_path, capsys):
-    workdir = tmp_path / "run"
+    """umwm forcing era5 CONFIG prepares the input files in CONFIG/input, or
+    -i INPUT, where umwm run CONFIG reads them."""
+    config_dir, output = tmp_path / "case", tmp_path / "output"
     config = era5_config()
-    config.write(workdir / "namelists" / "main.nml")
-    assert main(["run", str(workdir), "--check"]) == 0
+    config.write(config_dir / "main.nml")
+    assert main(["run", str(config_dir), "-o", str(output), "--check"]) == 0
     assert "3 missing input file(s) will be prepared from era5" in capsys.readouterr().out
-    assert main(["forcing", "era5", str(workdir), "--url", str(era5_store)]) == 0
+    assert main(["forcing", "era5", str(config_dir), "--url", str(era5_store)]) == 0
     assert "prepared 3 input files" in capsys.readouterr().out
-    assert sorted(path.name for path in (workdir / "input").iterdir())[0] == "umwm.gridtopo"
-    assert main(["forcing", "era5", str(workdir), "--url", str(era5_store)]) == 0
+    assert sorted(path.name for path in (config_dir / "input").iterdir())[0] == "umwm.gridtopo"
+    assert main(["forcing", "era5", str(config_dir / "main.nml"), "--url", str(era5_store)]) == 0
     assert "in place" in capsys.readouterr().out
+    assert main(["forcing", "era5", str(config_dir), "-i", str(tmp_path / "other"), "--url", str(era5_store)]) == 0
+    assert len(list((tmp_path / "other").iterdir())) == 3
     # the files of another grid, prepared by umwm, are prepared again
     other = era5_config()
     other.grid.lon0 = 80.0
-    other.write(workdir / "namelists" / "main.nml")
-    assert main(["run", str(workdir), "--check"]) == 0
+    other.write(config_dir / "main.nml")
+    assert main(["run", str(config_dir), "-o", str(output), "--check"]) == 0
     assert "3 input file(s) prepared for another grid will be prepared from era5" in capsys.readouterr().out
-    assert main(["forcing", "era5", str(workdir), "-s", "forcing.currents=.true.", "--url", str(era5_store)]) == 1
+    assert main(["forcing", "era5", str(config_dir), "-s", "forcing.currents=.true.", "--url", str(era5_store)]) == 1
     assert "does not provide currents" in capsys.readouterr().err
 
 

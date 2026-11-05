@@ -1,9 +1,10 @@
 """Access to UMWM output files with xarray.
 
-The model writes gridded output to ``output/umwmout_<time>.nc``, one file per
-output time, spectrum output to ``output/umwmspc_<point>_<start time>.nc``,
-one file per point with a time series, and restart files to
-``restart/umwmrst_<time>.nc``. All are opened with the netCDF4 engine.
+The model writes to its output directory the gridded output
+``umwmout_<time>.nc``, one file per output time, the grid ``umwmout.grid``,
+the spectrum output ``umwmspc_<point>_<start time>.nc``, one file per point
+with a time series, and the restart files ``umwmrst_<time>.nc``. All are
+opened with the netCDF4 engine.
 """
 
 from __future__ import annotations
@@ -23,19 +24,11 @@ _RESTART = "umwmrst_*.nc"
 _SPECTRUM_NAME = re.compile(r"umwmspc_(?P<point>.+)_(?P<time>\d{4}-\d{2}-\d{2}_\d{2}:\d{2}:\d{2})\.nc$")
 
 
-def _directory(path, subdirectory):
-    """The output (or restart) directory of a run directory, or the directory itself."""
-    path = Path(path)
-    if path.is_dir() and (path / subdirectory).is_dir() and not any(path.glob("umwm*.nc")):
-        return path / subdirectory
-    return path
-
-
-def _files(source, pattern, subdirectory) -> list[Path]:
+def _files(source, pattern) -> list[Path]:
     if isinstance(source, (str, Path)):
         path = Path(source)
         if path.is_dir():
-            return sorted(_directory(path, subdirectory).glob(pattern))
+            return sorted(path.glob(pattern))
         if path.is_file():
             return [path]
         files = sorted(Path(match) for match in glob.glob(str(path)))
@@ -46,19 +39,20 @@ def _files(source, pattern, subdirectory) -> list[Path]:
 
 
 def output_files(source) -> list[Path]:
-    """The gridded output files of a run or output directory, a glob, or a list of files."""
-    return _files(source, _GRID_OUTPUT, "output")
+    """The gridded output files of an output directory, a glob, or a list of files."""
+    return _files(source, _GRID_OUTPUT)
 
 
 def restart_files(source) -> list[Path]:
-    """The restart files of a run or restart directory, a glob, or a list of files."""
-    return _files(source, _RESTART, "restart")
+    """The restart files of an output directory, a glob, or a list of files."""
+    return _files(source, _RESTART)
 
 
 def spectrum_output_files(source) -> dict[str, list[Path]]:
-    """The spectrum output files of a run or output directory, by point name."""
+    """The spectrum output files of an output directory, a glob, or a list
+    of files, by point name."""
     files: dict[str, list[Path]] = {}
-    for path in _files(source, _SPECTRUM_OUTPUT, "output"):
+    for path in _files(source, _SPECTRUM_OUTPUT):
         match = _SPECTRUM_NAME.match(path.name)
         name = match.group("point") if match else path.stem
         files.setdefault(name, []).append(path)
@@ -84,8 +78,8 @@ def _open_along_time(files, **kwargs) -> xr.Dataset:
 def open_output(source, **kwargs) -> xr.Dataset:
     """Open the gridded output as one dataset along ``time``.
 
-    ``source`` is a run directory, an output directory, a glob pattern, a
-    single file, or a list of files. Keyword arguments are passed to xarray.
+    ``source`` is an output directory, a glob pattern, a single file, or a
+    list of files. Keyword arguments are passed to xarray.
     Variables are dimensioned ``(time, y, x)``, Stokes drift components
     ``(time, z, y, x)``; land cells are NaN.
     """
@@ -108,9 +102,9 @@ def open_restart(path, **kwargs) -> xr.Dataset:
 
 
 def open_grid(source, **kwargs) -> xr.Dataset:
-    """Open the grid definition file ``output/umwmout.grid`` of a run or output directory."""
+    """Open the grid definition file ``umwmout.grid`` of an output directory, or the file."""
     path = Path(source)
     if path.is_dir():
-        path = _directory(path, "output") / "umwmout.grid"
+        path = path / "umwmout.grid"
     kwargs.setdefault("engine", "netcdf4")
     return xr.open_dataset(path, **kwargs)

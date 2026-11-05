@@ -6,7 +6,7 @@ hours. The forcing files are generated with the package, the model is run
 step by step with the maximum wave height printed after each hour, and the
 gridded output is then opened with xarray.
 
-    python rankine.py [WORKDIR]
+    python rankine.py [OUTPUT]
 """
 
 import sys
@@ -16,7 +16,7 @@ import numpy as np
 
 import umwm
 
-workdir = Path(sys.argv[1] if len(sys.argv) > 1 else "rankine")
+output_dir = Path(sys.argv[1] if len(sys.argv) > 1 else "rankine")
 
 config = umwm.Config()
 config.domain.mm, config.domain.nm = 51, 21
@@ -30,7 +30,7 @@ config.output.xpl, config.output.ypl = 26, 11
 config.stokes.depths = [0.1, 1.0, 5.0, 10.0]
 config.spectrum_points = [umwm.SpectrumPoint("center", x=26, y=11)]
 
-domain = umwm.Domain(config, workdir)
+domain = umwm.Domain(config, output_dir)  # input files in OUTPUT/input
 umwm.write_rankine_forcing(domain.input_dir, config.start_time, hours=6, nx=51, ny=21,
                            vmax=40.0, rmw=40e3, center_x=-150e3, translation_x=50e3, uc=0.0, vc=0.0)
 

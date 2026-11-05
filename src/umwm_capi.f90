@@ -128,17 +128,22 @@ contains
   end function umwm_domain_new
 
 
-  function umwm_domain_initialize(handle, path) bind(c, name='umwm_domain_initialize') result(stat)
-    ! Initializes the domain from the namelist file at path (null-terminated),
-    ! relative to the current working directory, like the main program.
-    ! Returns 0 on success and 1 if the configuration is invalid.
+  function umwm_domain_initialize(handle, path, input_dir, output_dir) &
+    bind(c, name='umwm_domain_initialize') result(stat)
+    ! Initializes the domain from the namelist file at path, reading the
+    ! input files from input_dir and writing the output and restart files
+    ! to output_dir, which must exist, like the main program; the strings
+    ! are null-terminated, and the paths absolute or relative to the current
+    ! working directory. Returns 0 on success and 1 if the configuration is
+    ! invalid.
     type(c_ptr), value :: handle
-    character(kind=c_char), intent(in) :: path(*)
+    character(kind=c_char), intent(in) :: path(*), input_dir(*), output_dir(*)
     integer(c_int) :: stat
     type(domain_type), pointer :: domain
     integer :: istat
     call c_f_pointer(handle, domain)
-    call domain % initialize(fortran_string(path), istat)
+    call domain % initialize(fortran_string(path), istat, input_dir=fortran_string(input_dir), &
+                             output_dir=fortran_string(output_dir))
     stat = istat
   end function umwm_domain_initialize
 
@@ -234,7 +239,8 @@ contains
     type(domain_type), pointer :: domain
     call c_f_pointer(handle, domain)
     associate(grid => domain % grid)
-    call restart_write(time_string(domain), domain % config % reftimestr, domain % spectrum, grid, &
+    call restart_write(trim(domain % config % output_dir), time_string(domain), &
+                       domain % config % reftimestr, domain % spectrum, grid, &
                        domain % e(:,:,grid % istart:grid % iend), domain % k, domain % ustar)
     end associate
   end subroutine umwm_domain_write_restart

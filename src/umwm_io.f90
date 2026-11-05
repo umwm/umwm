@@ -15,9 +15,10 @@ public :: gather_field, nc_check, output_grid, put_description, &
 contains
 
 
-subroutine output_grid(grid)
-! Outputs grid related fields into a netcdf file.
+subroutine output_grid(grid, path)
+! Outputs grid related fields into the netcdf file path.
 type(grid_type), intent(in) :: grid
+character(*), intent(in) :: path
 integer :: ncid
 integer :: xdimid,ydimid
 integer :: lonid,latid,dlonid,dlatid,dxid,dyid,arid,maskid,did,nprocid
@@ -25,7 +26,7 @@ integer :: xid,yid,curvid
 
 if(nproc == 0)then
 
-  call nc_check(nf90_create('output/umwmout.grid',nf90_clobber,ncid))
+  call nc_check(nf90_create(path,nf90_clobber,ncid))
   call nc_check(nf90_def_dim(ncid,'x',grid % mm,xdimid))
   call nc_check(nf90_def_dim(ncid,'y',grid % nm,ydimid))
   call nc_check(nf90_def_var(ncid,'lon',NF90_FLOAT,[xdimid,ydimid],lonid))
@@ -57,7 +58,7 @@ if(nproc == 0)then
   call nc_check(nf90_put_var(ncid,nprocid,grid % nproc_out))
   call nc_check(nf90_close(ncid))
 
-  write(*,'(a)')'umwm: output_grid: grid definition written in output/umwmout.grid'
+  write(*,'(a)')'umwm: output_grid: grid definition written in '//path
 
 end if
 

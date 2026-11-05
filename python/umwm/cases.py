@@ -3,19 +3,18 @@ wind and other parameters, ready to run. Most need no input files; the
 others bring theirs, such as a bathymetry or steady currents.
 
 The cases are in the ``examples`` directory of the UMWM repository, of which
-the package includes a copy: one directory per case, with its ``main.nml``
-namelist (whose leading comments describe the case), the ``spectrum.nml``
-points of its spectrum output, and the input files of the cases that have
-them in ``input/``, listed with a one-line description in
-``examples/cases.txt``. The command-line tool runs them with ``umwm run
---case NAME`` and the executable with ``umwm --case NAME``.
+the package includes a copy: one configuration directory per case, with its
+``main.nml`` namelist (whose leading comments describe the case), the
+``spectrum.nml`` points of its spectrum output, and the input files of the
+cases that have them in ``input/``, listed with a one-line description in
+``examples/cases.txt``. A case runs like any configuration directory, with
+``umwm run DIR -o OUTPUT`` or the executable ``umwm DIR -o OUTPUT``; ``umwm
+cases`` lists them with their directories, and ``umwm init --case NAME DIR``
+copies one into a directory to edit.
 
 >>> import umwm
->>> [case.name for case in umwm.list_cases()]
-['fetch-limited', 'duration-limited', 'jonswap', 'wave-tank', 'titan-ontario-lacus', 'mars-jezero-lake',
- 'seamount', 'eddy-field']
->>> config = umwm.Config.from_case("jonswap")
->>> domain = umwm.run(config, workdir="runs/jonswap")
+>>> case = umwm.get_case("jonswap")
+>>> domain = umwm.run(case.directory, output_dir="runs/jonswap")
 """
 
 from __future__ import annotations
@@ -77,30 +76,21 @@ class Case:
         """The configuration of the case, with its spectrum output points."""
         return Config.from_namelist(self.namelist)
 
-    def domain(self, workdir=None, overwrite=False, **kwargs):
-        """A :class:`~umwm.Domain` of the case in the run directory ``workdir``
-        (by default a directory named after the case), into whose ``input``
-        directory the input files of the case are copied by
-        :meth:`copy_inputs`, with ``overwrite``, unless ``kwargs`` give an
-        ``input_dir`` to link there; ``kwargs`` are passed to the domain."""
+    def domain(self, output_dir=None, **kwargs):
+        """A :class:`~umwm.Domain` of the case, writing its output to
+        ``output_dir`` (by default a directory named after the case) and
+        reading the input files of the case from its ``input`` directory,
+        unless ``kwargs`` give another ``input_dir``; ``kwargs`` are passed
+        to the domain."""
         from .domain import Domain
 
-        domain = Domain(self.namelist, Path(workdir or self.name), **kwargs)
-        if kwargs.get("input_dir") is None:
-            # Every process checks the files before the root process copies
-            # them, so that all of them raise if one differs.
-            pending = self._inputs_to_copy(domain.input_dir, overwrite)
-            domain.barrier()
-            if domain.rank == 0:
-                self._copy(pending)
-            domain.barrier()
-        return domain
+        return Domain(self.namelist, Path(output_dir or self.name), **kwargs)
 
     def copy_inputs(self, directory, overwrite=False) -> list[Path]:
-        """Copy the input files of the case into ``directory``, the input
-        directory of a run, and return the paths of the files copied. A file
-        there that is the same as that of the case is kept, and one that
-        differs raises ``FileExistsError`` unless ``overwrite``."""
+        """Copy the input files of the case into ``directory``, an input
+        directory, and return the paths of the files copied. A file there
+        that is the same as that of the case is kept, and one that differs
+        raises ``FileExistsError`` unless ``overwrite``."""
         Path(directory).mkdir(parents=True, exist_ok=True)
         return self._copy(self._inputs_to_copy(directory, overwrite))
 
@@ -113,7 +103,7 @@ class Case:
                 continue
             if (target.exists() or target.is_symlink()) and not overwrite:
                 raise FileExistsError(f"{target} differs from the input file {source.name} of the case "
-                                      f"{self.name}; remove it, or replace it with overwrite=True (umwm run --force)")
+                                      f"{self.name}; remove it, or replace it with overwrite=True (umwm init --force)")
             pending.append((source, target))
         return pending
 

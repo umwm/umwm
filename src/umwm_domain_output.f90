@@ -262,7 +262,7 @@ contains
 
     if (nproc == 0) then
 
-      stat = nf90_create('output/umwmout_' // timestrnew // '.nc', nf90_clobber, ncid)
+      stat = nf90_create(self % config % output_path('umwmout_' // timestrnew // '.nc'), nf90_clobber, ncid)
 
       stat = nf90_def_dim(ncid, 'x', grid % mm, xdimid)
       stat = nf90_def_dim(ncid, 'y', grid % nm, ydimid)
@@ -319,7 +319,8 @@ contains
 
     if (nproc == 0) then
       stat = nf90_close(ncid)
-      write(unit=*,fmt='(a)') 'umwm: output_nc: output written to output/umwmout_' // timestrnew // '.nc'
+      write(unit=*,fmt='(a)') 'umwm: output_nc: output written to ' &
+        // self % config % output_path('umwmout_' // timestrnew // '.nc')
     end if
 
     end associate
@@ -458,8 +459,8 @@ contains
       i = self % spectrum_i(nn)
       if (i < self % grid % istart .or. i > self % grid % iend) cycle
 
-      filename = 'output/umwmspc_' // trim(self % spectrum_id(nn)) // '_' &
-                 // self % spectrum_timestr // '.nc'
+      filename = self % config % output_path('umwmspc_' // trim(self % spectrum_id(nn)) // '_' &
+                 // self % spectrum_timestr // '.nc')
 
       if (record == 1) then
 
@@ -562,7 +563,7 @@ contains
 
     subroutine read_points()
       ! Reads the spectrum output points from the spectrum.nml next to the
-      ! main namelist (namelists/spectrum.nml by default).
+      ! main namelist, or umwmout_spectrum.nml next to umwmout_main.nml.
       integer, parameter :: max_points = 999
       integer :: m(max_points), n(max_points), npts, unit, xy(2)
       character(40) :: id(max_points)

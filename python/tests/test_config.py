@@ -162,13 +162,27 @@ def test_describe_and_diff(repo_root):
 
 
 def test_from_namelist_directory(tmp_path):
-    workdir = tmp_path / "case"
+    """A configuration directory holds main.nml and the namelists beside it,
+    which a main namelist named *main.nml has with its prefix, as the copies
+    of an output directory."""
+    from umwm.config import sibling_namelist
+
+    config_dir = tmp_path / "case"
     config = Config()
     config.domain.mm = 33
-    config.write(workdir / "namelists" / "main.nml")
-    assert Config.from_namelist(workdir).domain.mm == 33
-    with pytest.raises(FileNotFoundError):
+    config.spectrum_points = [SpectrumPoint("center", x=11, y=6)]
+    assert config.write(config_dir / "main.nml") == config_dir / "main.nml"
+    assert Config.from_namelist(config_dir).domain.mm == 33
+    assert Config.from_namelist(config_dir).spectrum_points == config.spectrum_points
+    copy = config.write(tmp_path / "out" / "umwmout_main.nml")
+    assert (tmp_path / "out" / "umwmout_spectrum.nml").is_file()
+    assert Config.from_namelist(copy).spectrum_points == config.spectrum_points
+    assert config.write(config_dir) == config_dir / "main.nml"
+    assert sibling_namelist(tmp_path / "lake.nml", "exclude.nml") == tmp_path / "exclude.nml"
+    with pytest.raises(FileNotFoundError, match="no main.nml in the configuration directory"):
         Config.from_namelist(tmp_path)
+    with pytest.raises(FileNotFoundError, match="configuration not found"):
+        Config.from_namelist(tmp_path / "missing")
 
 
 @pytest.mark.parametrize("change, ok", [

@@ -35,7 +35,7 @@ contains
     type(domain_type) :: domain
     logical :: ok
 
-    call domain % initialize('namelists/forcing_rankine.nml')
+    call domain % initialize('namelists/forcing_rankine.nml', output_dir='output')
     call domain % run()
 
     ! The drag coefficient is ill-conditioned in the calm vortex center and
@@ -72,7 +72,8 @@ contains
 
     call write_partitions('output/waves_global/umwmin.nc', 21, 11, &
                           [1., 2.], [1., 2.], [6., 12.], [0.5, -2.])
-    call domain % initialize('namelists/waves_global.nml', input_dir='output/waves_global')
+    call domain % initialize('namelists/waves_global.nml', input_dir='output/waves_global', &
+                             output_dir='output/waves_global')
     call domain % diagnostics()
     ok = domain % num_boundary_all == 0 &
          .and. all(abs(domain % ht - sqrt(5.)) <= 1e-4 * sqrt(5.))
@@ -97,7 +98,8 @@ contains
                           [2.], [0.], [12.], [0.])
     call write_partitions('output/waves_regional/umwmin_2026-01-01_01:00:00.nc', 21, 11, &
                           [4.], [0.], [12.], [0.])
-    call domain % initialize('namelists/waves_regional.nml', input_dir='output/waves_regional')
+    call domain % initialize('namelists/waves_regional.nml', input_dir='output/waves_regional', &
+                             output_dir='output/waves_regional')
     call domain % diagnostics()
     ok = domain % num_boundary_all == 2 * 19 + 2 * 9 - 4 &
          .and. all(abs(height(domain, boundary(domain, .true.)) - 2) <= 1e-4 * 2) &

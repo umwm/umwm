@@ -18,10 +18,10 @@
 ! With 619000 sea cells, 16 times those of era5-global-1deg, the model needs
 ! about 22 GB of memory: run it on a computer with that memory, or in
 ! parallel, whose processes divide it between them, with its input files
-! prepared first, as a parallel run does not prepare them:
-!   umwm init --case era5-global-0.25deg runs/global
-!   umwm forcing era5 runs/global
-!   cd runs/global && mpiexec -n 64 ../../umwm
+! prepared first, as a parallel run does not prepare them, where CONFIG is
+! the directory of this case:
+!   umwm forcing era5 CONFIG
+!   mpiexec -n 64 umwm CONFIG -o OUTPUT
 &DOMAIN
   isGlobal     = .true.                ! Global (.T.) or regional (.F.)
   mm           = 1440                  ! Domain size in x: 0 to 359.75E, periodic

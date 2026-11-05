@@ -98,7 +98,7 @@ class Library:
             getattr(lib, name).restype = c_int
         lib.umwm_domain_new.argtypes = []
         lib.umwm_domain_new.restype = c_void_p
-        lib.umwm_domain_initialize.argtypes = [c_void_p, c_char_p]
+        lib.umwm_domain_initialize.argtypes = [c_void_p, c_char_p, c_char_p, c_char_p]
         lib.umwm_domain_initialize.restype = c_int
         for name in ("umwm_domain_advance", "umwm_domain_run", "umwm_domain_diagnostics",
                      "umwm_domain_ocean_stress", "umwm_domain_write_output", "umwm_domain_write_spectrum",
@@ -185,9 +185,10 @@ class Library:
         self.env_init()
         return self._lib.umwm_domain_new()
 
-    def domain_initialize(self, handle: int, path: str) -> int:
+    def domain_initialize(self, handle: int, path, input_dir, output_dir) -> int:
         sys.stdout.flush()
-        return self._lib.umwm_domain_initialize(handle, os.fsencode(path))
+        return self._lib.umwm_domain_initialize(handle, os.fsencode(path), os.fsencode(input_dir),
+                                                os.fsencode(output_dir))
 
     def domain_advance(self, handle: int) -> None:
         sys.stdout.flush()

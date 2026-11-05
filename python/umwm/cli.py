@@ -2,20 +2,26 @@
 
 Subcommands::
 
-    umwm init [WORKDIR]            create a run directory with default namelists
-    umwm config [NAMELIST]         show, check, describe, compare, or write a configuration
-    umwm run [NAMELIST|WORKDIR]    run the model in a run directory
-    umwm cases [NAME]              list the example cases, or describe one
-    umwm forcing rankine           write idealized hurricane forcing files
-    umwm forcing era5 [NAMELIST]   prepare the input files of a run from ERA5
-    umwm output [SOURCE]           summarize or plot the output files
-    umwm clean [WORKDIR]           remove the output and restart files of a run
-    umwm info                      show the library and package information
+    umwm init [DIR]                 create a configuration directory
+    umwm config [CONFIG]            show, check, describe, compare, or write a configuration
+    umwm run CONFIG [-o OUTPUT]     run the model, like the umwm executable
+    umwm cases [NAME]               list the example cases, or describe one
+    umwm forcing rankine            write idealized hurricane forcing files
+    umwm forcing era5 CONFIG        prepare the input files of a configuration from ERA5
+    umwm output [OUTPUT]            summarize or plot the output files
+    umwm clean [OUTPUT]             remove the output and restart files of a run
+    umwm info                       show the library and package information
 
-Each subcommand accepts ``--help``. ``umwm run`` works per process under
-``mpiexec`` when the library is built with MPI, and ``umwm run -n N``
-launches it under ``mpiexec`` itself. ``init``, ``config`` and ``run`` take
-``--case NAME`` to start from an example case instead of a namelist file.
+A configuration ``CONFIG`` is a directory with the ``main.nml`` namelist, the
+``spectrum.nml`` points of the spectrum output and, with ``fillLakes``, the
+``exclude.nml`` cells, or a main namelist file whose directory holds the
+others. ``umwm run CONFIG`` reads the input files from ``CONFIG/input`` (or
+``-i INPUT``) and writes the output and restart files, with copies of the
+namelists, to the current directory (or ``-o OUTPUT``), like the ``umwm``
+executable. Each subcommand accepts ``--help``. ``umwm run`` works per
+process under ``mpiexec`` when the library is built with MPI, and ``umwm run
+-n N`` launches it under ``mpiexec`` itself. ``init`` and ``config`` take
+``--case NAME`` to start from an example case.
 """
 
 from __future__ import annotations
@@ -118,26 +124,25 @@ def _relaunch_under_mpi(processes: int, argv) -> None:
 def command_init(args) -> int:
     case = _source_case(args.from_namelist, args.case)
     source = args.from_namelist if case is None else case.namelist
-    if args.workdir is None:
-        args.workdir = "." if case is None else case.name
-    workdir = Path(args.workdir).resolve()
-    namelist = workdir / "namelists" / "main.nml"
+    if args.directory is None:
+        args.directory = "." if case is None else case.name
+    directory = Path(args.directory).resolve()
+    namelist = directory / "main.nml"
     if namelist.exists() and not args.force:
         raise FileExistsError(f"{namelist} exists; use --force to overwrite it")
     config = _load_config(source, args.settings)
-    for name in ("namelists", "input", "output", "restart"):
-        (workdir / name).mkdir(parents=True, exist_ok=True)
-    config.write(namelist, source=source)
+    config.write(namelist, source=None if source is None else namelist_path(source))
     print(f"umwm: wrote {namelist}")
     if case is not None:
-        for path in case.copy_inputs(workdir / "input", overwrite=args.force):
+        for path in case.copy_inputs(directory / "input", overwrite=args.force):
             print(f"umwm: copied {path.name} into {path.parent}")
     if config.source_name is not None:
-        print(f"umwm: run directory {workdir} is ready; run 'umwm run {workdir}', which prepares the input files "
-              f"from {config.source_name}, or prepare them now with 'umwm forcing {config.source_name} {workdir}'")
+        print(f"umwm: configuration {directory} is ready; run it with 'umwm run {directory} -o OUTPUT', which "
+              f"prepares its input files in {directory / 'input'} from {config.source_name}, or prepare them now "
+              f"with 'umwm forcing {config.source_name} {directory}'")
     else:
-        print(f"umwm: run directory {workdir} is ready; put input files in {workdir / 'input'} and run "
-              f"'umwm run {workdir}'")
+        print(f"umwm: configuration {directory} is ready; its input files go in {directory / 'input'}; run it "
+              f"with 'umwm run {directory} -o OUTPUT'")
     return 0
 
 
@@ -179,58 +184,8 @@ def command_run(args) -> int:
 
     from .domain import Domain
 
-    if args.case:
-        return _run_case(args)
-    workdir = Path(args.workdir).resolve() if args.workdir else None
-    if args.target and Path(args.target).is_dir():
-        if workdir is None:
-            workdir = Path(args.target).resolve()
-        namelist = workdir / "namelists" / "main.nml"
-    elif args.target:
-        namelist = Path(args.target)
-    else:
-        namelist = (workdir or Path.cwd()) / "namelists" / "main.nml"
-    workdir = workdir or Path.cwd()
-    if not namelist.is_file():
-        if not args.defaults:
-            raise FileNotFoundError(
-                f"namelist file not found: {namelist}; create one with 'umwm init', "
-                "or pass --defaults to run the default configuration")
-        config = Config()
-    else:
-        config = Config.from_namelist(namelist)
-    _apply_settings(config, args.settings)
-    domain = Domain(config, workdir, input_dir=args.input_dir, log=args.log, quiet=args.quiet)
-    return _run_domain(domain, args)
-
-
-def _run_case(args) -> int:
-    """Run an example case in the run directory given as the target or with
-    --workdir, by default a directory named after the case, which must not
-    hold another namelist or other input files unless --force."""
-    from .cases import get_case
-
-    case = get_case(args.case)
-    if args.target and args.workdir:
-        raise ValueError("with --case, give the run directory either as the target or with --workdir")
-    workdir = Path(args.target or args.workdir or case.name)
-    if workdir.is_file():
-        raise ValueError(f"with --case, the target is the run directory, not a file: {workdir}")
-    workdir = workdir.resolve()
-    namelist = workdir / "namelists" / "main.nml"
-    if namelist.is_file() and not args.force:
-        try:
-            same = Config.from_namelist(namelist) == _apply_settings(case.config(), args.settings)
-        except (ConfigError, NamelistError):
-            same = False
-        if not same:
-            raise FileExistsError(
-                f"{namelist} holds another configuration than the case {case.name}; run it with "
-                f"'umwm run {workdir}', run the case in another directory, or pass --force to replace it")
-    domain = case.domain(workdir, overwrite=args.force, input_dir=args.input_dir, log=args.log, quiet=args.quiet)
+    domain = Domain(args.config, args.output, input_dir=args.input, log=args.log, quiet=args.quiet)
     _apply_settings(domain.config, args.settings)
-    if domain.rank == 0 and not args.check:
-        print(f"umwm: running example case {case.name} in {domain.workdir}")
     return _run_domain(domain, args)
 
 
@@ -258,6 +213,9 @@ def _run_domain(domain, args) -> int:
             else:
                 print("umwm: configuration and input files are in place")
         return 0
+    if domain.rank == 0:
+        print(f"umwm: running {domain.config_dir or 'the configuration'} with input from {domain.input_dir} and "
+              f"output to {domain.output_dir}")
     domain.run(until=args.until)
     if domain.rank == 0:
         print(f"umwm: run finished at {domain.time:%Y-%m-%d %H:%M:%S}; output in {domain.output_dir}")
@@ -271,28 +229,24 @@ def command_cases(args) -> int:
     if args.name:
         case = get_case(args.name)
         print(case.notes())
-        print(f"\numwm: the namelists of {case.name} are in {case.directory}")
-        print(f"umwm: run it with 'umwm run --case {case.name}', or create a run directory "
-              f"from it with 'umwm init --case {case.name}'")
+        print(f"\numwm: the configuration of {case.name} is {case.directory}")
+        print(f"umwm: run it with 'umwm run {case.directory} -o OUTPUT', or copy it into a directory to edit "
+              f"with 'umwm init --case {case.name} DIR'")
         return 0
     cases = list_cases()
     width = max(len(case.name) for case in cases)
     for case in cases:
         print(f"{case.name:<{width}}  {case.description}")
-    print(f"\numwm: example cases in {examples_dir()}; 'umwm cases NAME' describes one, and "
-          "'umwm run --case NAME' runs it")
+    print(f"\numwm: example cases in {examples_dir()}; 'umwm cases NAME' describes one, "
+          f"'umwm run {examples_dir()}/NAME -o OUTPUT' runs it, and 'umwm init --case NAME DIR' copies it")
     return 0
 
 
 def command_forcing_rankine(args) -> int:
     from .forcing import write_rankine_forcing
 
-    if args.output_dir:
-        directory = Path(args.output_dir)
-    else:
-        directory = Path(args.workdir) / "input"
     paths = write_rankine_forcing(
-        directory, args.start_time, args.hours, nx=args.nx, ny=args.ny, dx=args.dx, dy=args.dy,
+        Path(args.input), args.start_time, args.hours, nx=args.nx, ny=args.ny, dx=args.dx, dy=args.dy,
         vmax=args.vmax, rmw=args.rmw, center_x=args.center_x, center_y=args.center_y,
         translation_x=args.translation_x, translation_y=args.translation_y, clockwise=args.clockwise,
         uc=args.uc, vc=args.vc, rhoa=args.rhoa, rhow=args.rhow, center_lon=args.center_lon,
@@ -305,20 +259,12 @@ def command_forcing_rankine(args) -> int:
 
 
 def command_forcing_source(args) -> int:
-    """Prepare the input files of a run from a data source."""
+    """Prepare the input files of a configuration from a data source."""
     from .sources import prepare_inputs
 
-    workdir = Path(args.workdir).resolve() if args.workdir else None
-    if args.target and Path(args.target).is_dir():
-        workdir = workdir or Path(args.target).resolve()
-        namelist = namelist_path(args.target)
-    elif args.target:
-        namelist = Path(args.target)
-    else:
-        namelist = namelist_path(workdir or Path.cwd())
-    workdir = workdir or Path.cwd()
+    namelist = namelist_path(args.config)
     config = _load_config(namelist, args.settings)
-    input_dir = Path(args.input_dir) if args.input_dir else workdir / "input"
+    input_dir = Path(args.input) if args.input else namelist.parent / "input"
     options = {"workers": args.workers}
     if args.url:
         options["url"] = args.url
@@ -332,7 +278,7 @@ def command_forcing_source(args) -> int:
 def command_output(args) -> int:
     from . import output as _output
 
-    source = args.source or "."
+    source = args.output or "."
     if args.spectrum:
         for name, dataset in _output.open_spectrum_output(source).items():
             print(f"=== spectrum point {name} ===")
@@ -381,15 +327,13 @@ def command_output(args) -> int:
 
 
 def command_clean(args) -> int:
-    from .domain import Domain
+    from .domain import clean_output
 
-    workdir = Path(args.workdir).resolve()
-    if not (workdir / "output").is_dir() and not (workdir / "restart").is_dir():
-        raise FileNotFoundError(f"{workdir} has no output or restart directory")
-    config = Config.from_namelist(workdir) if (workdir / "namelists" / "main.nml").is_file() else Config()
-    domain = Domain(config, workdir)
-    removed = domain.clean(output=not args.keep_output, restart=not args.keep_restart)
-    print(f"umwm: removed {len(removed)} file(s) from {workdir}")
+    directory = Path(args.output).resolve()
+    if not directory.is_dir():
+        raise FileNotFoundError(f"output directory not found: {directory}")
+    removed = clean_output(directory, output=not args.keep_output, restart=not args.keep_restart)
+    print(f"umwm: removed {len(removed)} file(s) from {directory}")
     return 0
 
 
@@ -426,12 +370,15 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", metavar="COMMAND")
     subparsers.required = True
 
-    init = subparsers.add_parser("init", help="create a run directory with the default namelists",
-                                 description="Create a run directory with the namelists, input, output and "
-                                             "restart subdirectories and a main.nml namelist.")
-    init.add_argument("workdir", nargs="?",
-                      help="the run directory (default: current directory, or the name of the case with --case)")
-    init.add_argument("--from", dest="from_namelist", metavar="NAMELIST", help="start from this namelist file instead of the defaults")
+    init = subparsers.add_parser("init", help="create a configuration directory",
+                                 description="Create a configuration directory with a main.nml namelist, from "
+                                             "the defaults, a namelist file, or an example case, whose "
+                                             "spectrum.nml and input files are copied too.")
+    init.add_argument("directory", nargs="?", metavar="DIR",
+                      help="the configuration directory (default: current directory, or the name of the case "
+                           "with --case)")
+    init.add_argument("--from", dest="from_namelist", metavar="CONFIG",
+                      help="start from this configuration directory or namelist file instead of the defaults")
     _add_case_option(init, "start from")
     _add_set_option(init)
     init.add_argument("-f", "--force", action="store_true",
@@ -441,7 +388,8 @@ def build_parser() -> argparse.ArgumentParser:
     config = subparsers.add_parser("config", help="show, check, describe, compare, or write a configuration",
                                    description="Print the configuration as a namelist (or JSON), after applying "
                                                "overrides; without a namelist file, the defaults are shown.")
-    config.add_argument("namelist", nargs="?", help="a main.nml file or a run directory (default: the built-in defaults)")
+    config.add_argument("namelist", nargs="?", metavar="CONFIG",
+                        help="a configuration directory or main namelist file (default: the built-in defaults)")
     _add_case_option(config, "use")
     _add_set_option(config)
     config.add_argument("-o", "--output", metavar="FILE", help="write the configuration to this file instead of printing it")
@@ -451,38 +399,38 @@ def build_parser() -> argparse.ArgumentParser:
     config.add_argument("--describe", nargs="?", const="", metavar="GROUP",
                         help="list the variables with their descriptions and units, optionally of one group")
     config.add_argument("--diff", metavar="NAMELIST",
-                        help="show the variables that differ from this namelist file or run directory, or from the "
-                             "defaults with 'defaults' (unless a file or directory of that name exists)")
+                        help="show the variables that differ from this configuration directory or namelist file, or "
+                             "from the defaults with 'defaults' (unless a file or directory of that name exists)")
     config.set_defaults(func=command_config)
 
     run = subparsers.add_parser("run", help="run the model",
-                                description="Run the model in a run directory, like the umwm executable, "
-                                            "reading namelists/main.nml there unless a namelist is given. "
-                                            "Under mpiexec, each process runs its tile.")
-    run.add_argument("target", nargs="?", metavar="NAMELIST|WORKDIR",
-                     help="the main.nml file, or the run directory (default: WORKDIR/namelists/main.nml)")
-    run.add_argument("-w", "--workdir", help="the run directory with input, output and restart (default: current directory)")
-    _add_case_option(run, "run")
-    run.add_argument("-i", "--input-dir", metavar="DIR", help="link this directory as WORKDIR/input if that does not exist")
+                                description="Run the model with the configuration CONFIG, like the umwm "
+                                            "executable: read the input files from CONFIG/input, or INPUT, and "
+                                            "write the output and restart files, with copies of the namelists "
+                                            "(umwmout_main.nml and the others), to the current directory, or "
+                                            "OUTPUT, created if needed; a restart reads its restart file from "
+                                            "there too. Under mpiexec, each process runs its tile.")
+    run.add_argument("config", metavar="CONFIG",
+                     help="the configuration directory, with main.nml and spectrum.nml, or its main namelist file")
+    run.add_argument("-o", "--output", metavar="DIR",
+                     help="the directory of the output and restart files (default: current directory); it may be "
+                          "the configuration or input directory")
+    run.add_argument("-i", "--input", metavar="DIR", help="the directory of the input files (default: CONFIG/input)")
     _add_set_option(run)
     run.add_argument("-n", "--processes", type=int, metavar="N",
                      help="launch N processes under mpiexec (or $UMWM_MPIEXEC); the library must be built with MPI")
     run.add_argument("--until", metavar="TIME", help="stop at this time (YYYY-MM-DD HH:MM:SS) instead of the configured stop time")
     run.add_argument("--log", metavar="FILE", help="append the output of the model to this file instead of the terminal")
     run.add_argument("-q", "--quiet", action="store_true", help="discard the output of the model")
-    run.add_argument("--defaults", action="store_true", help="use the default configuration if there is no namelist file")
     run.add_argument("--check", action="store_true", help="only validate the configuration and check the input files")
-    run.add_argument("-f", "--force", action="store_true",
-                     help="with --case, replace a namelist and input files in the run directory that differ from those of the case")
-    run.epilog = ("With --case, the run directory is the target or WORKDIR, by default a directory named after "
-                  "the case in the current directory, and the input files of the case are copied into its input "
-                  "directory.")
+    run.epilog = ("Overrides of -s apply to the run only: they are in the copy of the namelist in the output "
+                  "directory, umwmout_main.nml, and not written to the configuration.")
     run.set_defaults(func=command_run)
 
     cases = subparsers.add_parser("cases", help="list the example cases, or describe one",
-                                  description="List the example cases, idealized configurations with constant "
-                                              "forcing, or describe one; run one with 'umwm run --case NAME', "
-                                              "which copies the input files of the cases that have them.")
+                                  description="List the example cases, or describe one with its configuration "
+                                              "directory; run one with 'umwm run DIR -o OUTPUT', or copy it "
+                                              "into a directory to edit with 'umwm init --case NAME DIR'.")
     cases.add_argument("name", nargs="?", help="the case to describe; a unique prefix of its name is enough")
     cases.set_defaults(func=command_cases)
 
@@ -492,8 +440,8 @@ def build_parser() -> argparse.ArgumentParser:
     rankine = forcing_commands.add_parser("rankine", help="idealized, translating Rankine hurricane vortex",
                                           description="Write hourly forcing files for a translating Rankine vortex on a "
                                                       "Cartesian grid centered at the origin.")
-    rankine.add_argument("-w", "--workdir", default=".", help="the run directory; files go to its input subdirectory")
-    rankine.add_argument("-o", "--output-dir", metavar="DIR", help="write the files to this directory instead")
+    rankine.add_argument("-i", "--input", metavar="DIR", default="input",
+                         help="the input directory to write the files to (default: %(default)s)")
     rankine.add_argument("--start-time", default="2026-01-01 00:00:00", help="time of the first file (default: %(default)s)")
     rankine.add_argument("--hours", type=int, default=6, help="last hourly file to write, inclusive (default: %(default)s)")
     rankine.add_argument("--nx", type=int, default=51, help="grid cells in x (default: %(default)s)")
@@ -520,17 +468,17 @@ def build_parser() -> argparse.ArgumentParser:
     for info in SOURCES.values():
         source = forcing_commands.add_parser(
             info.name, help=f"prepare the input files of a run from {info.name}",
-            description=f"Prepare the input files of a run that are missing from its input directory, from "
+            description=f"Prepare the input files of a configuration that are missing from its input "
+                        f"directory, or that it prepared for another grid, from "
                         f"{info.description}: those that the namelist reads (with grid.topofromfile, the "
                         "bathymetry, and the forcing of forcing.winds, air_density, seaice and waves), on its "
                         "grid (grid.lon0, lat0, dlon and dlat, or the grid file of grid.gridfromfile), at its "
                         "times. The model does it itself when forcing.source names the data source. Needs "
                         f"pip install 'umwm[{info.extra}]'.")
-        source.add_argument("target", nargs="?", metavar="NAMELIST|WORKDIR",
-                            help="the main.nml file, or the run directory (default: WORKDIR/namelists/main.nml)")
-        source.add_argument("-w", "--workdir", help="the run directory (default: current directory)")
-        source.add_argument("-i", "--input-dir", metavar="DIR",
-                            help="write the input files to this directory (default: WORKDIR/input)")
+        source.add_argument("config", metavar="CONFIG",
+                            help="the configuration directory, or its main namelist file")
+        source.add_argument("-i", "--input", metavar="DIR",
+                            help="write the input files to this directory (default: CONFIG/input)")
         _add_set_option(source)
         source.add_argument("-f", "--force", action="store_true", help="replace the input files that exist")
         source.add_argument("--url", help=f"the location of the dataset (default: that of the {info.name} source)")
@@ -539,9 +487,10 @@ def build_parser() -> argparse.ArgumentParser:
         source.set_defaults(func=command_forcing_source, source=info.name)
 
     output = subparsers.add_parser("output", help="summarize or plot the output files",
-                                   description="Open the gridded output of a run directory, an output directory, "
-                                               "a file, or a glob with xarray and print, summarize, or plot it.")
-    output.add_argument("source", nargs="?", help="run directory, output directory, file, or glob (default: current directory)")
+                                   description="Open the gridded output of an output directory, a file, or a "
+                                               "glob with xarray and print, summarize, or plot it.")
+    output.add_argument("output", nargs="?", metavar="OUTPUT",
+                        help="output directory, file, or glob (default: current directory)")
     output.add_argument("-v", "--variables", nargs="+", metavar="VAR", help="only these variables")
     output.add_argument("--stats", action="store_true", help="print the min, mean and max of the variables at each time")
     output.add_argument("--spectrum", action="store_true", help="show the spectrum output instead")
@@ -552,9 +501,10 @@ def build_parser() -> argparse.ArgumentParser:
     output.set_defaults(func=command_output)
 
     clean = subparsers.add_parser("clean", help="remove the output and restart files of a run",
-                                  description="Remove the files the model wrote to the output and restart "
-                                              "directories of a run directory, and nothing else.")
-    clean.add_argument("workdir", nargs="?", default=".", help="the run directory (default: current directory)")
+                                  description="Remove the files the model writes to an output directory "
+                                              "(umwmout_*, umwmspc_* and umwmrst_*), and nothing else.")
+    clean.add_argument("output", nargs="?", default=".", metavar="OUTPUT",
+                       help="the output directory (default: current directory)")
     clean.add_argument("--keep-output", action="store_true", help="keep the gridded and spectrum output")
     clean.add_argument("--keep-restart", action="store_true", help="keep the restart files")
     clean.set_defaults(func=command_clean)

@@ -253,17 +253,18 @@ class Config:
     def from_namelist(cls, path, spectrum_points=None, exclude_points=None) -> "Config":
         """Read the configuration from a ``main.nml`` file.
 
-        ``path`` may also be a run directory, whose ``namelists/main.nml``
+        ``path`` may also be a configuration directory, whose ``main.nml``
         is read. ``spectrum_points`` and ``exclude_points`` are optional paths
-        to a ``spectrum.nml`` and an ``exclude.nml`` file; by default, files
-        of those names next to the main namelist are read if they exist.
+        to a ``spectrum.nml`` and an ``exclude.nml`` file; by default, those
+        next to the main namelist are read if they exist (see
+        :func:`sibling_namelist`).
         """
         path = namelist_path(path)
         config = cls.from_namelist_text(path.read_text(encoding="utf-8"))
-        if spectrum_points is None and (path.parent / "spectrum.nml").is_file():
-            spectrum_points = path.parent / "spectrum.nml"
-        if exclude_points is None and (path.parent / "exclude.nml").is_file():
-            exclude_points = path.parent / "exclude.nml"
+        if spectrum_points is None and sibling_namelist(path, "spectrum.nml").is_file():
+            spectrum_points = sibling_namelist(path, "spectrum.nml")
+        if exclude_points is None and sibling_namelist(path, "exclude.nml").is_file():
+            exclude_points = sibling_namelist(path, "exclude.nml")
         if spectrum_points is not None:
             config.spectrum_points = read_spectrum_points(spectrum_points)
         if exclude_points is not None:
@@ -605,17 +606,21 @@ class Config:
         return "".join(f"{m} {n}\n" for m, n in self.exclude_points)
 
     def write(self, path, spectrum_points: bool = True, exclude_points: bool = True, source=None) -> Path:
-        """Write ``main.nml`` to ``path`` and, next to it, ``spectrum.nml`` and
-        ``exclude.nml`` when points are configured. Returns the path. The
-        namelist file ``source``, such as the one the configuration was read
-        from, is copied with its comments if it holds this configuration."""
+        """Write the main namelist to ``path`` (``main.nml`` in it if it is a
+        directory) and, next to it, ``spectrum.nml`` and ``exclude.nml`` when
+        points are configured (see :func:`sibling_namelist`). Returns the
+        path. The namelist file ``source``, such as the one the configuration
+        was read from, is copied with its comments if it holds this
+        configuration."""
         path = Path(path)
+        if path.is_dir():
+            path = path / "main.nml"
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(self.namelist_text(source), encoding="utf-8")
         if spectrum_points and self.spectrum_points:
-            (path.parent / "spectrum.nml").write_text(self.spectrum_points_text(), encoding="utf-8")
+            sibling_namelist(path, "spectrum.nml").write_text(self.spectrum_points_text(), encoding="utf-8")
         if exclude_points and self.exclude_points:
-            (path.parent / "exclude.nml").write_text(self.exclude_points_text(), encoding="utf-8")
+            sibling_namelist(path, "exclude.nml").write_text(self.exclude_points_text(), encoding="utf-8")
         return path
 
     def __str__(self) -> str:
@@ -694,17 +699,27 @@ def unset_variables(text: str) -> list[str]:
 
 
 def namelist_path(path) -> Path:
-    """The ``main.nml`` file of ``path``: the file itself, or the
-    ``namelists/main.nml`` (or ``main.nml``) of a directory."""
+    """The main namelist of the configuration ``path``: the ``main.nml`` of a
+    configuration directory, or the file itself."""
     path = Path(path)
     if path.is_dir():
-        for candidate in (path / "namelists" / "main.nml", path / "main.nml"):
-            if candidate.is_file():
-                return candidate
-        raise FileNotFoundError(f"no namelists/main.nml in {path}")
+        if not (path / "main.nml").is_file():
+            raise FileNotFoundError(f"no main.nml in the configuration directory {path}")
+        return path / "main.nml"
     if not path.is_file():
-        raise FileNotFoundError(f"namelist file not found: {path}")
+        raise FileNotFoundError(f"configuration not found: {path}")
     return path
+
+
+def sibling_namelist(path, name: str) -> Path:
+    """The namelist file ``name``, such as ``spectrum.nml``, next to the main
+    namelist ``path``, with the prefix of its name if it ends with
+    ``main.nml``: ``umwmout_spectrum.nml`` next to ``umwmout_main.nml``, the
+    copies the model writes to an output directory. The model finds them in
+    the same way."""
+    path = Path(path)
+    prefix = path.name[:-len("main.nml")] if path.name.endswith("main.nml") else ""
+    return path.with_name(prefix + name)
 
 
 def read_spectrum_points(path) -> list[SpectrumPoint]:

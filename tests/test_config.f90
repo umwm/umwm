@@ -1,7 +1,7 @@
 program test_config
   use iso_fortran_env, only: iostat_end
   use tuff, only: test, test_result, nearly_equal
-  use umwm_config, only: config_type
+  use umwm_config, only: config_type, sibling_namelist
 #ifdef MPI
   use umwm_env, only: env_init, env_stop
 #endif
@@ -193,20 +193,28 @@ contains
 
 
   function sibling_paths() result(res)
-    ! Files beside the main namelist, such as spectrum.nml, and in the
-    ! input directory, input/ by default.
+    ! Files beside the main namelist, such as spectrum.nml, with the prefix
+    ! of a main namelist named *main.nml, such as the copies of an output
+    ! directory; in the input directory, input/ by default; and in the
+    ! output directory, the current directory by default.
     type(test_result) :: res
-    type(config_type) :: config, here
+    type(config_type) :: config, here, copy
 
     config = valid_config()
     here % path = 'main.nml'
     here % input_dir = '../examples/seamount/input'
+    here % output_dir = 'runs/seamount'
+    copy % path = 'runs/seamount/umwmout_main.nml'
     res = test('sibling_paths', &
       config % sibling_path('spectrum.nml') == '../namelists/spectrum.nml' .and. &
       here % sibling_path('exclude.nml') == 'exclude.nml' .and. &
+      copy % sibling_path('spectrum.nml') == 'runs/seamount/umwmout_spectrum.nml' .and. &
+      sibling_namelist('cases/lake.nml', 'spectrum.nml') == 'cases/spectrum.nml' .and. &
       config % input_path('umwm.grid') == 'input/umwm.grid' .and. &
       here % input_path('umwm.gridtopo') == '../examples/seamount/input/umwm.gridtopo' .and. &
-      .not. config % steady)
+      config % output_path('umwmout.grid') == './umwmout.grid' .and. &
+      here % output_path('umwmrst_2026-01-01_00:00:00.nc') == 'runs/seamount/umwmrst_2026-01-01_00:00:00.nc' &
+      .and. .not. config % steady)
   end function sibling_paths
 
 
