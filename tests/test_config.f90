@@ -206,7 +206,7 @@ contains
     here % output_dir = 'runs/seamount'
     copy % path = 'runs/seamount/umwmout_main.nml'
     res = test('sibling_paths', &
-      config % sibling_path('spectrum.nml') == '../namelists/spectrum.nml' .and. &
+      config % sibling_path('spectrum.nml') == 'namelists/default_spectrum.nml' .and. &
       here % sibling_path('exclude.nml') == 'exclude.nml' .and. &
       copy % sibling_path('spectrum.nml') == 'runs/seamount/umwmout_spectrum.nml' .and. &
       sibling_namelist('cases/lake.nml', 'spectrum.nml') == 'cases/spectrum.nml' .and. &
@@ -280,7 +280,7 @@ contains
   function valid_config() result(config)
     type(config_type) :: config
 
-    config = config_type('../namelists/main.nml')
+    config = config_type('namelists/default_main.nml')
   end function valid_config
 
 
@@ -295,7 +295,7 @@ contains
     logical :: in_domain
 
     ok = .false.
-    open(newunit=input_unit, file='../namelists/main.nml', status='old', &
+    open(newunit=input_unit, file='namelists/default_main.nml', status='old', &
          form='formatted', access='sequential', action='read', iostat=stat)
     if (stat /= 0) return
 

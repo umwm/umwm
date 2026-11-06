@@ -93,7 +93,7 @@ all named `umwmout_*`, `umwmspc_*` or `umwmrst_*`.
 ```python
 import umwm
 
-config = umwm.Config()                       # the defaults of namelists/main.nml
+config = umwm.Config()                       # the model defaults
 config.domain.mm, config.domain.nm = 51, 21  # namelist variables, by group
 config.domain.stoptimestr = "2026-01-01 12:00:00"
 config.forcing_constant.wspd0 = 15.0
@@ -341,7 +341,7 @@ restores gradual underflow.
 ## Configuration
 
 `Config` mirrors `main.nml`: one dataclass per namelist group, with the
-namelist variable names, and the defaults of `namelists/main.nml`.
+namelist variable names, and the defaults of the model.
 
 | Group | Class | Contents |
 | --- | --- | --- |
@@ -364,7 +364,7 @@ configurations.
 written to `exclude.nml`, for `grid.filllakes`.
 
 ```python
-config = umwm.Config.from_namelist("namelists/main.nml")   # also reads spectrum.nml, exclude.nml next to it
+config = umwm.Config.from_namelist("examples/seamount")      # main.nml, and spectrum.nml, exclude.nml if there
 config = umwm.Config.from_case("wave-tank")                  # an example case
 config["domain.dtg"] = 1800                                  # dotted keys, with conversion from strings
 config.update({"output.outgrid": 1}, forcing__winds=True)

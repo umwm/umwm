@@ -198,17 +198,16 @@ by the Make suite.
 
 The model runs a configuration: a directory with the `main.nml` namelist,
 the `spectrum.nml` points of the spectrum output, and the input files in
-`input/`, such as [namelists](namelists/) or the [example cases](examples/).
-Running in serial mode:
+`input/`, such as the [example cases](examples/). Running in serial mode:
 
 ```
-./umwm namelists -o runs/default
+./umwm examples/jonswap -o runs/jonswap
 ```
 
 Running in parallel, for example on 16 cores:
 
 ```
-mpiexec -n 16 ./umwm namelists -o runs/default
+mpiexec -n 16 ./umwm examples/jonswap -o runs/jonswap
 ```
 
 The model reads the input files from `CONFIG/input`, or the directory given
@@ -325,7 +324,7 @@ uv sync && uv run umwm info
 ```python
 import umwm
 
-config = umwm.Config()                        # the defaults of namelists/main.nml
+config = umwm.Config()                        # the model defaults
 config.domain.stoptimestr = "2026-01-01 12:00:00"
 config.forcing_constant.wspd0 = 15.0
 

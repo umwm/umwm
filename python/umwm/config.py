@@ -3,7 +3,8 @@
 :class:`Config` holds one dataclass per namelist group of ``main.nml`` with
 the variable names of the namelists, so that the Fortran documentation and
 the ``--set group.name=value`` syntax of the command-line tool apply directly.
-The defaults are those of ``namelists/main.nml`` in the UMWM repository. The
+The defaults are those of the model (``tests/namelists/default_main.nml`` in
+the UMWM repository, which the tests check them against). The
 spectrum output points of ``spectrum.nml`` and the cells of enclosed seas to
 exclude of ``exclude.nml`` are held alongside the namelist groups.
 """

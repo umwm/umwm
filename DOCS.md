@@ -615,7 +615,7 @@ G_f = 0.001\text{ to }0.01\,\mathrm{m\,s^{-1}},
 G_p = 0.0006\text{ to }0.01\,\mathrm{m\,s^{-1}}.
 $$
 
-Defaults in `namelists/main.nml` are `sbf_fac = 0.003` and
+The defaults are `sbf_fac = 0.003` and
 `sbp_fac = 0.003`.
 
 ## Nonlinear Downshifting `Snl`
@@ -1471,8 +1471,8 @@ $$
 
 ## Physics Namelist Controls
 
-The main physics controls live in the `PHYSICS` namelist. Defaults below
-are from `namelists/main.nml`.
+The main physics controls live in the `PHYSICS` namelist, with the
+following defaults.
 
 | Parameter | Default | Units | Role |
 | --- | ---: | --- | --- |

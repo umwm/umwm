@@ -7,12 +7,12 @@ from umwm.config import GROUPS, Config, ConfigError, SpectrumPoint, parse_value
 
 
 def test_defaults_match_repository_namelist(repo_root):
-    """The Python defaults are those of namelists/main.nml in the repository."""
-    config = Config.from_namelist(repo_root / "namelists" / "main.nml")
+    """The Python defaults are those of tests/namelists/default_main.nml."""
+    config = Config.from_namelist(repo_root / "tests" / "namelists" / "default_main.nml")
     defaults = Config()
     for group in GROUPS:
         assert getattr(config, group) == getattr(defaults, group), group
-    # spectrum.nml and exclude.nml next to main.nml are picked up
+    # default_spectrum.nml and default_exclude.nml next to it are picked up
     assert [point.name for point in config.spectrum_points] == ["test_loc1", "test_loc2", "test_loc3"]
     assert config.exclude_points == [(5, 5)]
 
