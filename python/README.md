@@ -53,8 +53,8 @@ and the build from the repository; `uv.lock` pins the dependencies.
 ```
 uv sync                                   # .venv with umwm, its dependencies, pytest and matplotlib
 uv run umwm info
-uv run umwm init runs/case1
-uv run umwm run runs/case1
+uv run umwm init case1
+uv run umwm run case1 -o runs/case1
 uv run pytest                             # the Python test suite
 uv run python python/examples/rankine.py
 uv build                                  # sdist and wheel in dist/
@@ -69,7 +69,7 @@ that is needed:
 
 ```
 UMWM_MPI=yes UMWM_FC=mpifort uv sync      # MPI-enabled library
-uv run umwm run -n 4 runs/case1           # or: uv run mpiexec -n 4 umwm run runs/case1
+uv run umwm run -n 4 case1 -o runs/case1  # or: uv run mpiexec -n 4 umwm run case1 -o runs/case1
 uv run mpiexec -n 2 python python/tests/mpi_smoke.py
 uv sync                                   # back to the serial library
 ```
@@ -81,33 +81,40 @@ uv's environment, run them as `uv run python script.py` and
 
 ## Running the model
 
-A `Domain` wraps one model domain in a run directory with the layout the
-model expects: `namelists/`, `input/`, `output/` and `restart/`. The
-configuration is written to `namelists/main.nml` (and `spectrum.nml` and
-`exclude.nml` when points are configured), and the model reads its input
-files from `input/` and writes to `output/` and `restart/`, exactly as the
-`umwm` executable does when run in that directory.
+A `Domain` wraps one model domain. It runs a configuration as the `umwm`
+executable does: it reads the input files from an input directory and
+writes the output and restart files to an output directory, the current
+directory by default, with copies of the namelists of the configuration,
+`umwmout_main.nml` (and `umwmout_spectrum.nml` and `umwmout_exclude.nml`
+when points are configured), which the model reads. The output directory
+may be the configuration or input directory, as the files written there are
+all named `umwmout_*`, `umwmspc_*` or `umwmrst_*`.
 
 ```python
 import umwm
 
-config = umwm.Config()                       # the defaults of namelists/main.nml
+config = umwm.Config()                       # the model defaults
 config.domain.mm, config.domain.nm = 51, 21  # namelist variables, by group
 config.domain.stoptimestr = "2026-01-01 12:00:00"
 config.forcing_constant.wspd0 = 15.0
 config.set("physics.sds_fac", 40.0)          # or by dotted key
 
-with umwm.Domain(config, workdir="runs/case1") as domain:
+with umwm.Domain(config, output_dir="runs/case1") as domain:
     domain.run()                             # to the stop time, in Fortran
     swh = domain.grid_field("swh")           # NumPy (ny, nx), NaN on land
-    output = domain.output()                 # xarray.Dataset of output/umwmout_*.nc
+    output = domain.output()                 # xarray.Dataset of runs/case1/umwmout_*.nc
 ```
 
-`umwm.run(config, workdir)` does the same and returns the domain. A
-configuration can also be a path to an existing `main.nml`, or a run
-directory (`umwm.Domain("runs/case1")` reads its `namelists/main.nml` and
-runs there); a file the configuration was read from is left untouched
-unless the configuration is changed, so its comments are preserved.
+`umwm.run(config, output_dir)` does the same and returns the domain. A
+configuration can also be a configuration directory, such as
+`umwm.Domain("examples/seamount", "runs/seamount")`, which reads its
+`main.nml`, `spectrum.nml` and `exclude.nml`, and its input files from its
+`input/` directory, or the path of a main namelist file. The configuration
+directory is never written to: the copy of its `main.nml` in the output
+directory keeps its comments, unless the configuration is changed.
+`Domain(config, output_dir, input_dir=...)` reads the input files from
+another directory; the input directory of a configuration made in Python is
+`input/` in the output directory.
 
 The model prints its progress to the standard output, through the Fortran
 runtime, so Python's `sys.stdout` redirection does not catch it (and in a
@@ -152,22 +159,21 @@ is set. `write_forcing` writes such a file from arrays of shape `(ny, nx)`,
 and `write_forcing_dataset` one file per time of an xarray dataset with
 dimensions `(time, y, x)`, for example from a reanalysis interpolated to the
 model grid. With `config.forcing.steady`, the forcing is read once, from
-`input/umwmin.nc`, and held constant; `write_forcing(..., steady=True)`
+`umwmin.nc` of the input directory, and held constant; `write_forcing(..., steady=True)`
 writes that file, and `umwm.forcing_files(config)` lists the files the model
 reads:
 
 ```python
 for time in config.step_times():
     domain.write_forcing(time, uw=uw, vw=vw)          # into domain.input_dir
-umwm.write_forcing("runs/case1/input", time, uw=uw, vw=vw, lon=lon, lat=lat)
-umwm.write_forcing_dataset("runs/case1/input", winds, rename={"u10": "uw", "v10": "vw"})
+umwm.write_forcing("case1/input", time, uw=uw, vw=vw, lon=lon, lat=lat)
+umwm.write_forcing_dataset("case1/input", winds, rename={"u10": "uw", "v10": "vw"})
 ```
 
 With `config.grid.gridfromfile` the longitudes and latitudes are read from
-`input/umwm.grid` (or `umwm.gridtopo`), and with `config.grid.topofromfile`
-the water depth from `input/umwm.gridtopo`; `write_grid(path, lon, lat,
-depth=None)` writes them. `Domain(config, workdir, input_dir=...)` links an
-existing directory of input files as `workdir/input`.
+`umwm.grid` (or `umwm.gridtopo`) of the input directory, and with
+`config.grid.topofromfile` the water depth from `umwm.gridtopo`;
+`write_grid(path, lon, lat, depth=None)` writes them.
 
 `write_rankine_forcing` writes hourly files for an idealized, translating
 hurricane vortex, the test case of the model; see `python/examples/rankine.py`.
@@ -205,10 +211,10 @@ fsspec, aiohttp).
 config = umwm.Config.from_case("era5-helene")       # hurricane Helene, Gulf of Mexico
 config.domain.starttimestr = "2024-10-09 00:00:00"  # or another time: Milton
 config.domain.stoptimestr = "2024-10-10 00:00:00"
-with umwm.Domain(config, "runs/milton") as domain:
+with umwm.Domain(config, "runs/milton", input_dir="milton/input") as domain:
     domain.run()                                    # prepares the input files, then runs
 
-umwm.sources.prepare_inputs(config, "runs/milton/input")    # or beforehand
+umwm.sources.prepare_inputs(config, "milton/input")        # or beforehand
 domain.prepare_inputs(force=True)                           # again, replacing them
 ```
 
@@ -235,9 +241,10 @@ case = umwm.get_case("titan")                # by name, or a unique prefix of it
 print(case.description, case.notes())        # one line, and the comments of its namelist
 config = umwm.Config.from_case("jonswap")    # with its spectrum output points
 domain = umwm.run(config, "runs/jonswap")
-domain = umwm.run(case.namelist, "runs/titan")   # keeps the comments in runs/titan/namelists
-with umwm.get_case("seamount").domain("runs/seamount") as domain:   # with a copy of its input files
+domain = umwm.run(case.directory, "runs/titan")  # keeps the comments in runs/titan/umwmout_main.nml
+with umwm.get_case("seamount").domain("runs/seamount") as domain:   # reads the input files of the case
     domain.run()
+case.copy_inputs("seamount/input")           # copy them, as umwm init --case does
 ```
 
 ### Model state
@@ -288,10 +295,10 @@ domain or from paths:
 output = domain.output()                     # gridded: (time, y, x), Stokes (time, z, y, x)
 spectra = domain.spectrum_output()           # {point name: Dataset (time, direction, frequency)}
 restarts = domain.restart_files()            # paths; umwm.open_restart(path)
-grid = domain.grid()                         # output/umwmout.grid
+grid = domain.grid()                         # umwmout.grid of the output directory
 
-umwm.open_output("runs/case1")               # a run or output directory, a file, a glob, or paths
-umwm.open_spectrum_output("runs/case1/output")
+umwm.open_output("runs/case1")               # an output directory, a file, a glob, or paths
+umwm.open_spectrum_output("runs/case1")
 ```
 
 Gridded output files, one per output time, are concatenated along `time`,
@@ -305,7 +312,7 @@ holding a tile of the cells (`domain.sizes["istart"]` to `"iend"`):
 
 ```
 mpiexec -n 4 python script.py
-mpiexec -n 4 umwm run -w runs/case1
+mpiexec -n 4 umwm run case1 -o runs/case1
 ```
 
 `Domain` initialization, `advance`, `run`, `grid_field` and `state` are
@@ -334,7 +341,7 @@ restores gradual underflow.
 ## Configuration
 
 `Config` mirrors `main.nml`: one dataclass per namelist group, with the
-namelist variable names, and the defaults of `namelists/main.nml`.
+namelist variable names, and the defaults of the model.
 
 | Group | Class | Contents |
 | --- | --- | --- |
@@ -357,14 +364,14 @@ configurations.
 written to `exclude.nml`, for `grid.filllakes`.
 
 ```python
-config = umwm.Config.from_namelist("namelists/main.nml")   # also reads spectrum.nml, exclude.nml next to it
+config = umwm.Config.from_namelist("examples/seamount")      # main.nml, and spectrum.nml, exclude.nml if there
 config = umwm.Config.from_case("wave-tank")                  # an example case
 config["domain.dtg"] = 1800                                  # dotted keys, with conversion from strings
 config.update({"output.outgrid": 1}, forcing__winds=True)
 config.start_time, config.stop_time                          # datetimes of the time strings
 config.step_times()                                          # the global time steps
 config.validate()                                            # raises ConfigError
-config.write("runs/case1/namelists/main.nml")                # main.nml, spectrum.nml, exclude.nml
+config.write("case1")                                        # case1/main.nml, spectrum.nml, exclude.nml
 config.to_namelist(), config.to_dict(), config.to_json()
 umwm.Config.from_dict(...), umwm.Config.from_json(...)
 ```
@@ -375,65 +382,76 @@ the namelist syntax the model uses (groups, scalars, lists, comments).
 ## Command-line tool
 
 ```
-umwm init [WORKDIR] [-s GROUP.NAME=VALUE ...] [--from NAMELIST | --case NAME] [-f]
-umwm config [NAMELIST | --case NAME] [-s GROUP.NAME=VALUE ...] [-o FILE] [--json] [--check] [--describe [GROUP]] [--diff NAMELIST]
-umwm run [NAMELIST|WORKDIR] [-w WORKDIR] [-c NAME] [-i INPUT_DIR] [-s GROUP.NAME=VALUE ...] [-n N] [--until TIME] [--log FILE] [-q] [--check]
+umwm init [DIR] [-s GROUP.NAME=VALUE ...] [--from CONFIG | --case NAME] [-f]
+umwm config [CONFIG | --case NAME] [-s GROUP.NAME=VALUE ...] [-o FILE] [--json] [--check] [--describe [GROUP]] [--diff CONFIG]
+umwm run CONFIG [-o OUTPUT] [-i INPUT] [-s GROUP.NAME=VALUE ...] [-n N] [--until TIME] [--log FILE] [-q] [--check]
 umwm cases [NAME]
-umwm forcing rankine [-w WORKDIR] [--hours N] [--nx N --ny N --dx M --dy M] [--vmax V --rmw R ...]
-umwm forcing era5 [NAMELIST|WORKDIR] [-w WORKDIR] [-i INPUT_DIR] [-s GROUP.NAME=VALUE ...] [-f] [--url URL] [--workers N]
-umwm output [SOURCE] [-v VAR ...] [--stats] [--spectrum] [--plot VAR [--time T] [--level L] [--save FILE]]
-umwm clean [WORKDIR] [--keep-output] [--keep-restart]
+umwm forcing rankine [-i INPUT] [--hours N] [--nx N --ny N --dx M --dy M] [--vmax V --rmw R ...]
+umwm forcing era5 CONFIG [-i INPUT] [-s GROUP.NAME=VALUE ...] [-f] [--url URL] [--workers N]
+umwm output [OUTPUT] [-v VAR ...] [--stats] [--spectrum] [--plot VAR [--time T] [--level L] [--save FILE]]
+umwm clean [OUTPUT] [--keep-output] [--keep-restart]
 umwm info
 ```
 
-A typical session: create a run directory with default namelists, adjust
-them, generate or copy the input files, run, and look at the output.
+`CONFIG` is a configuration directory, with the `main.nml` namelist, the
+`spectrum.nml` points of the spectrum output and, with `fillLakes`, the
+`exclude.nml` cells, or the path of a main namelist file, whose directory
+holds the others. `umwm run CONFIG` runs it like the `umwm` executable: it
+reads the input files from `CONFIG/input`, or `-i INPUT`, and writes the
+output and restart files, with copies of the namelists (`umwmout_main.nml`
+and the others), to the current directory, or `-o OUTPUT`, created if
+needed. The overrides of `-s` apply to the run only: they are in the copy
+of the namelist in the output directory, and are not written to the
+configuration.
+
+A typical session: create a configuration directory with default namelists,
+adjust them, generate or copy the input files, run, and look at the output.
 
 ```
-umwm init runs/case1 -s domain.stoptimestr="2026-01-01 12:00:00" -s forcing.winds=.true.
-umwm forcing rankine -w runs/case1 --hours 12 --nx 21 --ny 11
-umwm run runs/case1 -s forcing.currents=.true. --log runs/case1/run.log
+umwm init case1 -s domain.stoptimestr="2026-01-01 12:00:00" -s forcing.winds=.true.
+umwm forcing rankine -i case1/input --hours 12 --nx 21 --ny 11
+umwm run case1 -o runs/case1 -s forcing.currents=.true. --log runs/case1.log
 umwm output runs/case1 --stats -v swh mwp cd
 umwm output runs/case1 --plot swh --save swh.png
 umwm clean runs/case1
 ```
 
-The example cases run with `--case NAME` (or a unique prefix of the name),
-by default in a run directory named after the case, into which the input
-files of the case are copied, and `umwm cases` lists them; `umwm init --case
-NAME` creates a run directory from a case to edit, which `umwm run --case`
-does not overwrite unless given `--force`:
+The example cases are configuration directories, which `umwm cases` lists
+with their directories; `umwm init --case NAME DIR` (by a unique prefix of
+the name) copies one, with its input files, into a directory to edit:
 
 ```
 umwm cases                                       # list the example cases
 umwm cases titan                                 # describe titan-ontario-lacus
-umwm run --case jonswap                          # in ./jonswap
-umwm run --case jonswap runs/j15 -s forcing_constant.wspd0=15
-umwm output jonswap --stats
-umwm init --case wave-tank runs/tank             # then edit and 'umwm run runs/tank'
+umwm run examples/jonswap -o runs/jonswap
+umwm run examples/jonswap -o runs/j15 -s forcing_constant.wspd0=15
+umwm output runs/jonswap --stats
+umwm init --case wave-tank tank                  # then edit and 'umwm run tank -o runs/tank'
 umwm config --case mars --diff defaults          # what the case changes
 ```
 
-`umwm run` reads `namelists/main.nml` of the run directory (the current
-directory by default) like the `umwm` executable does; `-s` overrides are
-written back to the namelist so that the run is reproducible. With a data
-source (`forcing.source`), it prepares the missing input files first, and
-`umwm forcing era5` prepares them without running, for example before a
-parallel run of the `umwm` executable on nodes without network access:
+With a data source (`forcing.source`), `umwm run` prepares the missing input
+files first, in the input directory, and `umwm forcing era5` prepares them
+without running, for example before a parallel run of the `umwm` executable
+on nodes without network access:
 
 ```
-umwm init --case era5-helene runs/gulf -s domain.stoptimestr="2024-09-27 12:00:00"
-umwm forcing era5 runs/gulf          # the input files, from ERA5
-cd runs/gulf && mpiexec -n 8 ../../umwm
+umwm init --case era5-helene gulf -s domain.stoptimestr="2024-09-27 12:00:00"
+umwm forcing era5 gulf               # the input files in gulf/input, from ERA5
+mpiexec -n 8 ./umwm gulf -o runs/gulf
 ```
- `--check`
-validates the configuration and the input files without running and prints
-a summary of the run; `--log` and `--quiet` send the output of the model to
-a file or discard it. Under `mpiexec`, `umwm run` runs the model in
-parallel, and `umwm run -n 4` launches `mpiexec -n 4` itself (the launcher
-command can be set with `UMWM_MPIEXEC`). `umwm config --describe` documents
-the namelist variables, and `umwm config A --diff B` compares two
-configurations.
+
+`--check` validates the configuration and the input files without running
+and prints a summary of the run; `--log` and `--quiet` send the output of
+the model to a file or discard it. Under `mpiexec`, `umwm run` runs the
+model in parallel, and `umwm run -n 4` launches `mpiexec -n 4` itself (the
+launcher command can be set with `UMWM_MPIEXEC`). `umwm clean` removes the
+output and restart files the model writes to an output directory, and
+nothing else: it keeps the copies of the namelists, which may be run again
+as a configuration (but not with `-s` overrides in place, which would
+replace them; `umwm run` refuses that). `umwm
+config --describe` documents the namelist variables, and `umwm config A
+--diff B` compares two configurations.
 
 ## Tests
 

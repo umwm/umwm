@@ -8,19 +8,23 @@ Configure, run, and inspect the wave model from Python::
     config.domain.stoptimestr = "2026-01-01 03:00:00"
     config.forcing_constant.wspd0 = 15.0
 
-    with umwm.Domain(config, workdir="runs/case1") as domain:
+    with umwm.Domain(config, output_dir="runs/case1") as domain:
         domain.run()
         swh = domain.grid_field("swh")   # NumPy array (ny, nx)
         output = domain.output()          # xarray.Dataset of the output files
 
+``umwm.Domain("examples/seamount", "runs/seamount")`` runs a configuration
+directory, with its ``main.nml`` and ``spectrum.nml`` and its input files in
+``input/``, like the ``umwm`` executable does with ``umwm examples/seamount
+-o runs/seamount``.
 The model runs in the compiled Fortran library; Python drives it through
 its C API and views its memory without copying. ``umwm.list_cases()`` lists
 the example cases, idealized configurations with constant forcing,
 ``umwm.Config.from_case("jonswap")`` reads the configuration of one, and
-``umwm.get_case("seamount").domain(workdir)`` is a domain of one with a copy
-of its input files, for the cases that have them. With a data source of the
-input files, such as ``config.forcing.source = "era5"``, the domain prepares
-its missing input files from it; see :mod:`umwm.sources`.
+``umwm.get_case("seamount").domain(output_dir)`` is a domain of one, which
+reads its input files from the case. With a data source of the input files,
+such as ``config.forcing.source = "era5"``, the domain prepares its missing
+input files from it in its input directory; see :mod:`umwm.sources`.
 """
 
 from ._library import LibraryNotFoundError, barrier, find_library, flush_denormals, library, mpi, rank, size

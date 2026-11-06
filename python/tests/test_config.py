@@ -7,12 +7,12 @@ from umwm.config import GROUPS, Config, ConfigError, SpectrumPoint, parse_value
 
 
 def test_defaults_match_repository_namelist(repo_root):
-    """The Python defaults are those of namelists/main.nml in the repository."""
-    config = Config.from_namelist(repo_root / "namelists" / "main.nml")
+    """The Python defaults are those of tests/namelists/default_main.nml."""
+    config = Config.from_namelist(repo_root / "tests" / "namelists" / "default_main.nml")
     defaults = Config()
     for group in GROUPS:
         assert getattr(config, group) == getattr(defaults, group), group
-    # spectrum.nml and exclude.nml next to main.nml are picked up
+    # default_spectrum.nml and default_exclude.nml next to it are picked up
     assert [point.name for point in config.spectrum_points] == ["test_loc1", "test_loc2", "test_loc3"]
     assert config.exclude_points == [(5, 5)]
 
@@ -162,13 +162,29 @@ def test_describe_and_diff(repo_root):
 
 
 def test_from_namelist_directory(tmp_path):
-    workdir = tmp_path / "case"
+    """A configuration directory holds main.nml and the namelists beside it,
+    which a main namelist named *main.nml has with its prefix, as the copies
+    of an output directory."""
+    from umwm.config import sibling_namelist
+
+    config_dir = tmp_path / "case"
     config = Config()
     config.domain.mm = 33
-    config.write(workdir / "namelists" / "main.nml")
-    assert Config.from_namelist(workdir).domain.mm == 33
-    with pytest.raises(FileNotFoundError):
+    config.spectrum_points = [SpectrumPoint("center", x=11, y=6)]
+    assert config.write(config_dir / "main.nml") == config_dir / "main.nml"
+    assert Config.from_namelist(config_dir).domain.mm == 33
+    assert Config.from_namelist(config_dir).spectrum_points == config.spectrum_points
+    copy = config.write(tmp_path / "out" / "umwmout_main.nml")
+    assert (tmp_path / "out" / "umwmout_spectrum.nml").is_file()
+    assert Config.from_namelist(copy).spectrum_points == config.spectrum_points
+    assert config.write(config_dir) == config_dir / "main.nml"
+    assert sibling_namelist(tmp_path / "lake.nml", "exclude.nml") == tmp_path / "exclude.nml"
+    assert sibling_namelist(tmp_path / "domain.nml", "spectrum.nml") == tmp_path / "spectrum.nml"
+    assert sibling_namelist(tmp_path / "run_main.nml", "spectrum.nml") == tmp_path / "run_spectrum.nml"
+    with pytest.raises(FileNotFoundError, match="no main.nml in the configuration directory"):
         Config.from_namelist(tmp_path)
+    with pytest.raises(FileNotFoundError, match="configuration not found"):
+        Config.from_namelist(tmp_path / "missing")
 
 
 @pytest.mark.parametrize("change, ok", [

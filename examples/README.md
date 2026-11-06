@@ -26,32 +26,27 @@ writes them.
 
 ## Running a case
 
-With the `umwm` executable, `--case NAME` runs a case in the current
-directory, which needs an `output/` directory for the output files, as the
-UMWM directory has. A unique prefix of the name is enough:
+Each case is a configuration directory: the `umwm` executable runs it with
+`umwm CONFIG`, writing the output to the directory given with `-o`, created
+if needed, or else the current directory, and reading the input files of
+the cases that have them from their `input/` directory:
 
 ```
 ./umwm --list-cases
-./umwm --case jonswap
-./umwm --case titan                  # titan-ontario-lacus
-mpiexec -n 2 ./umwm --case jonswap   # in parallel
+./umwm examples/jonswap -o runs/jonswap
+./umwm examples/titan-ontario-lacus -o runs/titan
+mpiexec -n 2 ./umwm examples/jonswap -o runs/jonswap-parallel   # in parallel
 ```
 
-Each case writes its output to `output/` of the current directory, over
-the output of any earlier run, so run each case in its own directory to
-keep their output apart. The executable finds the cases in `examples/` of
-the current directory or of the directory of the executable, also when it
-is started through `PATH` or a symbolic link, or in `$UMWM_EXAMPLES`:
-
-```
-mkdir -p runs/jonswap/output && cd runs/jonswap
-../../umwm --case jonswap
-```
-
-`./umwm path/to/main.nml` runs any other namelist, such as a copy of a case
-that you changed; its `spectrum.nml` is read from the same directory. A case
-reads its input files from its own `input/` directory, while other runs read
-them from `input/` of the current directory.
+A run writes its output files, and copies of the namelists of the case,
+`umwmout_main.nml` and `umwmout_spectrum.nml`, to the output directory, over
+the output of any earlier run there, so give each run its own output
+directory to keep their output apart. A run leaves the case as it is,
+except that the ERA5 cases prepare their input files in their `input/`
+directory unless `-i` gives another, as in the [ERA5 cases](#era5-cases)
+below. The executable lists the cases of `examples/` of the current directory or of
+the directory of the executable, also when it is started through `PATH` or
+a symbolic link, or of `$UMWM_EXAMPLES`.
 
 In parallel, the processes share the sea cells and the results are the same
 as those of a serial run. The cases are small, so a few processes are
@@ -59,37 +54,35 @@ enough: `fetch-limited`, `jonswap` and `wave-tank`, four grid columns wide,
 run on up to four processes, and `duration-limited`, a single sea cell, only
 in serial.
 
-With the [Python command-line tool](../python/README.md), `umwm run --case
-NAME` runs a case in a run directory, by default a directory named after the
-case, with `-s` to change any namelist variable:
+With the [Python command-line tool](../python/README.md), `umwm run CONFIG`
+runs a case in the same way, with `-s` to change any namelist variable for
+the run, and `umwm init --case NAME DIR` copies a case, with its input
+files, into a directory to edit:
 
 ```
-umwm cases                                       # list the cases
+umwm cases                                       # list the cases, with their directories
 umwm cases titan                                 # describe one
-umwm run --case jonswap                          # in ./jonswap
-umwm run --case jonswap runs/j15 -s forcing_constant.wspd0=15
-umwm output jonswap --stats                      # summarize the output
-umwm output jonswap --plot swh --save swh.png
-umwm init --case mars runs/mars                  # a run directory to edit
-umwm init --case seamount runs/sm                # with a copy of the input files
+umwm run examples/jonswap -o runs/jonswap
+umwm run examples/jonswap -o runs/j15 -s forcing_constant.wspd0=15
+umwm output runs/jonswap --stats                 # summarize the output
+umwm output runs/jonswap --plot swh --save swh.png
+umwm init --case mars mars                       # a configuration to edit
+umwm init --case seamount seamount               # with a copy of the input files
 umwm config --case titan --diff defaults         # what the case changes
 ```
 
-`umwm run --case` and `umwm init --case` copy the input files of a case into
-the `input/` directory of the run directory. `umwm run --case` does not
-replace a namelist or input files there that differ from those of the case,
-such as those of a run directory created with `umwm init --case` and
-edited, unless given `--force`; run such a directory with `umwm run DIR`.
-From Python, `umwm.Config.from_case(name)` reads the configuration of a
-case, `umwm.list_cases()` lists them, and `case.domain(workdir)` is a
-domain of a case with its input files:
+The overrides of `-s` are in the copy of the namelist in the output
+directory, `umwmout_main.nml`, and are not written to the case. From Python,
+`umwm.Config.from_case(name)` reads the configuration of a case,
+`umwm.list_cases()` lists them, and `case.domain(output_dir)` is a domain of
+a case, which reads its input files from the case:
 
 ```python
 import umwm
 
 config = umwm.Config.from_case("jonswap")
 config.forcing_constant.wspd0 = 15.0
-with umwm.Domain(config, workdir="runs/jonswap15") as domain:
+with umwm.Domain(config, output_dir="runs/jonswap15") as domain:
     domain.run()
     output = domain.output()
     spectra = domain.spectrum_output()      # {"fetch010km": Dataset, ...}
@@ -98,7 +91,7 @@ with umwm.Domain(config, workdir="runs/jonswap15") as domain:
 The ERA5 cases need the Python package, with the dependencies of ERA5
 (`pip install '.[era5]'` in the UMWM repository), and network access to the
 ARCO ERA5 store of Google; the `umwm` executable prepares their input files
-with it, in `input/` of the current directory (see [ERA5 cases](#era5-cases)).
+with it, in the input directory (see [ERA5 cases](#era5-cases)).
 
 ## Fetch-limited and duration-limited growth
 
@@ -220,7 +213,7 @@ hourly at 10, 20 and 40 km. For the high-pressure (2 bar) atmosphere of
 Schneck et al. (2026):
 
 ```
-umwm run --case mars runs/mars-2bar -s forcing_constant.rhoa0=3.6752 -s physics.nu_air=3.9405e-6
+umwm run examples/mars-jezero-lake -o runs/mars-2bar -s forcing_constant.rhoa0=3.6752 -s physics.nu_air=3.9405e-6
 ```
 
 Schneck et al. (2026) modeled Jezero with winds of 2 to 3 m/s, close to the
@@ -278,12 +271,16 @@ rebuilds its initial spectrum (`waves`), with the significant wave height,
 mean period, mean direction and directional spread of each.
 
 ```
-mkdir -p runs/helene/output && cd runs/helene
-../../umwm --case era5-helene                        # prepares input/, then runs
-umwm run --case era5-global-1deg                     # in ./era5-global-1deg
-umwm init --case era5-helene runs/milton -s domain.starttimestr="2024-10-09 00:00:00" \
-  -s domain.stoptimestr="2024-10-10 00:00:00"        # another hurricane
+./umwm examples/era5-helene -o runs/helene -i runs/helene/input      # prepares the inputs, then runs
+umwm run examples/era5-global-1deg -o runs/global -i runs/global/input   # with the Python tool
+umwm init --case era5-helene milton -s domain.starttimestr="2024-10-09 00:00:00" \
+  -s domain.stoptimestr="2024-10-10 00:00:00"              # another hurricane
+./umwm milton -o runs/milton
 ```
+
+The input files are prepared in the input directory: the directory given
+with `-i`, as above, which leaves the case as it is, or else the `input/`
+directory of the configuration, such as `milton/input`.
 
 **`era5-helene`**: hurricane Helene crossing the Gulf of Mexico on 26
 September 2024, at the 0.25 degrees of ERA5, for 24 hours. The domain is
@@ -313,7 +310,7 @@ hours from the same time, with 38500 sea cells. The domain is periodic in
 longitude and has no open boundaries: its edges, the rows at 78S and 78N,
 are land. The preparation reads 0.24 GB of ERA5 fields, the wave partitions
 at the start time only. A parallel run, such as
-`mpiexec -n 4 ./umwm --case era5-global-1deg`, gives the same results as a
+`mpiexec -n 4 ./umwm examples/era5-global-1deg`, gives the same results as a
 serial one. Against ERA5, the significant wave height of the model differs
 by 0.009 m (0.4%) at the start, 0.37 m (17%) after 6 hours and 0.51 m (23%)
 after 24 hours, and is lower by 0.2 m on average from 6 hours on: the total
@@ -332,9 +329,8 @@ memory between them, with its input files prepared first on a node with
 network access, as a parallel run does not prepare them:
 
 ```
-umwm init --case era5-global-0.25deg runs/global
-umwm forcing era5 runs/global
-cd runs/global && mpiexec -n 64 ../../umwm
+umwm forcing era5 examples/era5-global-0.25deg -i runs/global/input
+mpiexec -n 64 ./umwm examples/era5-global-0.25deg -o runs/global -i runs/global/input
 ```
 
 ## Adding a case

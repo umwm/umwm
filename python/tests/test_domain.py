@@ -24,12 +24,13 @@ def test_lifecycle_constant_wind(library, short_config, tmp_path):
         assert not domain.initialized
         assert domain.time == datetime(2026, 1, 1, 0)
         assert domain.rank == 0 and domain.size == 1
-        assert (domain.workdir / "input").is_dir() and (domain.workdir / "output").is_dir()
+        assert domain.output_dir == (tmp_path / "run").resolve() and domain.output_dir.is_dir()
+        assert domain.input_dir == domain.output_dir / "input" and domain.restart_dir == domain.output_dir
 
         domain.initialize()
         assert domain.initialized and not domain.finished
-        assert (domain.workdir / "namelists" / "main.nml").is_file()
-        assert (domain.workdir / "namelists" / "spectrum.nml").read_text().split() == ["XY", "11", "6", "center"]
+        assert domain.namelist_path == domain.output_dir / "umwmout_main.nml" and domain.namelist_path.is_file()
+        assert (domain.output_dir / "umwmout_spectrum.nml").read_text().split() == ["XY", "11", "6", "center"]
         sizes = domain.sizes
         assert sizes["mm"] == 21 and sizes["nm"] == 11 and sizes["im"] == 171 and sizes["imm"] == 231
         assert sizes["om"] == 37 and sizes["pm"] == 36 and sizes["lm"] == 42
@@ -164,31 +165,39 @@ def test_missing_forcing_raises(library, tmp_path):
     assert not domain.initialized
 
 
-def test_namelist_file_is_preserved(library, rankine_config, repo_root, tmp_path):
-    """A namelist the configuration was read from is not rewritten unless changed."""
-    workdir = tmp_path / "run"
-    (workdir / "namelists").mkdir(parents=True)
+def test_namelist_copies(library, rankine_config, repo_root, tmp_path):
+    """The namelists of the configuration are copied into the output directory
+    with their comments, and with the changes made to the configuration, and
+    the configuration directory is not written to, even as the output
+    directory."""
+    config_dir = tmp_path / "config"
+    config_dir.mkdir()
     source = repo_root / "tests" / "namelists" / "forcing_rankine.nml"
-    target = workdir / "namelists" / "main.nml"
-    target.write_text(source.read_text())
-    domain = umwm.Domain(target, workdir)
-    domain.write_namelists()
-    assert target.read_text() == source.read_text()
-    domain.config.domain.stoptimestr = "2026-01-01 02:00:00"
-    domain.write_namelists()
-    assert target.read_text() != source.read_text()
-    assert umwm.Config.from_namelist(target).domain.stoptimestr == "2026-01-01 02:00:00"
+    (config_dir / "main.nml").write_text(source.read_text())
+    (config_dir / "spectrum.nml").write_text("XY\n11 6 center\n")
+    for output_dir in (tmp_path / "run", config_dir):
+        domain = umwm.Domain(config_dir, output_dir)
+        assert domain.config_dir == config_dir.resolve() and domain.input_dir == config_dir.resolve() / "input"
+        copy = domain.write_namelists()
+        assert copy == output_dir.resolve() / "umwmout_main.nml" and copy.read_text() == source.read_text()
+        assert (output_dir / "umwmout_spectrum.nml").read_text() == "XY\n11 6 center\n"
+        domain.config.domain.stoptimestr = "2026-01-01 02:00:00"
+        domain.config.spectrum_points = []
+        domain.write_namelists()
+        assert umwm.Config.from_namelist(copy).domain.stoptimestr == "2026-01-01 02:00:00"
+        assert not (output_dir / "umwmout_spectrum.nml").exists()
+        assert (config_dir / "main.nml").read_text() == source.read_text()
+        assert (config_dir / "spectrum.nml").read_text() == "XY\n11 6 center\n"
 
 
-def test_input_dir_link(library, rankine_config, tmp_path):
+def test_input_dir(library, rankine_config, tmp_path):
+    """The input directory is given, or the input directory of the
+    configuration directory, or for a configuration made in Python, of the
+    output directory; it is not created."""
     inputs = tmp_path / "shared-inputs"
-    inputs.mkdir()
     domain = umwm.Domain(rankine_config, tmp_path / "run", input_dir=inputs)
-    assert domain.input_dir.is_symlink() and domain.input_dir.resolve() == inputs
-    with pytest.raises(FileExistsError):
-        umwm.Domain(rankine_config, tmp_path / "run", input_dir=tmp_path)
-    with pytest.raises(FileNotFoundError):
-        umwm.Domain(rankine_config, tmp_path / "other", input_dir=tmp_path / "nope")
+    assert domain.input_dir == inputs and not inputs.exists()
+    assert umwm.Domain(rankine_config, tmp_path / "run").input_dir == (tmp_path / "run" / "input").resolve()
 
 
 def test_run_function(library, tmp_path):
@@ -265,24 +274,40 @@ def test_spectrum_at(library, short_config, tmp_path):
 
 
 def test_summary_clean_and_directory_config(library, short_config, tmp_path):
-    workdir = tmp_path / "run"
-    with umwm.Domain(short_config, workdir, quiet=True) as domain:
+    output_dir = tmp_path / "run"
+    with umwm.Domain(short_config, output_dir, quiet=True) as domain:
         text = domain.summary()
         assert "21 x 11 grid points" in text and "constant wind 10 m/s" in text
         domain.run()
         text = domain.summary()
         assert "171 sea cells" in text and "now at 2026-01-01 02:00:00" in text
         assert "gridded every 1 h" in text and "restart every 1 h" in text
-    # a run directory stands for its namelist and becomes the workdir
-    domain = umwm.Domain(workdir, quiet=True)
-    assert domain.workdir == workdir.resolve()
+    # the copy of the namelists in the output directory is a configuration
+    domain = umwm.Domain(output_dir / "umwmout_main.nml", output_dir, quiet=True)
+    assert domain.output_dir == output_dir.resolve() and domain.config_dir == output_dir.resolve()
     assert domain.config.domain.stoptimestr == "2026-01-01 02:00:00"
     assert domain.config.spectrum_points[0].name == "center"
+    # it runs again in place, but a change would replace it
+    domain.config.forcing_constant.wspd0 = 3.0
+    with pytest.raises(umwm.ConfigError, match="copy of the namelists in the output directory"):
+        domain.write_namelists()
     removed = domain.clean(restart=False)
     assert {path.name for path in removed} >= {"umwmout.grid", "umwmout_2026-01-01_00:00:00.nc"}
     assert domain.output_files() == [] and len(domain.restart_files()) == 2
     assert domain.clean() and domain.restart_files() == []
     assert domain.clean() == []
+    assert sorted(path.name for path in output_dir.iterdir()) == ["umwmout_main.nml", "umwmout_spectrum.nml"]
+
+
+def test_filllakes_needs_exclude_points(library, short_config, tmp_path):
+    """A configuration made in Python that fills lakes needs its exclude
+    points, which no file in the output directory can give."""
+    short_config.grid.filllakes = True
+    domain = umwm.Domain(short_config, tmp_path / "run")
+    assert domain.missing_inputs() == []
+    assert any("set config.exclude_points" in problem for problem in domain.input_problems())
+    with pytest.raises(ValueError, match="config.exclude_points"):
+        domain.check_inputs()
 
 
 def test_input_problems(library, rankine_config, tmp_path):

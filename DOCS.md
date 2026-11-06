@@ -19,15 +19,24 @@ This file is a technical reference for the physics implemented in the University
 | Dispersion | `src/umwm_dispersion.f90` | Capillary-gravity dispersion relation, wavenumber solve, angular frequency, and group speed. |
 | Initialization and precomputed factors | `src/umwm_domain.f90` | Runtime allocation, spectral coordinates, wave kinematics, integration weights, dissipation constants, CFL limits. |
 | Parallel environment and halo exchange | `src/umwm_env.f90`, `src/umwm_mpi.f90` | Process rank and count; halo exchange and gathering of tile fields. |
-| Command line | `src/umwm_cli.f90` | Arguments of the `umwm` executable: the main namelist to run, by path or as an example case of `examples/` (`--case`), the check of the run directory, and the preparation of the missing input files from a data source (`forcing.source`) with the Python package. |
+| Command line | `src/umwm_cli.f90` | Arguments of the `umwm` executable, `umwm CONFIG [-o OUTPUT] [-i INPUT]`: the configuration directory or main namelist to run, the input directory (`CONFIG/input` by default), the output directory (the current directory by default), which it creates, the copies of the namelists in it, and the preparation of the missing input files from a data source (`forcing.source`) with the Python package. |
 | Data sources | `python/umwm/sources/` | Preparation of the input files on the grid of the model from a reanalysis or forecast: the ERA5 source (`era5.py`), the regridding (`regrid.py`), the wave partitions (`waves.py`), and the files (`prepare.py`). |
 | C API | `src/umwm_capi.f90` | `bind(c)` procedures for foreign-language callers: the domain lifecycle through an opaque handle, and access to the domain fields by name as pointers into the model memory. Used by the Python package in `python/`. |
 
 The main program instantiates one `domain_type` from `src/umwm_domain.f90`
 and calls its `initialize`, `run`, and `finalize` procedures, with the
-main namelist given on the command line (`namelists/main.nml` by default);
-the `spectrum.nml` and `exclude.nml` namelists are read from the directory
-of the main namelist. `run` loops over `advance`, which integrates one
+configuration given on the command line: a directory with `main.nml`, or a
+main namelist file. The `spectrum.nml` and `exclude.nml` namelists are read
+from the directory of the main namelist, with its prefix if its name ends
+with `_main.nml` (`umwmout_spectrum.nml` next to `umwmout_main.nml`). The
+input files are read from the input directory, `CONFIG/input` or the
+directory given with `-i`, and the output and restart files are written to
+the output directory, given with `-o` or else the current directory, with
+copies of the namelists of the run, `umwmout_main.nml`,
+`umwmout_spectrum.nml` and `umwmout_exclude.nml`; a restart reads its
+restart file from the output directory. As the files the model writes are
+all named `umwmout_*`, `umwmspc_*` or `umwmrst_*`, the output directory may
+be the configuration or input directory. `run` loops over `advance`, which integrates one
 global time step `dtg`: the forcing update, the inner loop of source time
 steps, and the output due at the new time; `advance` and `finished` are
 public so that a driver, such as the Python package, can step the model
@@ -606,7 +615,7 @@ G_f = 0.001\text{ to }0.01\,\mathrm{m\,s^{-1}},
 G_p = 0.0006\text{ to }0.01\,\mathrm{m\,s^{-1}}.
 $$
 
-Defaults in `namelists/main.nml` are `sbf_fac = 0.003` and
+The defaults are `sbf_fac = 0.003` and
 `sbp_fac = 0.003`.
 
 ## Nonlinear Downshifting `Snl`
@@ -1462,8 +1471,8 @@ $$
 
 ## Physics Namelist Controls
 
-The main physics controls live in the `PHYSICS` namelist. Defaults below
-are from `namelists/main.nml`.
+The main physics controls live in the `PHYSICS` namelist, with the
+following defaults.
 
 | Parameter | Default | Units | Role |
 | --- | ---: | --- | --- |
@@ -1673,11 +1682,15 @@ the input files of the configuration that are missing are prepared before
 the run, by
 
 - the `umwm` executable, whose root process runs the Python package,
-  `$UMWM_PYTHON -m umwm.cli forcing SOURCE NAMELIST --input-dir INPUT_DIR`
-  (`python3` by default), and checks that the files are then in place;
+  `$UMWM_PYTHON -m umwm.cli forcing SOURCE CONFIG -i INPUT` (`python3` by
+  default), and checks that the files are then in place; a parallel run
+  stops instead, with the command that prepares them;
 - `umwm run` and `umwm.Domain.initialize` of the Python package; and
-- `umwm forcing SOURCE [NAMELIST|WORKDIR]`, beforehand, for example on a
+- `umwm forcing SOURCE CONFIG [-i INPUT]`, beforehand, for example on a
   node with network access before a parallel run on compute nodes.
+
+They are prepared in the input directory of the run, `CONFIG/input` by
+default.
 
 The namelist says which files the model reads, as without a source: the
 grid of `lon0`, `lat0`, `dlon` and `dlat` in `GRID` (or a grid file with

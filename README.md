@@ -128,7 +128,7 @@ precision, and sums over the spectrum in another order. Run it on one GPU as
 in serial, selecting the GPU with `CUDA_VISIBLE_DEVICES`:
 
 ```
-CUDA_VISIBLE_DEVICES=0 ./umwm
+CUDA_VISIBLE_DEVICES=0 ./umwm CONFIG -o OUTPUT
 ```
 
 The GPU build is fast for large grids, of the order of 100,000 sea cells and
@@ -143,7 +143,7 @@ GPU on nodes where the GPUs are numbered by NUMA domain; for example, on a
 node with four GPUs, two on each of two NUMA domains:
 
 ```
-mpirun -np 4 --map-by ppr:2:numa --bind-to numa ./umwm
+mpirun -np 4 --map-by ppr:2:numa --bind-to numa ./umwm CONFIG -o OUTPUT
 ```
 
 The MPI library should be CUDA-aware, as the HPC-X of the SDK, which copies
@@ -196,21 +196,29 @@ by the Make suite.
 
 ### Running UMWM
 
-Running in serial mode:
+The model runs a configuration: a directory with the `main.nml` namelist,
+the `spectrum.nml` points of the spectrum output, and the input files in
+`input/`, such as the [example cases](examples/). Running in serial mode:
 
 ```
-./umwm
+./umwm examples/jonswap -o runs/jonswap
 ```
 
 Running in parallel, for example on 16 cores:
 
 ```
-mpiexec -n 16 ./umwm
+mpiexec -n 16 ./umwm examples/jonswap -o runs/jonswap
 ```
 
-The model runs in the current directory, reading `namelists/main.nml`
-(or the namelist given as the argument, `./umwm path/to/main.nml`) and
-writing its output to `output/`. `./umwm --help` lists the options.
+The model reads the input files from `CONFIG/input`, or the directory given
+with `-i INPUT`, and writes the output and restart files, with copies of the
+namelists, `umwmout_main.nml` and `umwmout_spectrum.nml`, to the directory
+given with `-o OUTPUT`, created if needed, or else the current directory. A
+restart reads its restart file from the output directory. The output
+directory may be the configuration or the input directory, as the files the
+model writes there are all named `umwmout_*`, `umwmspc_*` or `umwmrst_*`.
+The configuration may also be given as its main namelist file, whose
+directory holds the others. `./umwm --help` lists the options.
 
 You can read the full technical reference doc [here](DOCS.md).
 
@@ -220,21 +228,22 @@ The [examples](examples/README.md) directory holds a gallery of idealized
 cases with constant wind: fetch-limited and duration-limited growth, the
 fetches of JONSWAP, a laboratory wave tank, lakes on Titan and Mars with
 their planetary parameters, and waves over a seamount and through a field
-of ocean eddies, whose bathymetry and currents come with the cases. Select
-one with `--case`:
+of ocean eddies, whose bathymetry and currents come with the cases. Each
+case is a configuration directory:
 
 ```
 ./umwm --list-cases
-./umwm --case jonswap
-./umwm --case titan-ontario-lacus
+./umwm examples/jonswap -o runs/jonswap
+./umwm examples/titan-ontario-lacus -o runs/titan
 ```
 
-or with the Python command-line tool, which runs a case in a run directory
-named after it:
+or with the Python command-line tool, which also lists the cases with their
+directories, and copies one into a directory to edit:
 
 ```
 umwm cases
-umwm run --case mars-jezero-lake
+umwm run examples/mars-jezero-lake -o runs/mars
+umwm init --case mars-jezero-lake runs/mars-windy -s forcing_constant.wspd0=8
 ```
 
 ### Running from ERA5
@@ -280,12 +289,16 @@ the model or beforehand, for example before a parallel run on nodes without
 network access:
 
 ```
-./umwm --case era5-helene                    # hurricane Helene in the Gulf of Mexico
-umwm run --case era5-global-1deg             # the global ocean at 1 degree
-umwm init --case era5-helene runs/gulf       # a run directory to edit
-umwm forcing era5 runs/gulf                  # prepare its input files
-cd runs/gulf && mpiexec -n 8 ../../umwm      # and run it in parallel
+./umwm examples/era5-helene -o runs/helene -i runs/helene/input         # hurricane Helene
+umwm run examples/era5-global-1deg -o runs/global -i runs/global/input  # the global ocean at 1 degree
+umwm init --case era5-helene gulf                                       # a configuration to edit
+umwm forcing era5 gulf                                                  # its input files, in gulf/input
+mpiexec -n 8 ./umwm gulf -o runs/gulf                                   # and run it in parallel
 ```
+
+The input files are prepared in the input directory: the directory given
+with `-i`, or else the `input/` directory of the configuration, such as
+`gulf/input`; with `-i`, the example cases are left as they are.
 
 The example cases `era5-helene`, `era5-global-1deg` and `era5-global-0.25deg`
 are templates for other regions and times. [DOCS.md](DOCS.md#wave-partitions-initial-state-and-open-boundaries)
@@ -311,21 +324,21 @@ uv sync && uv run umwm info
 ```python
 import umwm
 
-config = umwm.Config()                        # the defaults of namelists/main.nml
+config = umwm.Config()                        # the model defaults
 config.domain.stoptimestr = "2026-01-01 12:00:00"
 config.forcing_constant.wspd0 = 15.0
 
-with umwm.Domain(config, workdir="runs/case1") as domain:
+with umwm.Domain(config, output_dir="runs/case1") as domain:
     domain.run()
     swh = domain.grid_field("swh")            # NumPy array (ny, nx)
     output = domain.output()                  # xarray.Dataset of the output files
 ```
 
 ```
-umwm init runs/case1 -s domain.stoptimestr="2026-01-01 12:00:00"
-umwm run runs/case1
+umwm init case1 -s domain.stoptimestr="2026-01-01 12:00:00"
+umwm run case1 -o runs/case1
 umwm output runs/case1 --stats
-umwm run --case jonswap          # an example case, in ./jonswap
+umwm run examples/jonswap -o runs/jonswap     # an example case
 ```
 
 See [python/README.md](python/README.md) for the documentation of the

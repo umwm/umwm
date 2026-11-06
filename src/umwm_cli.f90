@@ -1,8 +1,12 @@
 module umwm_cli
-  ! Command-line interface of the umwm executable: selects the main namelist
-  ! to run, given as a path or as the name of an example case of the
-  ! examples gallery, and checks the run directory; prepares the missing
-  ! input files of a configuration with a data source, such as ERA5.
+  ! Command-line interface of the umwm executable,
+  !   umwm CONFIG [-o OUTPUT] [-i INPUT]
+  ! which runs the configuration of CONFIG, a directory with the main.nml
+  ! and spectrum.nml namelists, or a main namelist file whose directory holds
+  ! the others; reads the input files from INPUT (CONFIG/input by default),
+  ! where it prepares the missing ones of a configuration with a data source,
+  ! such as ERA5; and writes the output and restart files, and copies of the
+  ! namelists, to OUTPUT (the current directory by default).
 
   use datetime_module, only: datetime, strptime, timedelta
   use iso_c_binding, only: c_associated, c_char, c_int, c_null_char, c_ptr
@@ -17,9 +21,10 @@ module umwm_cli
   implicit none
 
   private
-  public :: parse_command_line, prepare_inputs, first_pending_input
+  public :: parse_command_line, prepare_inputs, first_pending_input, write_namelist_copies
 
-  character(*), parameter :: default_namelist = 'namelists/main.nml'
+  character(*), parameter :: main_namelist = 'main.nml'
+  character(*), parameter :: copy_prefix = 'umwmout_' ! of the namelist copies in OUTPUT
   character(*), parameter :: cases_index = 'cases.txt'
   integer, parameter :: max_cases = 100
 
@@ -39,24 +44,29 @@ module umwm_cli
       character(kind=c_char), intent(in) :: path(*)
       integer(c_int), value :: mode
     end function c_access
+    integer(c_int) function c_mkdir(path, mode) bind(c, name='mkdir')
+      import :: c_char, c_int
+      character(kind=c_char), intent(in) :: path(*)
+      integer(c_int), value :: mode
+    end function c_mkdir
   end interface
 
 contains
 
-  subroutine parse_command_line(namelist, input_dir, run)
-    ! Sets namelist to the main namelist to run: the path given as the
-    ! argument, the main.nml of the example case given with --case, or
-    ! namelists/main.nml by default; and input_dir to the directory of the
-    ! input files: input/ of the case if it has one, or input/ of the
-    ! current directory, where the input files of a case with a data source
-    ! are prepared.
-    ! run is .false. when the program should stop without running, after
-    ! showing the help or the list of cases. Invalid arguments, an unknown
-    ! case, or a missing output directory stop the program with an error.
-    character(:), allocatable, intent(out) :: namelist, input_dir
+  subroutine parse_command_line(namelist, input_dir, output_dir, run)
+    ! Sets namelist to the main namelist of the configuration given as the
+    ! argument, CONFIG/main.nml of a directory or the file itself; input_dir
+    ! to the directory of the input files, given with -i or else input/ next
+    ! to the main namelist; and output_dir to the directory of the output and
+    ! restart files, given with -o or else the current directory, which is
+    ! created if it does not exist. run is .false. when the program should
+    ! stop without running, after showing the help or the list of cases.
+    ! Invalid arguments, a missing configuration, or an output directory that
+    ! cannot be written to stop the program with an error.
+    character(:), allocatable, intent(out) :: namelist, input_dir, output_dir
     logical, intent(out) :: run
 
-    character(:), allocatable :: argument, case_name
+    character(:), allocatable :: argument, config
     integer :: n
 
     run = .true.
@@ -72,87 +82,68 @@ contains
         call print_cases()
         run = .false.
         return
-      case ('-c', '--case')
-        if (n == command_argument_count()) call fail('option ' // argument // ' requires a case name')
+      case ('-o', '--output')
+        if (n == command_argument_count()) call fail('option ' // argument // ' requires a directory')
         n = n + 1
-        case_name = get_argument(n)
+        output_dir = get_argument(n)
+      case ('-i', '--input')
+        if (n == command_argument_count()) call fail('option ' // argument // ' requires a directory')
+        n = n + 1
+        input_dir = get_argument(n)
       case default
-        if (index(argument, '--case=') == 1) then
-          case_name = argument(len('--case=')+1:)
+        if (index(argument, '--output=') == 1) then
+          output_dir = argument(len('--output=')+1:)
+        else if (index(argument, '--input=') == 1) then
+          input_dir = argument(len('--input=')+1:)
         else if (index(argument, '-') == 1) then
           call fail('unknown option ' // argument // '; see umwm --help')
-        else if (allocated(namelist)) then
-          call fail('more than one namelist given; see umwm --help')
+        else if (allocated(config)) then
+          call fail('more than one configuration given: ' // config // ' and ' // argument &
+                    // '; see umwm --help')
         else
-          namelist = argument
+          config = argument
         end if
       end select
       n = n + 1
     end do
 
-    input_dir = 'input'
-    if (allocated(case_name)) then
-      if (allocated(namelist)) call fail('give either a namelist or --case, not both')
-      namelist = case_namelist(case_name)
-      if (path_exists(namelist(1:index(namelist, '/', back=.true.)) // 'input')) &
-        input_dir = namelist(1:index(namelist, '/', back=.true.)) // 'input'
-    else if (.not. allocated(namelist)) then
-      namelist = default_namelist
-    end if
-
-    if (.not. file_exists(namelist)) call fail('namelist file not found: ' // namelist)
-    call check_output_directory()
+    if (.not. allocated(config)) call fail('no configuration given; usage: umwm CONFIG ' &
+                                           // '[-o OUTPUT] [-i INPUT], see umwm --help')
+    if (len(config) == 0) call fail('the configuration is an empty path')
+    namelist = config_namelist(config)
+    if (.not. allocated(input_dir)) input_dir = namelist(1:index(namelist, '/', back=.true.)) // 'input'
+    if (.not. allocated(output_dir)) output_dir = '.'
+    if (len(input_dir) == 0) call fail('the input directory is an empty path')
+    if (len(output_dir) == 0) call fail('the output directory is an empty path')
+    call prepare_output_directory(output_dir)
 
   end subroutine parse_command_line
 
 
-  function case_namelist(name) result(namelist)
-    ! The main namelist of the example case of the given name, or of the
-    ! only case whose name starts with it.
-    character(*), intent(in) :: name
+  function config_namelist(config) result(namelist)
+    ! The main namelist of the configuration config: config/main.nml if it
+    ! is a directory, or the file itself.
+    character(*), intent(in) :: config
     character(:), allocatable :: namelist
     character(:), allocatable :: dir
-    type(case_type) :: cases(max_cases)
-    integer :: ncases, n, match, matches
+    integer :: n
 
-    dir = examples_dir()
-    call read_cases(dir, cases, ncases)
-
-    match = 0
-    matches = 0
-    do n = 1, ncases
-      if (trim(cases(n) % name) == name) then
-        match = n
-        matches = 1
-        exit
-      end if
-      if (index(cases(n) % name, name) == 1) then
-        match = n
-        matches = matches + 1
-      end if
+    n = len(config)
+    do while (n > 1 .and. config(n:n) == '/')
+      n = n - 1
     end do
-
-    if (matches /= 1) then
-      if (nproc == 0) then
-        if (matches == 0) then
-          write(*, '(a)') 'umwm: error: unknown case ' // name // '; the example cases are:'
-        else
-          write(*, '(a)') 'umwm: error: ' // name // ' matches more than one case:'
-        end if
-        do n = 1, ncases
-          if (matches == 0 .or. index(cases(n) % name, name) == 1) &
-            write(*, '(2x, a)') trim(cases(n) % name)
-        end do
-        flush(output_unit)
-      end if
-      stop 1
+    dir = config(1:n)
+    if (path_exists(dir // '/.')) then
+      namelist = dir // '/' // main_namelist
+      if (.not. file_exists(namelist)) call fail('no ' // main_namelist // ' in the configuration ' &
+                                                 // 'directory ' // dir)
+    else if (path_exists(config)) then
+      namelist = config
+    else
+      call fail('configuration not found: ' // config)
     end if
 
-    namelist = dir // '/' // trim(cases(match) % name) // '/main.nml'
-    if (nproc == 0) write(*, '(a)') 'umwm: running example case ' &
-      // trim(cases(match) % name) // ' from ' // namelist
-
-  end function case_namelist
+  end function config_namelist
 
 
   function examples_dir() result(dir)
@@ -288,7 +279,7 @@ contains
     do n = 1, ncases
       write(*, '(2x, a24, 1x, a)') cases(n) % name, trim(cases(n) % description)
     end do
-    write(*, '(a)') 'Run one in the current directory with: umwm --case NAME'
+    write(*, '(a)') 'Run one with: umwm ' // dir // '/NAME -o OUTPUT'
 
   end subroutine print_cases
 
@@ -296,51 +287,131 @@ contains
   subroutine print_help()
     if (nproc /= 0) return
     write(*, '(a)') &
-      'Usage: umwm [NAMELIST]', &
-      '       umwm --case NAME', &
+      'Usage: umwm CONFIG [-o OUTPUT] [-i INPUT]', &
       '       umwm --list-cases', &
       '', &
-      'Runs the University of Miami Wave Model in the current directory, which holds', &
-      'the input/, output/ and restart/ directories of the run; an example case', &
-      'reads its input files, if it has any, from its own input/ directory.', &
+      'Runs the University of Miami Wave Model with the configuration CONFIG: a', &
+      'directory with the main.nml namelist, the spectrum.nml points of the spectrum', &
+      'output, and with fillLakes the exclude.nml cells, or a main namelist file', &
+      'whose directory holds the others.', &
+      '', &
+      '  CONFIG              the configuration directory, or its main namelist file', &
+      '  -o, --output DIR    write the output and restart files to DIR, created if', &
+      '                      needed (default: the current directory), with copies', &
+      '                      of the namelists, umwmout_main.nml and the others;', &
+      '                      a restart reads its restart file from DIR too', &
+      '  -i, --input DIR     read the input files from DIR (default: CONFIG/input)', &
+      '  -l, --list-cases    list the example cases', &
+      '  -h, --help          show this help', &
+      '', &
+      'The output directory may be the configuration or input directory: the files', &
+      'the model writes there are all named umwmout_*, umwmspc_* or umwmrst_*.', &
       '', &
       'With a data source in the FORCING namelist, such as source = ''era5'', the', &
-      'missing input files, and those it prepared for another grid, are prepared', &
-      'before the run with the umwm Python package:', &
-      '$UMWM_PYTHON -m umwm.cli forcing SOURCE NAMELIST (python3 by default).', &
+      'missing input files, and those it prepared for another grid, are prepared in', &
+      'the input directory before the run, with the umwm Python package:', &
+      '$UMWM_PYTHON -m umwm.cli forcing SOURCE CONFIG -i INPUT (python3 by default).', &
       '', &
-      '  NAMELIST          the main namelist to run (default: ' // default_namelist // ')', &
-      '  -c, --case NAME   run the example case NAME; a unique prefix of the name', &
-      '                    is enough, such as --case titan', &
-      '  -l, --list-cases  list the example cases', &
-      '  -h, --help        show this help', &
-      '', &
-      'The example cases are read from $UMWM_EXAMPLES if set, otherwise from', &
-      'examples/ in the current directory or next to the executable.'
+      'The example cases are in $UMWM_EXAMPLES if set, otherwise in examples/ in the', &
+      'current directory or next to the executable; run one with, for example,', &
+      'umwm examples/jonswap -o runs/jonswap.'
 
   end subroutine print_help
 
 
-  subroutine check_output_directory()
-    ! Stops with an error if the output directory cannot be written to. The
-    ! root process tests it and tells the others, so that all of them stop.
-    integer :: unit, stat
+  subroutine prepare_output_directory(dir)
+    ! Creates the output directory dir and its parents if they do not exist,
+    ! and stops with an error if it cannot be written to. The root process
+    ! does it and tells the others, so that all of them stop.
+    character(*), intent(in) :: dir
+    integer :: unit, stat, n
 #ifdef MPI
     integer :: ierr
 #endif
 
     stat = 0
     if (nproc == 0) then
-      open(newunit=unit, file='output/.umwm_write_test', status='replace', iostat=stat)
+      if (.not. path_exists(dir // '/.')) then
+        do n = 2, len(dir)
+          if (dir(n:n) == '/' .and. dir(n-1:n-1) /= '/') stat = c_mkdir(dir(1:n-1) // c_null_char, &
+                                                                       511_c_int) ! 0777, less the umask
+        end do
+        stat = c_mkdir(dir // c_null_char, 511_c_int) ! 0777, less the umask
+      end if
+      open(newunit=unit, file=dir // '/.umwm_write_test', status='replace', iostat=stat)
       if (stat == 0) close(unit, status='delete')
     end if
 #ifdef MPI
     call mpi_bcast(stat, 1, MPI_INTEGER, 0, MPI_COMM_WORLD, ierr)
 #endif
-    if (stat /= 0) call fail('cannot write to output/ in the current directory; ' &
-                             // 'create the run directory with mkdir -p output restart')
+    if (stat /= 0) call fail('cannot create or write to the output directory ' // dir)
 
-  end subroutine check_output_directory
+  end subroutine prepare_output_directory
+
+
+  subroutine write_namelist_copies(namelist, output_dir)
+    ! Copies the main namelist, and the spectrum.nml and exclude.nml next to
+    ! it, into output_dir as umwmout_main.nml, umwmout_spectrum.nml and
+    ! umwmout_exclude.nml, to record the configuration of the output, and
+    ! removes a copy there of a namelist that the configuration does not
+    ! have. Their names differ from those of a configuration, so that the
+    ! output directory may be the configuration directory; a namelist that
+    ! is already the copy is left as it is. Only the root process writes.
+    use umwm_config, only: sibling_namelist
+    character(*), intent(in) :: namelist, output_dir
+    character(*), parameter :: names(3) = [character(12) :: 'main.nml', 'spectrum.nml', 'exclude.nml']
+    character(:), allocatable :: source, target
+    integer :: n
+
+    if (nproc /= 0) return
+    do n = 1, size(names)
+      if (n == 1) then
+        source = namelist
+      else
+        source = sibling_namelist(namelist, trim(names(n)))
+      end if
+      target = output_dir // '/' // copy_prefix // trim(names(n))
+      if (file_exists(source)) then
+        if (real_path(source) /= real_path(target)) call copy_file(source, target)
+      else if (file_exists(target)) then
+        call delete_file(target)
+      end if
+    end do
+
+  end subroutine write_namelist_copies
+
+
+  subroutine copy_file(source, target)
+    ! Copies the file source to target, replacing it.
+    character(*), intent(in) :: source, target
+    character(:), allocatable :: content
+    integer :: unit, stat, size_bytes
+
+    inquire(file=source, size=size_bytes)
+    if (size_bytes < 0) call fail('cannot read ' // source)
+    allocate(character(size_bytes) :: content)
+    open(newunit=unit, file=source, access='stream', form='unformatted', status='old', &
+         action='read', iostat=stat)
+    if (stat /= 0) call fail('cannot read ' // source)
+    if (size_bytes > 0) read(unit, iostat=stat) content
+    close(unit)
+    if (stat /= 0) call fail('cannot read ' // source)
+    open(newunit=unit, file=target, access='stream', form='unformatted', status='replace', &
+         action='write', iostat=stat)
+    if (stat /= 0) call fail('cannot write ' // target)
+    write(unit, iostat=stat) content
+    close(unit)
+    if (stat /= 0) call fail('cannot write ' // target)
+
+  end subroutine copy_file
+
+
+  subroutine delete_file(path)
+    character(*), intent(in) :: path
+    integer :: unit, stat
+    open(newunit=unit, file=path, status='old', iostat=stat)
+    if (stat == 0) close(unit, status='delete')
+  end subroutine delete_file
 
 
   function get_argument(n) result(argument)
@@ -373,7 +444,7 @@ contains
     ! that are missing from input_dir, or that are for another grid, from the
     ! data source of its forcing (source in the FORCING namelist, such as
     ! 'era5'), with the umwm Python package: the root process runs
-    !   $UMWM_PYTHON -m umwm.cli forcing SOURCE NAMELIST --input-dir INPUT_DIR
+    !   $UMWM_PYTHON -m umwm.cli forcing SOURCE NAMELIST -i INPUT_DIR
     ! with python3 by default, which prepares again the files for another
     ! grid that it prepared, and stops at those it did not. Does nothing
     ! without a data source or files to prepare, and stops with an error if
@@ -399,14 +470,14 @@ contains
 
     source = trim(adjustl(config % source))
     command = 'umwm forcing ' // shell_quote(source) // ' ' // shell_quote(namelist) &
-      // ' --input-dir ' // shell_quote(input_dir)
+      // ' -i ' // shell_quote(input_dir)
     if (mpisize > 1) call fail('input file ' // pending // ' ' // reason // '. A parallel run ' &
       // 'does not prepare its input files; prepare them beforehand with: ' // command)
 
     stat = 0
     if (nproc == 0) then
       command = environment('UMWM_PYTHON', 'python3') // ' -m umwm.cli forcing ' &
-        // shell_quote(source) // ' ' // shell_quote(namelist) // ' --input-dir ' &
+        // shell_quote(source) // ' ' // shell_quote(namelist) // ' -i ' &
         // shell_quote(input_dir)
       write(*, '(a)') 'umwm: input file ' // pending // ' ' // reason // '; preparing the ' &
         // 'input files from ' // source // ' with:', '  ' // command
@@ -427,7 +498,8 @@ contains
       // 'the error above. Their preparation needs the umwm Python package, with the ' &
       // 'dependencies of the data source (pip install ".[' // source // ']" in the UMWM ' &
       // 'repository): set UMWM_PYTHON to the Python interpreter that has it, or prepare the ' &
-      // 'input files beforehand with: umwm forcing ' // source // ' ' // namelist)
+      // 'input files beforehand with: umwm forcing ' // source // ' ' // namelist // ' -i ' &
+      // input_dir)
 
     pending = first_pending_input(config, reason)
     if (len(pending) > 0) call fail('input file ' // pending // ' ' // reason // &

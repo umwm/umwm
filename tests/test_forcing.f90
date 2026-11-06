@@ -294,7 +294,7 @@ contains
 
   function valid_config() result(config)
     type(config_type) :: config
-    config = config_type('../namelists/main.nml')
+    config = config_type('namelists/default_main.nml')
   end function valid_config
 
   function rankine_config() result(config)

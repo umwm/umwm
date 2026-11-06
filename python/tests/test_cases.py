@@ -114,25 +114,25 @@ def test_namelist_text_keeps_comments(tmp_path):
 
 @pytest.mark.parametrize("name", sorted(WITH_INPUTS))
 def test_case_inputs(library, tmp_path, name):
-    """The input files of a case are complete and match its grid, and are
-    copied into the run directory; the steady forcing of the eddy field is
-    one file, umwmin.nc."""
+    """The input files of a case are complete and match its grid; a domain of
+    the case reads them from the input directory of the case, and umwm init
+    copies them into a configuration directory, where a copy that differs is
+    kept unless overwritten; the steady forcing of the eddy field is one
+    file, umwmin.nc."""
     case = umwm.get_case(name)
     domain = case.domain(tmp_path / name)
-    assert not domain.input_dir.is_symlink()
-    for path in case.input_dir.iterdir():
-        copied = domain.input_dir / path.name
-        assert not copied.is_symlink() and copied.read_bytes() == path.read_bytes()
+    assert domain.input_dir == case.input_dir.resolve() and domain.output_dir == (tmp_path / name).resolve()
     assert domain.input_problems() == []
-    # An input file that differs is kept, unless overwritten.
-    changed = domain.input_dir / WITH_INPUTS[name][0]
+    copies = tmp_path / "config" / "input"
+    assert [path.name for path in case.copy_inputs(copies)] == WITH_INPUTS[name]
+    changed = copies / WITH_INPUTS[name][0]
     changed.write_bytes(b"changed")
     with pytest.raises(FileExistsError, match="differs from the input file"):
-        case.domain(tmp_path / name)
+        case.copy_inputs(copies)
     assert changed.read_bytes() == b"changed"
-    assert case.copy_inputs(domain.input_dir, overwrite=True) == [changed]
+    assert case.copy_inputs(copies, overwrite=True) == [changed]
     assert changed.read_bytes() == (case.input_dir / changed.name).read_bytes()
-    assert case.copy_inputs(domain.input_dir) == []
+    assert case.copy_inputs(copies) == []
     if domain.config.forcing_from_file:
         domain.config.forcing.steady = False
         assert len(domain.missing_inputs()) == len(domain.config.step_times())
@@ -140,14 +140,20 @@ def test_case_inputs(library, tmp_path, name):
 
 @pytest.mark.parametrize("name", CASES)
 def test_case_runs(library, tmp_path, name):
-    """Each case runs for one global time step from its namelist, which is
-    copied with its comments into the run directory, and writes its output.
-    The cases that prepare their input files from ERA5 run only with
-    UMWM_TEST_ERA5 set, as they read it over the network."""
+    """Each case runs for one global time step from its configuration
+    directory, whose namelists are copied with their comments into the
+    output directory, and writes its output there, leaving the case as it
+    is. The cases that prepare their input files from ERA5 run only with
+    UMWM_TEST_ERA5 set, as they read it over the network, and prepare them
+    in the input directory of the output directory."""
     case = umwm.get_case(name)
-    if case.config().source_name is not None and not os.environ.get("UMWM_TEST_ERA5"):
+    sourced = case.config().source_name is not None
+    if sourced and not os.environ.get("UMWM_TEST_ERA5"):
         pytest.skip(f"{name} prepares its input files from ERA5; set UMWM_TEST_ERA5=1 to read it")
+    before = sorted(path.relative_to(case.directory) for path in case.directory.rglob("*"))
     with case.domain(tmp_path / name, quiet=True) as domain:
+        if sourced:  # prepared in the output directory, not in the case
+            assert domain.input_dir == (tmp_path / name / "input").resolve()
         domain.advance()
         swh = domain.grid_field("swh")
         sea = domain.grid_field("seamask") == 1
@@ -155,8 +161,22 @@ def test_case_runs(library, tmp_path, name):
         assert np.all(np.isfinite(swh[sea])) and (np.nanmin(swh) > 0 or domain.config.forcing.seaice)
         assert np.nanmin(swh) >= 0
         assert domain.namelist_path.read_text(encoding="utf-8") == case.namelist.read_text(encoding="utf-8")
+        assert (domain.output_dir / "umwmout_spectrum.nml").read_text(encoding="utf-8").split() == \
+            (case.directory / "spectrum.nml").read_text(encoding="utf-8").split()
         assert set(domain.spectrum_output()) == {point.name for point in domain.config.spectrum_points}
-        assert umwm.output_files(domain.workdir)
+        assert umwm.output_files(domain.output_dir)
+    assert sorted(path.relative_to(case.directory) for path in case.directory.rglob("*")) == before
+
+
+def test_sourced_case_prepares_in_the_output_directory(library, tmp_path):
+    """A domain of a case that prepares its input files from a data source
+    prepares them in the output directory, not in the case; the other cases
+    read theirs from the case, and input_dir chooses another directory."""
+    helene = umwm.get_case("era5-helene")
+    assert helene.domain(tmp_path / "helene").input_dir == (tmp_path / "helene" / "input").resolve()
+    assert helene.domain(tmp_path / "x", input_dir=tmp_path / "in").input_dir == (tmp_path / "in").resolve()
+    seamount = umwm.get_case("seamount")
+    assert seamount.domain(tmp_path / "seamount").input_dir == seamount.input_dir.resolve()
 
 
 def test_refraction_gradients(library, tmp_path):

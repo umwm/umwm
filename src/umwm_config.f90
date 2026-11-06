@@ -6,7 +6,7 @@ module umwm_config
   implicit none
 
   private
-  public :: config_type
+  public :: config_type, sibling_namelist
 
   integer, parameter :: max_stokes_depths = 100
   integer, parameter :: max_path = 4096 ! the longest path, PATH_MAX of Linux
@@ -18,6 +18,7 @@ module umwm_config
     character(len=max_path) :: path = ''
     character(len=max_path+256) :: read_error = ''
     character(len=max_path) :: input_dir = 'input' ! directory of the input files
+    character(len=max_path) :: output_dir = '.' ! directory of the output and restart files
 
     logical :: isglobal = .false.
     integer :: mm = 0
@@ -96,6 +97,7 @@ module umwm_config
 
   contains
     procedure :: input_path
+    procedure :: output_path
     procedure :: sibling_path
     procedure :: lonlat_grid
     procedure :: forcing_from_file
@@ -317,15 +319,51 @@ contains
   end function input_path
 
 
-  function sibling_path(self, name) result(res)
-    ! The path of the file name in the directory of the main namelist, such
-    ! as the spectrum.nml and exclude.nml namelists that accompany it.
+  function output_path(self, name) result(res)
+    ! The path of the output or restart file name, in the output directory
+    ! of the run.
     class(config_type), intent(in) :: self
     character(len=*), intent(in) :: name
     character(len=:), allocatable :: res
 
-    res = self%path(1:index(self%path, '/', back=.true.)) // name
+    res = trim(self%output_dir) // '/' // name
+  end function output_path
+
+
+  function sibling_path(self, name) result(res)
+    ! The path of the file name in the directory of the main namelist, such
+    ! as the spectrum.nml and exclude.nml namelists that accompany it, with
+    ! the prefix of the main namelist if its name ends with _main.nml: the
+    ! copies umwmout_main.nml and umwmout_spectrum.nml of an output
+    ! directory go together.
+    class(config_type), intent(in) :: self
+    character(len=*), intent(in) :: name
+    character(len=:), allocatable :: res
+
+    res = sibling_namelist(trim(self%path), name)
   end function sibling_path
+
+
+  pure function sibling_namelist(path, name) result(res)
+    ! The path of the namelist file name next to the main namelist at path,
+    ! with the prefix of its name before main.nml if it ends with _main.nml,
+    ! such as umwmout_; a main namelist of another name, such as main.nml
+    ! or domain.nml, has none.
+    character(len=*), intent(in) :: path, name
+    character(len=:), allocatable :: res
+    character(len=*), parameter :: suffix = '_main.nml'
+    integer :: slash, n
+
+    slash = index(path, '/', back=.true.)
+    n = len(path)
+    if (n - slash >= len(suffix)) then
+      if (path(n-len(suffix)+1:n) == suffix) then
+        res = path(1:n-len('main.nml')) // name
+        return
+      end if
+    end if
+    res = path(1:slash) // name
+  end function sibling_namelist
 
 
   logical function lonlat_grid(self)

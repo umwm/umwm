@@ -38,7 +38,7 @@ def test_loads_groups_and_values():
 
 
 def test_loads_repository_namelist(repo_root):
-    groups = namelist.load(repo_root / "namelists" / "main.nml")
+    groups = namelist.load(repo_root / "tests" / "namelists" / "default_main.nml")
     assert list(groups) == ["domain", "physics", "grid", "forcing", "forcing_constant", "output", "stokes"]
     assert groups["domain"]["om"] == 37
     assert groups["physics"]["nu_air"] == pytest.approx(1.56e-5)

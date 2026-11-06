@@ -1,10 +1,12 @@
 """The model domain: configure, run, and inspect a UMWM simulation from Python.
 
 A :class:`Domain` wraps one ``domain_type`` instance of the Fortran model.
-It manages a run directory with the layout the model expects (``namelists/``,
-``input/``, ``output/`` and ``restart/``), writes the namelists from its
-:class:`~umwm.Config`, and drives the model through the C API of the shared
-library, so that the time integration runs entirely in compiled Fortran. The
+It runs a :class:`~umwm.Config` like the ``umwm`` executable runs a
+configuration directory: it reads the input files from an input directory,
+and writes the output and restart files, with copies of the namelists of its
+configuration, to an output directory. It drives the model through the C API
+of the shared library, so that the time integration runs entirely in
+compiled Fortran. The
 model state is accessible as NumPy arrays viewing the Fortran memory, as
 fields gathered to the horizontal grid, and as xarray datasets, and the
 output files as xarray datasets.
@@ -13,7 +15,6 @@ output files as xarray datasets.
 from __future__ import annotations
 
 import contextlib
-import os
 import re
 from datetime import datetime
 from pathlib import Path
@@ -26,31 +27,43 @@ from . import fields as _fields
 from . import output as _output
 from ._library import library
 from ._redirect import redirect_stdout_fd
-from .config import Config, ConfigError, namelist_path, parse_time
+from .config import Config, ConfigError, namelist_path, parse_time, sibling_namelist
 from .forcing import FORCING_VARIABLES, forcing_filename, forcing_files, write_forcing, write_grid
 
-__all__ = ["Domain", "run"]
+__all__ = ["Domain", "run", "clean_output", "NAMELIST_COPY"]
+
+NAMELIST_COPY = "umwmout_main.nml"
+"""The copy of the main namelist that a run writes to its output directory,
+with ``umwmout_spectrum.nml`` and ``umwmout_exclude.nml`` beside it; their
+names differ from those of a configuration directory, which may be the
+output directory."""
 
 INT_ATTRIBUTES = ("mm", "nm", "im", "imm", "istart", "iend", "iistart", "iiend", "om", "pm", "lm")
 
 
 class Domain:
-    """A UMWM model domain in a run directory.
+    """A UMWM model domain.
 
     Parameters
     ----------
     config
-        A :class:`~umwm.Config`, the path of a ``main.nml`` namelist file, a
-        run directory (whose ``namelists/main.nml`` is read, and which
-        becomes the ``workdir`` unless one is given), or ``None`` for the
+        A :class:`~umwm.Config`, a configuration directory (whose
+        ``main.nml``, and ``spectrum.nml`` and ``exclude.nml`` if there, are
+        read) or the path of its main namelist file, or ``None`` for the
         default configuration.
-    workdir
-        The run directory; the current directory by default. It is created
-        with the ``namelists``, ``input``, ``output`` and ``restart``
-        subdirectories if they do not exist.
+    output_dir
+        The directory of the output and restart files, created if it does
+        not exist; the current directory by default. A restart reads its
+        restart file from it too. The run writes there the namelists of its
+        configuration, ``umwmout_main.nml`` and the others (see
+        :data:`NAMELIST_COPY`), which the model reads. It may be the
+        configuration or input directory: the files written there are all
+        named ``umwmout_*``, ``umwmspc_*`` or ``umwmrst_*``.
     input_dir
-        An existing directory with the input files (forcing and grid files),
-        linked as ``workdir/input`` if that does not exist yet.
+        The directory of the input files (forcing and grid files): by
+        default the ``input`` directory of the configuration directory, or,
+        for a :class:`~umwm.Config`, of the output directory. The input
+        files prepared from a data source are written there.
     log
         A file to which the output of the model (and anything else written
         to the standard output while the model runs) is appended instead of
@@ -67,34 +80,33 @@ class Domain:
     :meth:`initialize` prepares the missing input files from it first, and
     again those it prepared for another grid; see :meth:`prepare_inputs`.
 
-    >>> with Domain(config, workdir="runs/case1") as domain:
+    >>> with Domain("examples/jonswap", output_dir="runs/jonswap") as domain:
     ...     domain.run()
     ...     swh = domain.grid_field("swh")
     ...     output = domain.output()
     """
 
-    def __init__(self, config=None, workdir=None, *, input_dir=None, log=None, quiet=False):
+    def __init__(self, config=None, output_dir=None, *, input_dir=None, log=None, quiet=False):
         self._lib = library()
         self._handle = None
         self._source_namelist = None
 
+        self.config_dir = None
         if config is None:
             self.config = Config()
         elif isinstance(config, Config):
             self.config = config
         else:
-            source = Path(config)
-            if source.is_dir() and workdir is None:
-                workdir = source
-            self._source_namelist = namelist_path(source).resolve()
+            self._source_namelist = namelist_path(config).resolve()
             self.config = Config.from_namelist(self._source_namelist)
+            self.config_dir = self._source_namelist.parent
 
-        self.workdir = Path(workdir or Path.cwd()).resolve()
-        self.namelist_dir = self.workdir / "namelists"
-        self.namelist_path = self.namelist_dir / "main.nml"
-        self.input_dir = self.workdir / "input"
-        self.output_dir = self.workdir / "output"
-        self.restart_dir = self.workdir / "restart"
+        self.output_dir = Path(output_dir or Path.cwd()).resolve()
+        if input_dir is not None:
+            self.input_dir = Path(input_dir).resolve()
+        else:
+            self.input_dir = (self.config_dir or self.output_dir) / "input"
+        self.namelist_path = self.output_dir / NAMELIST_COPY
 
         self.quiet = bool(quiet)
         self.log = None
@@ -105,22 +117,13 @@ class Domain:
             self.log = path
 
         if self.rank == 0:
-            for directory in (self.namelist_dir, self.output_dir, self.restart_dir):
-                directory.mkdir(parents=True, exist_ok=True)
-            if input_dir is not None:
-                self._link_input_dir(Path(input_dir).resolve())
-            self.input_dir.mkdir(parents=True, exist_ok=True)
+            self.output_dir.mkdir(parents=True, exist_ok=True)
         self.barrier()
 
-    def _link_input_dir(self, input_dir: Path) -> None:
-        if not input_dir.is_dir():
-            raise FileNotFoundError(f"input directory not found: {input_dir}")
-        if self.input_dir.exists() or self.input_dir.is_symlink():
-            if self.input_dir.resolve() != input_dir:
-                raise FileExistsError(
-                    f"{self.input_dir} exists and is not {input_dir}; remove it to link the input directory")
-            return
-        self.input_dir.symlink_to(input_dir, target_is_directory=True)
+    @property
+    def restart_dir(self) -> Path:
+        """The directory of the restart files: the output directory."""
+        return self.output_dir
 
     # ---- environment --------------------------------------------------------
 
@@ -144,17 +147,6 @@ class Domain:
         self._lib.barrier()
 
     @contextlib.contextmanager
-    def _in_workdir(self):
-        """Run the model with the run directory as the current directory,
-        where the model expects its input, output, and namelist files."""
-        previous = os.getcwd()
-        os.chdir(self.workdir)
-        try:
-            yield
-        finally:
-            os.chdir(previous)
-
-    @contextlib.contextmanager
     def _model_output(self):
         """Send the output of the model to the log file, or discard it when quiet."""
         if self.log is None and not self.quiet:
@@ -175,27 +167,38 @@ class Domain:
         return self._handle
 
     def write_namelists(self) -> Path:
-        """Write ``namelists/main.nml``, and ``spectrum.nml`` and ``exclude.nml``
-        when points are configured, from the configuration.
+        """Write the namelists of the configuration to the output directory:
+        ``umwmout_main.nml``, and ``umwmout_spectrum.nml`` and
+        ``umwmout_exclude.nml`` when points are configured, which the model
+        reads; remove such a copy of points that are not configured; and
+        return the path of the main namelist.
 
-        A namelist file the configuration was read from is left untouched
-        when the configuration still matches it, so that its comments are
-        preserved, and is copied with them into another run directory. Only
-        the root process writes; all processes wait for it.
+        The namelist file the configuration was read from is copied with its
+        comments when the configuration still matches it. The configuration
+        directory is never written to, as the copies are named apart from its
+        namelists; and a configuration that is the copy in the output
+        directory, run again there, raises ``ConfigError`` rather than being
+        replaced by a changed configuration. Only the root process writes;
+        all processes wait for it.
         """
+        path = self.namelist_path
+        files = {path: self.config.namelist_text(self._source_namelist)}
+        for name, points, text in (
+                ("spectrum.nml", self.config.spectrum_points, self.config.spectrum_points_text),
+                ("exclude.nml", self.config.exclude_points, self.config.exclude_points_text)):
+            files[sibling_namelist(path, name)] = text() if points else None
+        changes = [copy for copy, content in files.items()
+                   if (copy.read_text(encoding="utf-8") if copy.is_file() else None) != content]
+        if changes and self._source_namelist == path:
+            raise ConfigError(
+                f"the configuration {path} is the copy of the namelists in the output directory, which the changes "
+                f"to the configuration would replace; edit it, or run it with another output directory")
         if self.rank == 0:
-            if not self._matches_file(self.namelist_path, lambda text: Config.from_namelist_text(text) == self._bare_config()):
-                self.namelist_path.write_text(self.config.namelist_text(self._source_namelist), encoding="utf-8")
-            if self.config.spectrum_points:
-                path = self.namelist_dir / "spectrum.nml"
-                text = self.config.spectrum_points_text()
-                if not (path.is_file() and path.read_text(encoding="utf-8").split() == text.split()):
-                    path.write_text(text, encoding="utf-8")
-            if self.config.exclude_points:
-                path = self.namelist_dir / "exclude.nml"
-                text = self.config.exclude_points_text()
-                if not (path.is_file() and path.read_text(encoding="utf-8").split() == text.split()):
-                    path.write_text(text, encoding="utf-8")
+            for copy in changes:
+                if files[copy] is None:
+                    copy.unlink()
+                else:
+                    copy.write_text(files[copy], encoding="utf-8")
         self.barrier()
         return self.namelist_path
 
@@ -267,8 +270,8 @@ class Domain:
             missing.append(gridtopo)
         elif config.grid.gridfromfile and not (gridtopo.is_file() or (self.input_dir / "umwm.grid").is_file()):
             missing.append(self.input_dir / "umwm.grid")
-        if config.grid.filllakes and not (self.namelist_dir / "exclude.nml").is_file() and not config.exclude_points:
-            missing.append(self.namelist_dir / "exclude.nml")
+        if config.grid.filllakes and not config.exclude_points and self._source_namelist is not None:
+            missing.append(sibling_namelist(self._source_namelist, "exclude.nml"))
         if config.forcing_from_file:
             for name in forcing_files(config):
                 path = self.input_dir / name
@@ -289,6 +292,9 @@ class Domain:
         config = self.config
         mm, nm = config.domain.mm, config.domain.nm
         problems = [f"missing {path}" for path in self.missing_inputs()]
+        if config.grid.filllakes and not config.exclude_points and self._source_namelist is None:
+            problems.append("grid.filllakes is set, but there are no cells of enclosed seas to exclude: set "
+                            "config.exclude_points")
 
         def check(path: Path, variables: list[str], minimum_rank: int) -> None:
             if not path.is_file():
@@ -362,10 +368,9 @@ class Domain:
             self.prepare_inputs()
         self.check_inputs()
         self.write_namelists()
-        namelist = os.path.relpath(self.namelist_path, self.workdir)
-        with self._in_workdir(), self._model_output():
+        with self._model_output():
             handle = self._lib.domain_new()
-            stat = self._lib.domain_initialize(handle, namelist)
+            stat = self._lib.domain_initialize(handle, self.namelist_path, self.input_dir, self.output_dir)
             if stat != 0:
                 self._lib.domain_delete(handle)
                 raise ConfigError(f"the model rejected the configuration in {self.namelist_path}; see the messages above")
@@ -392,7 +397,7 @@ class Domain:
         due at the new time. Returns the new model time."""
         if self._handle is None:
             self.initialize()
-        with self._in_workdir(), self._model_output():
+        with self._model_output():
             self._lib.domain_advance(self._handle)
         return self.time
 
@@ -409,7 +414,7 @@ class Domain:
         if self._handle is None:
             self.initialize()
         if until is None:
-            with self._in_workdir(), self._model_output():
+            with self._model_output():
                 self._lib.domain_run(self._handle)
             return self
         until = until if isinstance(until, datetime) else parse_time(until)
@@ -433,7 +438,7 @@ class Domain:
         model does at its gridded output times (updating the ocean stress
         first), and return its path. Collective in parallel runs."""
         handle = self._require_handle()
-        with self._in_workdir(), self._model_output():
+        with self._model_output():
             self._lib.domain_write_output(handle)
         return self.output_dir / f"umwmout_{self.time:%Y-%m-%d_%H:%M:%S}.nc"
 
@@ -441,7 +446,7 @@ class Domain:
         """Append the spectra at the configured points at the current model
         time to the spectrum output files, and return the files by point name."""
         handle = self._require_handle()
-        with self._in_workdir(), self._model_output():
+        with self._model_output():
             self._lib.domain_write_spectrum(handle)
         return _output.spectrum_output_files(self.output_dir)
 
@@ -450,9 +455,9 @@ class Domain:
         path. A later run restarts from it with ``config.domain.restart``
         set and the start time set to this time. Collective in parallel runs."""
         handle = self._require_handle()
-        with self._in_workdir(), self._model_output():
+        with self._model_output():
             self._lib.domain_write_restart(handle)
-        return self.restart_dir / f"umwmrst_{self.time:%Y-%m-%d_%H:%M:%S}.nc"
+        return self.output_dir / f"umwmrst_{self.time:%Y-%m-%d_%H:%M:%S}.nc"
 
     # ---- teardown -----------------------------------------------------------
 
@@ -466,20 +471,12 @@ class Domain:
     close = finalize
 
     def clean(self, output: bool = True, restart: bool = True) -> list[Path]:
-        """Remove the files the model wrote to the output and restart
-        directories (and nothing else), and return their paths."""
+        """Remove the output and restart files the model writes to the output
+        directory, keeping the copies of the namelists, and nothing else (see
+        :func:`clean_output`); return their paths."""
         removed = []
         if self.rank == 0:
-            patterns = []
-            if output:
-                patterns += [(self.output_dir, "umwmout_*.nc"), (self.output_dir, "umwmspc_*.nc"),
-                             (self.output_dir, "umwmout.grid")]
-            if restart:
-                patterns.append((self.restart_dir, "umwmrst_*.nc"))
-            for directory, pattern in patterns:
-                for path in sorted(directory.glob(pattern)):
-                    path.unlink()
-                    removed.append(path)
+            removed = clean_output(self.output_dir, output=output, restart=restart)
         self.barrier()
         return removed
 
@@ -497,7 +494,7 @@ class Domain:
 
     def __repr__(self) -> str:
         state = f"time={self.time:%Y-%m-%d %H:%M:%S}" if self.initialized else "not initialized"
-        return f"Domain(workdir={str(self.workdir)!r}, {state})"
+        return f"Domain(output_dir={str(self.output_dir)!r}, {state})"
 
     def summary(self) -> str:
         """A short description of the domain: grid, spectrum, time span,
@@ -505,19 +502,19 @@ class Domain:
         config = self.config
         domain, grid, forcing, constant, output = (
             config.domain, config.grid, config.forcing, config.forcing_constant, config.output)
-        lines = [f"UMWM domain in {self.workdir}"]
+        lines = [f"UMWM domain: input from {self.input_dir}, output to {self.output_dir}"]
         cells = f"{domain.mm} x {domain.nm} grid points"
         if self.initialized:
             sizes = self.sizes
             cells += f", {sizes['im']} sea cells and {sizes['imm'] - sizes['im']} land"
         if grid.gridfromfile:
-            geometry = "geometry from input/umwm.grid"
+            geometry = "geometry from umwm.grid"
         elif config.lonlat_grid:
             geometry = (f"lon-lat grid from ({grid.lon0:g}, {grid.lat0:g}) at {grid.dlon:g} x {grid.dlat:g} "
                         "degrees")
         else:
             geometry = f"{grid.delx:g} x {grid.dely:g} m spacing"
-        depth = "bathymetry from input/umwm.gridtopo" if grid.topofromfile else f"{grid.dpt:g} m depth"
+        depth = "bathymetry from umwm.gridtopo" if grid.topofromfile else f"{grid.dpt:g} m depth"
         lines.append(f"  grid: {cells}, {geometry}, {depth}" + (", global" if domain.isglobal else ""))
         lines.append(f"  spectrum: {domain.om} frequencies from {domain.fmin:g} to {domain.fmax:g} Hz "
                      f"(prognostic to {domain.fprog:g} Hz), {domain.pm} directions")
@@ -681,7 +678,7 @@ class Domain:
                 levels = np.stack([self.grid_field(name, level) for level in range(len(depths))])
                 data_vars[name] = (("time", "z", "y", "x"), levels[np.newaxis], _fields.attrs(name))
             data_vars["d_stokes"] = (("time", "y", "x"), self.grid_field("d_stokes")[np.newaxis], _fields.attrs("d_stokes"))
-        return xr.Dataset(data_vars, coords=coords, attrs={"title": "UMWM model state", "workdir": str(self.workdir)})
+        return xr.Dataset(data_vars, coords=coords, attrs={"title": "UMWM model state", "output_dir": str(self.output_dir)})
 
     def _spectral_coords(self) -> dict:
         return {
@@ -762,11 +759,11 @@ class Domain:
         return _output.open_spectrum_output(self.output_dir, **kwargs)
 
     def restart_files(self) -> list[Path]:
-        """The restart files written so far."""
-        return _output.restart_files(self.restart_dir)
+        """The restart files in the output directory."""
+        return _output.restart_files(self.output_dir)
 
     def grid(self, **kwargs) -> xr.Dataset:
-        """The grid definition written by the model to ``output/umwmout.grid``."""
+        """The grid definition written by the model to ``umwmout.grid`` in the output directory."""
         return _output.open_grid(self.output_dir, **kwargs)
 
     def write_forcing(self, time, **fields) -> Path:
@@ -803,9 +800,34 @@ class Domain:
         return plot_field(dataset, name, grid=grid, **kwargs)
 
 
-def run(config=None, workdir=None, **kwargs) -> Domain:
+def run(config=None, output_dir=None, **kwargs) -> Domain:
     """Run the model to the stop time and return the domain, still initialized
     so that its state and output can be inspected; see :class:`Domain`."""
-    domain = Domain(config, workdir, **kwargs)
+    domain = Domain(config, output_dir, **kwargs)
     domain.run()
     return domain
+
+
+OUTPUT_FILES = ("umwmout_*.nc", "umwmspc_*.nc", "umwmout.grid")
+"""The output files that a run writes to its output directory, besides its
+restart files and the copies of its namelists, which :func:`clean_output`
+keeps, as they may be run again as a configuration."""
+
+RESTART_FILES = ("umwmrst_*.nc",)
+"""The restart files that a run writes to its output directory."""
+
+
+def clean_output(directory, output: bool = True, restart: bool = True) -> list[Path]:
+    """Remove the output and restart files the model writes to the output
+    directory ``directory``, and nothing else: with ``output``, those of
+    :data:`OUTPUT_FILES`, and with ``restart``, the restart files. The copies
+    of the namelists, ``umwmout_main.nml`` and the others, are kept. Return
+    the paths of the files removed."""
+    patterns = (OUTPUT_FILES if output else ()) + (RESTART_FILES if restart else ())
+    removed = []
+    for pattern in patterns:
+        for path in sorted(Path(directory).glob(pattern)):
+            if path.is_file():
+                path.unlink()
+                removed.append(path)
+    return removed

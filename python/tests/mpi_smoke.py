@@ -1,6 +1,6 @@
 """Smoke test of the Python interface under MPI; run with mpiexec, for example::
 
-    mpiexec -n 2 python python/tests/mpi_smoke.py [WORKDIR]
+    mpiexec -n 2 python python/tests/mpi_smoke.py [OUTPUT]
 
 The idealized hurricane case of the Fortran test suite is run on all processes
 and the gathered output fields are compared with the reference values on the
@@ -21,11 +21,11 @@ from conftest import RANKINE_FORCING, RANKINE_REFERENCE, REPO_ROOT, matches_refe
 
 
 def main() -> int:
-    workdir = Path(sys.argv[1] if len(sys.argv) > 1 else "mpi_smoke").resolve()
+    output_dir = Path(sys.argv[1] if len(sys.argv) > 1 else "mpi_smoke").resolve()
     config = umwm.Config.from_namelist(REPO_ROOT / "tests" / "namelists" / "forcing_rankine.nml")
-    domain = umwm.Domain(config, workdir)
+    domain = umwm.Domain(config, output_dir)
     if domain.rank == 0:
-        print(f"mpi_smoke: mpi={domain.mpi} size={domain.size} workdir={workdir}")
+        print(f"mpi_smoke: mpi={domain.mpi} size={domain.size} output={output_dir}")
         umwm.write_rankine_forcing(domain.input_dir, config.start_time, 1, **RANKINE_FORCING)
     domain.barrier()
     domain.run()
@@ -46,7 +46,7 @@ def main() -> int:
         if domain.size > 1 and np.unique(domain.grid_field("nproc")).size < 2:
             failures.append("the grid is not partitioned")
     domain.finalize()
-    failures += periodic_case(workdir / "jonswap")
+    failures += periodic_case(output_dir / "jonswap")
     if domain.rank == 0:
         if failures:
             print("mpi_smoke: FAILED\n  " + "\n  ".join(failures))
@@ -55,14 +55,14 @@ def main() -> int:
     return 0
 
 
-def periodic_case(workdir: Path) -> list[str]:
+def periodic_case(output_dir: Path) -> list[str]:
     """Run the jonswap example case, periodic in x, for an hour, and check that
     its wave field is uniform along x on the root process."""
     config = umwm.Config.from_case("jonswap")
     config.domain.stoptimestr = "2026-01-01 01:00:00"
     config.output.outspec = 0
     config.output.stokes = False
-    with umwm.Domain(config, workdir, quiet=True) as domain:
+    with umwm.Domain(config, output_dir, quiet=True) as domain:
         domain.run()
         swh = domain.grid_field("swh")
         if domain.rank > 0:

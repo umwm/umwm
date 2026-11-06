@@ -19,7 +19,9 @@ module umwm_restart
 
 contains
 
-  subroutine restart_read(timestr, spectrum, grid, e, ustar)
+  subroutine restart_read(directory, timestr, spectrum, grid, e, ustar)
+    ! Reads the restart file of the time timestr from directory.
+    character(*), intent(in) :: directory
     character(19), intent(in) :: timestr
     type(spectrum_type), intent(in) :: spectrum
     type(grid_type), intent(in) :: grid
@@ -38,7 +40,7 @@ contains
     timestrnew = timestr
     timestrnew(11:11) = '_'
 
-    filename = 'restart/umwmrst_' // timestrnew // '.nc'
+    filename = directory // '/umwmrst_' // timestrnew // '.nc'
 
     stat = nf90_open(trim(filename), nf90_share, ncid)
 
@@ -68,7 +70,9 @@ contains
   end subroutine restart_read
 
 
-  subroutine restart_write(timestr, reftimestr, spectrum, grid, e, k, ustar)
+  subroutine restart_write(directory, timestr, reftimestr, spectrum, grid, e, k, ustar)
+    ! Writes the restart file of the time timestr to directory.
+    character(*), intent(in) :: directory
     character(19), intent(in) :: timestr
     character(*), intent(in) :: reftimestr
     type(spectrum_type), intent(in) :: spectrum
@@ -89,7 +93,7 @@ contains
     if (nproc == 0) then
 
       !TODO we should error-handle the values of NetCDF statuses
-      stat = nf90_create('restart/umwmrst_' // timestr // '.nc', NF90_CLOBBER, ncid)
+      stat = nf90_create(directory // '/umwmrst_' // timestr // '.nc', NF90_CLOBBER, ncid)
 
       stat = nf90_def_dim(ncid, 'x', grid % im, xdimid)
       stat = nf90_def_dim(ncid, 'f', spectrum % num_frequencies, fdimid)
@@ -152,7 +156,7 @@ contains
       ! write to file if it is my turn
       if (nproc == nn) then
 
-        stat = nf90_open('restart/umwmrst_' // timestr // '.nc', NF90_WRITE, ncid)
+        stat = nf90_open(directory // '/umwmrst_' // timestr // '.nc', NF90_WRITE, ncid)
         stat = nf90_inq_dimid(ncid, 'x', xdimid)
         stat = nf90_inq_dimid(ncid, 'f', fdimid)
         stat = nf90_inq_dimid(ncid, 'th', thdimid)
@@ -180,7 +184,8 @@ contains
     end do
 
     if (nproc == 0) &
-      write(*, '(a)') 'umwm: restart_write: restart written to restart/umwmrst_' // timestr // '.nc'
+      write(*, '(a)') 'umwm: restart_write: restart written to ' // directory // '/umwmrst_' &
+        // timestr // '.nc'
 
   end subroutine restart_write
 

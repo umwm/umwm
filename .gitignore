@@ -17,10 +17,15 @@ wrf2umwmin
 
 umwm.grid
 umwm.gridtopo
-umwmout_*.nc
 umwmin_*.nc
-# the input files of the example cases
+# the input files of the example cases, but not those prepared from a data source
 !examples/*/input/umwm.gridtopo
+examples/era5-*/input/
+# the files the model writes to an output directory
+umwmout_*.nc
+umwmout.grid
+umwmout_*.nml
+umwmspc_*.nc
 umwmrst_*.nc
 tests/input/.rankine_forcing.stamp
 tests/output/

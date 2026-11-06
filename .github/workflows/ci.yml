@@ -38,7 +38,7 @@ jobs:
       - name: Run an example case
         run: |
           ./umwm --list-cases
-          ./umwm --case duration-limited
+          ./umwm examples/duration-limited -o runs/duration-limited
 
   make-intel:
     runs-on: ubuntu-24.04
@@ -137,7 +137,7 @@ jobs:
         run: |
           export LD_LIBRARY_PATH="$NETCDF_PREFIX/lib:${LD_LIBRARY_PATH:-}"
           ./umwm --list-cases
-          ./umwm --case duration-limited
+          ./umwm examples/duration-limited -o runs/duration-limited
 
   python-gnu:
     runs-on: ubuntu-24.04
