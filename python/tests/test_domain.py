@@ -299,17 +299,6 @@ def test_summary_clean_and_directory_config(library, short_config, tmp_path):
     assert sorted(path.name for path in output_dir.iterdir()) == ["umwmout_main.nml", "umwmout_spectrum.nml"]
 
 
-def test_filllakes_needs_exclude_points(library, short_config, tmp_path):
-    """A configuration made in Python that fills lakes needs its exclude
-    points, which no file in the output directory can give."""
-    short_config.grid.filllakes = True
-    domain = umwm.Domain(short_config, tmp_path / "run")
-    assert domain.missing_inputs() == []
-    assert any("set config.exclude_points" in problem for problem in domain.input_problems())
-    with pytest.raises(ValueError, match="config.exclude_points"):
-        domain.check_inputs()
-
-
 def test_input_problems(library, rankine_config, tmp_path):
     domain = umwm.Domain(rankine_config, tmp_path / "run")
     bad = np.zeros((5, 7), dtype=np.float32)

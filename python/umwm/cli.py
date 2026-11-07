@@ -12,10 +12,9 @@ Subcommands::
     umwm clean [OUTPUT]             remove the output and restart files of a run
     umwm info                       show the library and package information
 
-A configuration ``CONFIG`` is a directory with the ``main.nml`` namelist, the
-``spectrum.nml`` points of the spectrum output and, with ``fillLakes``, the
-``exclude.nml`` cells, or a main namelist file whose directory holds the
-others. ``umwm run CONFIG`` reads the input files from ``CONFIG/input`` (or
+A configuration ``CONFIG`` is a directory with the ``main.nml`` namelist and
+the ``spectrum.nml`` points of the spectrum output, or a main namelist file
+whose directory holds the others. ``umwm run CONFIG`` reads the input files from ``CONFIG/input`` (or
 ``-i INPUT``) and writes the output and restart files, with copies of the
 namelists, to the current directory (or ``-o OUTPUT``), like the ``umwm``
 executable. Each subcommand accepts ``--help``. ``umwm run`` works per

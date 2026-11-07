@@ -40,8 +40,6 @@
   dely          = 10000
   topoFromFile  = .F.
   dpt           = 1000
-  fillEstuaries = .F.
-  fillLakes     = .F.
 /
 &FORCING
   winds         = .F.

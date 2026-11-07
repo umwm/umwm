@@ -59,8 +59,6 @@
   dely          = 1e9   ! Grid spacing in y [m]: 10^6 km, no propagation
   topoFromFile  = .F.   ! Set to .T. to input bathymetry from file
   dpt           = 1000  ! Constant water depth [m] if topoFromFile = .F.
-  fillEstuaries = .F.   ! Set to .T. to fill cells with 3 land neighbours
-  fillLakes     = .F.   ! Set to .T. to fill user chosen seas/lakes
 /
 &FORCING
   winds         = .F. ! Wind input from file

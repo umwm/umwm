@@ -54,8 +54,6 @@
   dely          = 100000 ! Grid spacing in y [m] if not a lon-lat grid
   topoFromFile  = .T.    ! Bathymetry from input/umwm.gridtopo, prepared from ERA5
   dpt           = 1000   ! Constant water depth [m] if topoFromFile = .F.
-  fillEstuaries = .T.    ! Set to .T. to fill cells with 3 land neighbours
-  fillLakes     = .F.    ! Set to .T. to fill user chosen seas/lakes
   lon0          = 0      ! Longitude of cell (1,1) [deg]
   lat0          = -78    ! Latitude of cell (1,1) [deg]
   dlon          = 1      ! Lon-lat grid spacing [deg]

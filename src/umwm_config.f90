@@ -60,8 +60,6 @@ module umwm_config
     real :: dely = 0.
     logical :: topofromfile = .false.
     real :: dpt = 0.
-    logical :: fillestuaries = .false.
-    logical :: filllakes = .false.
     real :: lon0 = 0. ! longitude and latitude of cell (1,1) of a lon-lat grid [deg]
     real :: lat0 = 0.
     real :: dlon = 0. ! spacing of a regular lon-lat grid made by the model [deg]
@@ -138,8 +136,7 @@ contains
       res%sds_power, res%mss_fac, res%snl_fac, res%sdt_fac, res%sbf_fac, &
       res%sbp_fac, res%fcut_fac, stat, iomsg)
     if (stat == 0) call read_grid(unit, res%gridfromfile, res%delx, res%dely, &
-      res%topofromfile, res%dpt, res%fillestuaries, res%filllakes, &
-      res%lon0, res%lat0, res%dlon, res%dlat, stat, iomsg)
+      res%topofromfile, res%dpt, res%lon0, res%lat0, res%dlon, res%dlat, stat, iomsg)
     if (stat == 0) call read_forcing(unit, res%winds, res%currents, &
       res%air_density, res%water_density, res%seaice, res%waves, res%steady, &
       res%source, stat, iomsg)
@@ -208,17 +205,16 @@ contains
 
 
   subroutine read_grid(unit, gridfromfile, delx, dely, topofromfile, dpt, &
-                       fillestuaries, filllakes, lon0, lat0, dlon, dlat, stat, iomsg)
+                       lon0, lat0, dlon, dlat, stat, iomsg)
     integer, intent(in) :: unit
     logical, intent(inout) :: gridfromfile, topofromfile
-    logical, intent(inout) :: fillestuaries, filllakes
     real, intent(inout) :: delx, dely, dpt
     real, intent(inout) :: lon0, lat0, dlon, dlat
     integer, intent(out) :: stat
     character(len=*), intent(out) :: iomsg
 
     namelist /grid/ gridfromfile, delx, dely, topofromfile, dpt, &
-      fillestuaries, filllakes, lon0, lat0, dlon, dlat
+      lon0, lat0, dlon, dlat
 
     read(unit, nml=grid, iostat=stat, iomsg=iomsg)
   end subroutine read_grid
@@ -332,7 +328,7 @@ contains
 
   function sibling_path(self, name) result(res)
     ! The path of the file name in the directory of the main namelist, such
-    ! as the spectrum.nml and exclude.nml namelists that accompany it, with
+    ! as the spectrum.nml namelist that accompanies it, with
     ! the prefix of the main namelist if its name ends with _main.nml: the
     ! copies umwmout_main.nml and umwmout_spectrum.nml of an output
     ! directory go together.

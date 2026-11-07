@@ -5,8 +5,8 @@ the variable names of the namelists, so that the Fortran documentation and
 the ``--set group.name=value`` syntax of the command-line tool apply directly.
 The defaults are those of the model (``tests/namelists/default_main.nml`` in
 the UMWM repository, which the tests check them against). The
-spectrum output points of ``spectrum.nml`` and the cells of enclosed seas to
-exclude of ``exclude.nml`` are held alongside the namelist groups.
+spectrum output points of ``spectrum.nml`` are held alongside the namelist
+groups.
 """
 
 from __future__ import annotations
@@ -115,8 +115,6 @@ class GridConfig:
     dely: float = field(default=10000.0, metadata=_doc("Grid spacing in y if not from file", "m"))
     topofromfile: bool = field(default=False, metadata=_doc("Read bathymetry from input/umwm.gridtopo"))
     dpt: float = field(default=1000.0, metadata=_doc("Constant water depth if not from file", "m"))
-    fillestuaries: bool = field(default=False, metadata=_doc("Fill cells with 3 land neighbours"))
-    filllakes: bool = field(default=False, metadata=_doc("Fill the enclosed seas listed in exclude.nml"))
     lon0: float = field(default=0.0, metadata=_doc("Longitude of cell (1,1) of a lon-lat grid", "degrees_east"))
     lat0: float = field(default=0.0, metadata=_doc("Latitude of cell (1,1) of a lon-lat grid", "degrees_north"))
     dlon: float = field(default=0.0, metadata=_doc(
@@ -229,8 +227,7 @@ class Config:
 
     Attributes are the namelist groups of ``main.nml`` (``domain``,
     ``physics``, ``grid``, ``forcing``, ``forcing_constant``, ``output`` and
-    ``stokes``), plus the spectrum output points and the cells of enclosed
-    seas to exclude from the domain.
+    ``stokes``), plus the spectrum output points.
 
     >>> config = Config()
     >>> config.domain.mm = 51
@@ -246,30 +243,24 @@ class Config:
     output: OutputConfig = field(default_factory=OutputConfig)
     stokes: StokesConfig = field(default_factory=StokesConfig)
     spectrum_points: list[SpectrumPoint] = field(default_factory=list)
-    exclude_points: list[tuple[int, int]] = field(default_factory=list)
 
     # ---- construction -------------------------------------------------------
 
     @classmethod
-    def from_namelist(cls, path, spectrum_points=None, exclude_points=None) -> "Config":
+    def from_namelist(cls, path, spectrum_points=None) -> "Config":
         """Read the configuration from a ``main.nml`` file.
 
         ``path`` may also be a configuration directory, whose ``main.nml``
-        is read. ``spectrum_points`` and ``exclude_points`` are optional paths
-        to a ``spectrum.nml`` and an ``exclude.nml`` file; by default, those
-        next to the main namelist are read if they exist (see
-        :func:`sibling_namelist`).
+        is read. ``spectrum_points`` is an optional path to a
+        ``spectrum.nml`` file; by default, the one next to the main namelist
+        is read if it exists (see :func:`sibling_namelist`).
         """
         path = namelist_path(path)
         config = cls.from_namelist_text(path.read_text(encoding="utf-8"))
         if spectrum_points is None and sibling_namelist(path, "spectrum.nml").is_file():
             spectrum_points = sibling_namelist(path, "spectrum.nml")
-        if exclude_points is None and sibling_namelist(path, "exclude.nml").is_file():
-            exclude_points = sibling_namelist(path, "exclude.nml")
         if spectrum_points is not None:
             config.spectrum_points = read_spectrum_points(spectrum_points)
-        if exclude_points is not None:
-            config.exclude_points = read_exclude_points(exclude_points)
         return config
 
     @classmethod
@@ -302,8 +293,6 @@ class Config:
         for group_name, variables in data.items():
             if group_name == "spectrum_points":
                 config.spectrum_points = [SpectrumPoint(**point) if isinstance(point, dict) else point for point in variables]
-            elif group_name == "exclude_points":
-                config.exclude_points = [tuple(point) for point in variables]
             elif group_name in GROUPS:
                 for name, value in variables.items():
                     config.set(f"{group_name}.{name}", value)
@@ -371,14 +360,13 @@ class Config:
 
     def diff(self, other: "Config") -> dict[str, tuple[Any, Any]]:
         """The variables that differ from ``other``, as a mapping of dotted
-        keys (and ``spectrum_points``, ``exclude_points``) to ``(this, other)``."""
+        keys (and ``spectrum_points``) to ``(this, other)``."""
         differences = {}
         for (key, value), (_, other_value) in zip(self.items(), other.items()):
             if value != other_value:
                 differences[key] = (value, other_value)
-        for name in ("spectrum_points", "exclude_points"):
-            if getattr(self, name) != getattr(other, name):
-                differences[name] = (getattr(self, name), getattr(other, name))
+        if self.spectrum_points != other.spectrum_points:
+            differences["spectrum_points"] = (self.spectrum_points, other.spectrum_points)
         return differences
 
     def describe(self, group: str | None = None) -> str:
@@ -550,7 +538,6 @@ class Config:
             {key: value for key, value in dataclasses.asdict(point).items() if value is not None}
             for point in self.spectrum_points
         ]
-        data["exclude_points"] = [list(point) for point in self.exclude_points]
         return data
 
     def to_json(self, indent: int = 2) -> str:
@@ -602,14 +589,10 @@ class Config:
                 lines.append(f"{point.lon!r} {point.lat!r} {point.name}")
         return "\n".join(lines) + "\n"
 
-    def exclude_points_text(self) -> str:
-        """The text of the ``exclude.nml`` file listing cells of enclosed seas to exclude."""
-        return "".join(f"{m} {n}\n" for m, n in self.exclude_points)
-
-    def write(self, path, spectrum_points: bool = True, exclude_points: bool = True, source=None) -> Path:
+    def write(self, path, spectrum_points: bool = True, source=None) -> Path:
         """Write the main namelist to ``path`` (``main.nml`` in it if it is a
-        directory) and, next to it, ``spectrum.nml`` and ``exclude.nml`` when
-        points are configured (see :func:`sibling_namelist`). Returns the
+        directory) and, next to it, ``spectrum.nml`` when points are
+        configured (see :func:`sibling_namelist`). Returns the
         path. The namelist file ``source``, such as the one the configuration
         was read from, is copied with its comments if it holds this
         configuration."""
@@ -620,8 +603,6 @@ class Config:
         path.write_text(self.namelist_text(source), encoding="utf-8")
         if spectrum_points and self.spectrum_points:
             sibling_namelist(path, "spectrum.nml").write_text(self.spectrum_points_text(), encoding="utf-8")
-        if exclude_points and self.exclude_points:
-            sibling_namelist(path, "exclude.nml").write_text(self.exclude_points_text(), encoding="utf-8")
         return path
 
     def __str__(self) -> str:
@@ -742,14 +723,4 @@ def read_spectrum_points(path) -> list[SpectrumPoint]:
             points.append(SpectrumPoint(name=parts[2], x=int(parts[0]), y=int(parts[1])))
         else:
             points.append(SpectrumPoint(name=parts[2], lon=float(parts[0]), lat=float(parts[1])))
-    return points
-
-
-def read_exclude_points(path) -> list[tuple[int, int]]:
-    """Read the cells of enclosed seas to exclude from an ``exclude.nml`` file."""
-    points = []
-    for line in Path(path).read_text(encoding="utf-8").splitlines():
-        parts = line.split()
-        if len(parts) >= 2:
-            points.append((int(parts[0]), int(parts[1])))
     return points

@@ -291,9 +291,8 @@ contains
       '       umwm --list-cases', &
       '', &
       'Runs the University of Miami Wave Model with the configuration CONFIG: a', &
-      'directory with the main.nml namelist, the spectrum.nml points of the spectrum', &
-      'output, and with fillLakes the exclude.nml cells, or a main namelist file', &
-      'whose directory holds the others.', &
+      'directory with the main.nml namelist and the spectrum.nml points of the', &
+      'spectrum output, or a main namelist file whose directory holds the others.', &
       '', &
       '  CONFIG              the configuration directory, or its main namelist file', &
       '  -o, --output DIR    write the output and restart files to DIR, created if', &
@@ -350,16 +349,15 @@ contains
 
 
   subroutine write_namelist_copies(namelist, output_dir)
-    ! Copies the main namelist, and the spectrum.nml and exclude.nml next to
-    ! it, into output_dir as umwmout_main.nml, umwmout_spectrum.nml and
-    ! umwmout_exclude.nml, to record the configuration of the output, and
-    ! removes a copy there of a namelist that the configuration does not
-    ! have. Their names differ from those of a configuration, so that the
+    ! Copies the main namelist, and the spectrum.nml next to it, into
+    ! output_dir as umwmout_main.nml and umwmout_spectrum.nml, to record the
+    ! configuration of the output, and removes a copy there of a namelist
+    ! that the configuration does not have. Their names differ from those of a configuration, so that the
     ! output directory may be the configuration directory; a namelist that
     ! is already the copy is left as it is. Only the root process writes.
     use umwm_config, only: sibling_namelist
     character(*), intent(in) :: namelist, output_dir
-    character(*), parameter :: names(3) = [character(12) :: 'main.nml', 'spectrum.nml', 'exclude.nml']
+    character(*), parameter :: names(2) = [character(12) :: 'main.nml', 'spectrum.nml']
     character(:), allocatable :: source, target
     integer :: n
 

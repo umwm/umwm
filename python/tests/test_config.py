@@ -12,9 +12,8 @@ def test_defaults_match_repository_namelist(repo_root):
     defaults = Config()
     for group in GROUPS:
         assert getattr(config, group) == getattr(defaults, group), group
-    # default_spectrum.nml and default_exclude.nml next to it are picked up
+    # default_spectrum.nml next to it is picked up
     assert [point.name for point in config.spectrum_points] == ["test_loc1", "test_loc2", "test_loc3"]
-    assert config.exclude_points == [(5, 5)]
 
 
 def test_rankine_namelist(repo_root):
@@ -72,7 +71,6 @@ def test_dict_and_json_round_trip():
     config = Config()
     config.domain.mm = 41
     config.spectrum_points = [SpectrumPoint("a", x=3, y=4), SpectrumPoint("b", x=5, y=6)]
-    config.exclude_points = [(7, 8)]
     assert Config.from_dict(config.to_dict()) == config
     assert Config.from_json(config.to_json()) == config
 
@@ -88,11 +86,9 @@ def test_namelist_round_trip():
 def test_write_files(tmp_path):
     config = Config()
     config.spectrum_points = [SpectrumPoint("p", lon=-80.5, lat=25.25)]
-    config.exclude_points = [(5, 5), (6, 7)]
     path = config.write(tmp_path / "namelists" / "main.nml")
     assert path.is_file()
     assert (tmp_path / "namelists" / "spectrum.nml").read_text().splitlines() == ["LL", "-80.5 25.25 p"]
-    assert (tmp_path / "namelists" / "exclude.nml").read_text() == "5 5\n6 7\n"
     assert Config.from_namelist(path) == config
 
 
@@ -178,7 +174,7 @@ def test_from_namelist_directory(tmp_path):
     assert (tmp_path / "out" / "umwmout_spectrum.nml").is_file()
     assert Config.from_namelist(copy).spectrum_points == config.spectrum_points
     assert config.write(config_dir) == config_dir / "main.nml"
-    assert sibling_namelist(tmp_path / "lake.nml", "exclude.nml") == tmp_path / "exclude.nml"
+    assert sibling_namelist(tmp_path / "lake.nml", "spectrum.nml") == tmp_path / "spectrum.nml"
     assert sibling_namelist(tmp_path / "domain.nml", "spectrum.nml") == tmp_path / "spectrum.nml"
     assert sibling_namelist(tmp_path / "run_main.nml", "spectrum.nml") == tmp_path / "run_spectrum.nml"
     with pytest.raises(FileNotFoundError, match="no main.nml in the configuration directory"):
