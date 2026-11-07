@@ -65,8 +65,6 @@
   dely          = 2500  ! Grid spacing in y [m] if gridFromFile = .F.
   topoFromFile  = .T.   ! Bathymetry from input/umwm.gridtopo
   dpt           = 1000  ! Constant water depth [m] if topoFromFile = .F.
-  fillEstuaries = .F.   ! Set to .T. to fill cells with 3 land neighbours
-  fillLakes     = .F.   ! Set to .T. to fill user chosen seas/lakes
 /
 &FORCING
   winds         = .F. ! Wind input from file

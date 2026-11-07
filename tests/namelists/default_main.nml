@@ -40,8 +40,6 @@
   dely          = 10000 ! Grid spacing in y [m] if gridFromFile = .F.
   topoFromFile  = .F.   ! Set to .T. to input bathymetry from file
   dpt           = 1000  ! Constant water depth [m] if topoFromFile = .F.
-  fillEstuaries = .F.   ! Set to .T. to fill cells with 3 land neighbours
-  fillLakes     = .F.   ! Set to .T. to fill user chosen seas/lakes
   lon0          = 0     ! Longitude of cell (1,1) of a lon-lat grid [deg]
   lat0          = 0     ! Latitude of cell (1,1) of a lon-lat grid [deg]
   dlon          = 0     ! Lon-lat grid spacing [deg] if gridFromFile = .F.; 0 for delx

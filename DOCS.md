@@ -26,14 +26,14 @@ This file is a technical reference for the physics implemented in the University
 The main program instantiates one `domain_type` from `src/umwm_domain.f90`
 and calls its `initialize`, `run`, and `finalize` procedures, with the
 configuration given on the command line: a directory with `main.nml`, or a
-main namelist file. The `spectrum.nml` and `exclude.nml` namelists are read
+main namelist file. The `spectrum.nml` namelist is read
 from the directory of the main namelist, with its prefix if its name ends
 with `_main.nml` (`umwmout_spectrum.nml` next to `umwmout_main.nml`). The
 input files are read from the input directory, `CONFIG/input` or the
 directory given with `-i`, and the output and restart files are written to
 the output directory, given with `-o` or else the current directory, with
-copies of the namelists of the run, `umwmout_main.nml`,
-`umwmout_spectrum.nml` and `umwmout_exclude.nml`; a restart reads its
+copies of the namelists of the run, `umwmout_main.nml` and
+`umwmout_spectrum.nml`; a restart reads its
 restart file from the output directory. As the files the model writes are
 all named `umwmout_*`, `umwmspc_*` or `umwmrst_*`, the output directory may
 be the configuration or input directory. `run` loops over `advance`, which integrates one

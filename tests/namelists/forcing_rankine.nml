@@ -39,8 +39,6 @@
   dely          = 10000
   topoFromFile  = .false.
   dpt           = 1000
-  fillEstuaries = .false.
-  fillLakes     = .false.
 /
 &FORCING
   winds         = .true.

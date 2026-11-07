@@ -85,8 +85,8 @@ A `Domain` wraps one model domain. It runs a configuration as the `umwm`
 executable does: it reads the input files from an input directory and
 writes the output and restart files to an output directory, the current
 directory by default, with copies of the namelists of the configuration,
-`umwmout_main.nml` (and `umwmout_spectrum.nml` and `umwmout_exclude.nml`
-when points are configured), which the model reads. The output directory
+`umwmout_main.nml` (and `umwmout_spectrum.nml` when points are
+configured), which the model reads. The output directory
 may be the configuration or input directory, as the files written there are
 all named `umwmout_*`, `umwmspc_*` or `umwmrst_*`.
 
@@ -108,7 +108,7 @@ with umwm.Domain(config, output_dir="runs/case1") as domain:
 `umwm.run(config, output_dir)` does the same and returns the domain. A
 configuration can also be a configuration directory, such as
 `umwm.Domain("examples/seamount", "runs/seamount")`, which reads its
-`main.nml`, `spectrum.nml` and `exclude.nml`, and its input files from its
+`main.nml` and `spectrum.nml`, and its input files from its
 `input/` directory, or the path of a main namelist file. The configuration
 directory is never written to: the copy of its `main.nml` in the output
 directory keeps its comments, unless the configuration is changed.
@@ -347,7 +347,7 @@ namelist variable names, and the defaults of the model.
 | --- | --- | --- |
 | `config.domain` | `DomainConfig` | `isglobal`, `mm`, `nm`, `om`, `pm`, `fmin`, `fmax`, `fprog`, `starttimestr`, `stoptimestr`, `reftimestr`, `dtg`, `restart` |
 | `config.physics` | `PhysicsConfig` | `g`, `nu_air`, `nu_water`, `sfct`, `kappa`, `z`, `gustiness`, `dmin`, `explim`, `sin_fac`, `sin_diss1`, `sin_diss2`, `sds_fac`, `sds_power`, `mss_fac`, `snl_fac`, `sdt_fac`, `sbf_fac`, `sbp_fac`, `fcut_fac` |
-| `config.grid` | `GridConfig` | `gridfromfile`, `delx`, `dely`, `topofromfile`, `dpt`, `fillestuaries`, `filllakes`, `lon0`, `lat0`, `dlon`, `dlat` |
+| `config.grid` | `GridConfig` | `gridfromfile`, `delx`, `dely`, `topofromfile`, `dpt`, `lon0`, `lat0`, `dlon`, `dlat` |
 | `config.forcing` | `ForcingConfig` | `winds`, `currents`, `air_density`, `water_density`, `seaice`, `waves`, `steady`, `source` |
 | `config.forcing_constant` | `ForcingConstantConfig` | `wspd0`, `wdir0`, `uc0`, `vc0`, `rhoa0`, `rhow0`, `fice0`, `fice_lth`, `fice_uth` |
 | `config.output` | `OutputConfig` | `outgrid`, `outspec`, `outrst`, `xpl`, `ypl`, `stokes` |
@@ -359,19 +359,17 @@ configurations.
 
 `config.spectrum_points` lists `SpectrumPoint`s for the spectrum output
 (`SpectrumPoint("name", x=16, y=6)` by 1-based grid indices, or
-`SpectrumPoint("name", lon=-80.5, lat=25.0)`), written to `spectrum.nml`;
-`config.exclude_points` lists `(x, y)` cells of enclosed seas to exclude,
-written to `exclude.nml`, for `grid.filllakes`.
+`SpectrumPoint("name", lon=-80.5, lat=25.0)`), written to `spectrum.nml`.
 
 ```python
-config = umwm.Config.from_namelist("examples/seamount")      # main.nml, and spectrum.nml, exclude.nml if there
+config = umwm.Config.from_namelist("examples/seamount")      # main.nml, and spectrum.nml if there
 config = umwm.Config.from_case("wave-tank")                  # an example case
 config["domain.dtg"] = 1800                                  # dotted keys, with conversion from strings
 config.update({"output.outgrid": 1}, forcing__winds=True)
 config.start_time, config.stop_time                          # datetimes of the time strings
 config.step_times()                                          # the global time steps
 config.validate()                                            # raises ConfigError
-config.write("case1")                                        # case1/main.nml, spectrum.nml, exclude.nml
+config.write("case1")                                        # case1/main.nml, spectrum.nml
 config.to_namelist(), config.to_dict(), config.to_json()
 umwm.Config.from_dict(...), umwm.Config.from_json(...)
 ```
@@ -393,10 +391,9 @@ umwm clean [OUTPUT] [--keep-output] [--keep-restart]
 umwm info
 ```
 
-`CONFIG` is a configuration directory, with the `main.nml` namelist, the
-`spectrum.nml` points of the spectrum output and, with `fillLakes`, the
-`exclude.nml` cells, or the path of a main namelist file, whose directory
-holds the others. `umwm run CONFIG` runs it like the `umwm` executable: it
+`CONFIG` is a configuration directory, with the `main.nml` namelist and the
+`spectrum.nml` points of the spectrum output, or the path of a main namelist
+file, whose directory holds the others. `umwm run CONFIG` runs it like the `umwm` executable: it
 reads the input files from `CONFIG/input`, or `-i INPUT`, and writes the
 output and restart files, with copies of the namelists (`umwmout_main.nml`
 and the others), to the current directory, or `-o OUTPUT`, created if

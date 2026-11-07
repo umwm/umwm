@@ -32,15 +32,12 @@ type :: grid_type
   integer :: ilen = 0
   integer :: im_mod = 0
   character :: remap_dir = 'v'
-  integer :: filled_estuary_cells = -1
-  integer :: lake_fill_events = 0
 
   integer, allocatable :: iw(:), ie(:), is(:), in(:)
   integer, allocatable :: iiw(:), iie(:), iis(:), iin(:)
   integer, allocatable :: i_exchange_indices(:)
   integer, allocatable :: mi(:), ni(:)
   integer, allocatable :: ii(:,:), mask(:,:), nproc_out(:,:)
-  integer, allocatable :: lake_fill_m(:), lake_fill_n(:), lake_fill_count(:)
 
   integer, allocatable :: istart_all(:), iend_all(:), ilen_all(:)
   integer, allocatable :: iistart_all(:), iiend_all(:)
@@ -66,7 +63,6 @@ contains
   procedure, private :: allocate_native
   procedure, private :: define_grid
   procedure, private :: define_masks
-  procedure, private :: fill
   procedure, private :: partition
   procedure, private :: allocate_remapped
   procedure, private :: remap
@@ -95,7 +91,6 @@ subroutine print_diagnostics(self)
 #endif
 
   class(grid_type), intent(in) :: self
-  integer :: event
 #ifdef MPI
   integer :: nn
 #endif
@@ -111,17 +106,6 @@ subroutine print_diagnostics(self)
   write(*,fmt=101) 'umwm: grid: area min/max/mean [m^2]: ', &
                   minval(self % ar_2d), maxval(self % ar_2d), &
                   sum(self % ar_2d) / (self % mm * self % nm)
-
-  if (self % filled_estuary_cells >= 0) then
-    write(*,fmt=201) 'umwm: masks: filled cells with 3-land neighbours,', &
-                    self % filled_estuary_cells, ' cells total.'
-  end if
-
-  do event = 1, self % lake_fill_events
-    write(*,fmt=202) 'umwm: masks: filled closed sea at i,j:', &
-                    self % lake_fill_m(event), self % lake_fill_n(event), &
-                    ', ', self % lake_fill_count(event), ' cells total.'
-  end do
 
   write(unit=*,fmt=302) self % imm
   write(unit=*,fmt=303) self % imm - self % im, &
@@ -158,8 +142,6 @@ subroutine print_diagnostics(self)
 #endif
 
   101 format(a,3(f15.2,1x))
-  201 format(a,i8,a)
-  202 format(a,2(i5,1x),a,i8,a)
   302 format('umwm: masks: total number of grid points: ',i9)
   303 format('umwm: masks: number of land points:       ',i9,', ',f5.1,'%')
   304 format('umwm: masks: number of sea points:        ',i9,', ',f5.1,'%')
@@ -179,8 +161,6 @@ subroutine allocate_native(self, config)
 
   self % mm = config % mm
   self % nm = config % nm
-  self % filled_estuary_cells = -1
-  self % lake_fill_events = 0
 
   allocate(self % ar_2d(self % mm,self % nm))
   allocate(self % curv(self % mm,self % nm))
@@ -192,10 +172,6 @@ subroutine allocate_native(self, config)
   allocate(self % x(self % mm,self % nm), self % y(self % mm,self % nm))
   allocate(self % mask(self % mm,self % nm))
   allocate(self % nproc_out(self % mm,self % nm))
-  if (allocated(self % lake_fill_m)) deallocate(self % lake_fill_m)
-  if (allocated(self % lake_fill_n)) deallocate(self % lake_fill_n)
-  if (allocated(self % lake_fill_count)) deallocate(self % lake_fill_count)
-  allocate(self % lake_fill_m(0), self % lake_fill_n(0), self % lake_fill_count(0))
   self % nproc_out = 0
 
 end subroutine allocate_native
@@ -427,18 +403,10 @@ end subroutine define_grid
 
 
 subroutine define_masks(self, config)
-! Defines landmasks and optionally removes one-cell wide estuaries and lakes.
-
-  use umwm_env, only: nproc
-  use umwm_util, only: raiseexception
+! Defines landmasks.
 
   class(grid_type), intent(inout) :: self
   type(config_type), intent(in) :: config
-  logical :: iterate
-
-  integer :: m, n
-  integer :: exm, exn
-  integer :: cnt, fillcount, stat
 
   ! set masks:
   if (config % topofromfile) then
@@ -466,59 +434,6 @@ subroutine define_masks(self, config)
     self % d_2d = abs(self % d_2d)
     where(self % d_2d < config % dmin) self % d_2d = config % dmin
 
-    ! fill estuaries and isolated sea points:
-    if (config % fillestuaries) then
-      fillcount = 0
-      iterate = .true.
-      do while (iterate)
-        iterate = .false.
-        do n = 2, self % nm - 1
-          do m = 2, self % mm - 1
-
-            if (self % mask(m,n) == 1) then
-
-              cnt = 0
-              if (self % mask(m-1,n) == 1) cnt = cnt + 1
-              if (self % mask(m+1,n) == 1) cnt = cnt + 1
-              if (self % mask(m,n-1) == 1) cnt = cnt + 1
-              if (self % mask(m,n+1) == 1) cnt = cnt + 1
-
-              if (cnt <= 1) then
-                self % mask(m,n) = 0
-                fillcount = fillcount + 1
-                iterate = .true.
-              end if
-
-            end if
-
-          end do
-        end do
-      end do
-      self % filled_estuary_cells = fillcount
-    end if
-
-    ! discard lakes or unwanted closed basin from the domain:
-    if (config % filllakes) then
-      open(unit=24, file=config % sibling_path('exclude.nml'), status='old', &
-           action='read', iostat=stat)
-      if (stat /= 0) then
-        if (nproc == 0) call raiseexception('abort', 'grid', config % sibling_path('exclude.nml') &
-          // ' not found; it lists the cells of the lakes to fill with fillLakes')
-        stop 1
-      end if
-      do
-        read(unit=24, fmt=*, end=107) exm, exn
-        fillcount = 0
-        call self % fill(exm, exn, fillcount)
-        self % lake_fill_events = self % lake_fill_events + 1
-        self % lake_fill_m = [self % lake_fill_m, exm]
-        self % lake_fill_n = [self % lake_fill_n, exn]
-        self % lake_fill_count = [self % lake_fill_count, fillcount]
-      end do
-    end if
-
-    107 close(unit=24)
-
   else
 
     ! set initial mask everywhere:
@@ -543,29 +458,6 @@ subroutine define_masks(self, config)
   self % imm = self % mm * self % nm
 
 end subroutine define_masks
-
-
-recursive subroutine fill(self, m, n, fillcount)
-! Mask out enclosed seas chosen by user.
-  class(grid_type), intent(inout) :: self
-  integer, intent(in) :: m, n
-  integer, intent(in out) :: fillcount
-
-  ! return if reached domain edge:
-  if (any(m == [1, self % mm]) .or. any(n == [1, self % nm])) return
-
-  ! fill:
-  self % mask(m,n) = 0
-
-  fillcount = fillcount + 1
-
-  ! recurse in all directions:
-  if (self % mask(m-1,n) == 1) call self % fill(m-1, n, fillcount)
-  if (self % mask(m+1,n) == 1) call self % fill(m+1, n, fillcount)
-  if (self % mask(m,n-1) == 1) call self % fill(m, n-1, fillcount)
-  if (self % mask(m,n+1) == 1) call self % fill(m, n+1, fillcount)
-
-end subroutine fill
 
 
 subroutine partition(self, config)
@@ -1134,9 +1026,6 @@ subroutine finalize(self)
   if (allocated(self % ii)) deallocate(self % ii)
   if (allocated(self % mask)) deallocate(self % mask)
   if (allocated(self % nproc_out)) deallocate(self % nproc_out)
-  if (allocated(self % lake_fill_m)) deallocate(self % lake_fill_m)
-  if (allocated(self % lake_fill_n)) deallocate(self % lake_fill_n)
-  if (allocated(self % lake_fill_count)) deallocate(self % lake_fill_count)
   if (allocated(self % istart_all)) deallocate(self % istart_all, self % iend_all, self % ilen_all)
   if (allocated(self % iistart_all)) deallocate(self % iistart_all, self % iiend_all)
   if (allocated(self % cth_curv)) deallocate(self % cth_curv)

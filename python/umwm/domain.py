@@ -34,9 +34,8 @@ __all__ = ["Domain", "run", "clean_output", "NAMELIST_COPY"]
 
 NAMELIST_COPY = "umwmout_main.nml"
 """The copy of the main namelist that a run writes to its output directory,
-with ``umwmout_spectrum.nml`` and ``umwmout_exclude.nml`` beside it; their
-names differ from those of a configuration directory, which may be the
-output directory."""
+with ``umwmout_spectrum.nml`` beside it; their names differ from those of a
+configuration directory, which may be the output directory."""
 
 INT_ATTRIBUTES = ("mm", "nm", "im", "imm", "istart", "iend", "iistart", "iiend", "om", "pm", "lm")
 
@@ -48,8 +47,7 @@ class Domain:
     ----------
     config
         A :class:`~umwm.Config`, a configuration directory (whose
-        ``main.nml``, and ``spectrum.nml`` and ``exclude.nml`` if there, are
-        read) or the path of its main namelist file, or ``None`` for the
+        ``main.nml``, and ``spectrum.nml`` if there, are read) or the path of its main namelist file, or ``None`` for the
         default configuration.
     output_dir
         The directory of the output and restart files, created if it does
@@ -168,10 +166,9 @@ class Domain:
 
     def write_namelists(self) -> Path:
         """Write the namelists of the configuration to the output directory:
-        ``umwmout_main.nml``, and ``umwmout_spectrum.nml`` and
-        ``umwmout_exclude.nml`` when points are configured, which the model
-        reads; remove such a copy of points that are not configured; and
-        return the path of the main namelist.
+        ``umwmout_main.nml``, and ``umwmout_spectrum.nml`` when points are
+        configured, which the model reads; remove that copy when points are
+        not configured; and return the path of the main namelist.
 
         The namelist file the configuration was read from is copied with its
         comments when the configuration still matches it. The configuration
@@ -183,10 +180,8 @@ class Domain:
         """
         path = self.namelist_path
         files = {path: self.config.namelist_text(self._source_namelist)}
-        for name, points, text in (
-                ("spectrum.nml", self.config.spectrum_points, self.config.spectrum_points_text),
-                ("exclude.nml", self.config.exclude_points, self.config.exclude_points_text)):
-            files[sibling_namelist(path, name)] = text() if points else None
+        files[sibling_namelist(path, "spectrum.nml")] = (
+            self.config.spectrum_points_text() if self.config.spectrum_points else None)
         changes = [copy for copy, content in files.items()
                    if (copy.read_text(encoding="utf-8") if copy.is_file() else None) != content]
         if changes and self._source_namelist == path:
@@ -206,7 +201,6 @@ class Domain:
         """The configuration without the points held in separate files."""
         bare = self.config.copy()
         bare.spectrum_points = []
-        bare.exclude_points = []
         return bare
 
     @staticmethod
@@ -270,8 +264,6 @@ class Domain:
             missing.append(gridtopo)
         elif config.grid.gridfromfile and not (gridtopo.is_file() or (self.input_dir / "umwm.grid").is_file()):
             missing.append(self.input_dir / "umwm.grid")
-        if config.grid.filllakes and not config.exclude_points and self._source_namelist is not None:
-            missing.append(sibling_namelist(self._source_namelist, "exclude.nml"))
         if config.forcing_from_file:
             for name in forcing_files(config):
                 path = self.input_dir / name
@@ -292,9 +284,6 @@ class Domain:
         config = self.config
         mm, nm = config.domain.mm, config.domain.nm
         problems = [f"missing {path}" for path in self.missing_inputs()]
-        if config.grid.filllakes and not config.exclude_points and self._source_namelist is None:
-            problems.append("grid.filllakes is set, but there are no cells of enclosed seas to exclude: set "
-                            "config.exclude_points")
 
         def check(path: Path, variables: list[str], minimum_rank: int) -> None:
             if not path.is_file():
