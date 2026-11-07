@@ -20,6 +20,7 @@ program test_grid
     test(global_periodic_neighbors), &
     test(lonlat_grid_across_dateline), &
     test(global_lonlat_grid), &
+    test(rotated_grid_from_file), &
     test(input_files_for_another_grid) &
   ])
 
@@ -162,12 +163,14 @@ contains
   function lonlat_grid_across_dateline() result(res)
     ! A regular lon-lat grid made by the model from lon0, lat0, dlon and
     ! dlat, across the dateline: longitudes in [-180, 180), and the spacing
-    ! of a sphere, with the grid rotation of great circles.
+    ! of a sphere. Its x axis points east, so it is not rotated, and the
+    ! great circles turn relative to east by the geodesic curvature of the
+    ! parallels, tan(lat)/R, along its x axis.
     use umwm_constants, only: dr, r_earth
     type(test_result) :: res
     type(config_type) :: config
     type(grid_type) :: grid
-    integer :: n
+    integer :: i, n
     logical :: ok
 
     config = valid_config()
@@ -183,8 +186,13 @@ contains
          .and. all(nearly_equal(grid % lon(:,1), grid % lon(:,11)))
     do n = 2, config % nm - 1
       ok = ok .and. all(abs(grid % dx_2d(2:20,n) / (r_earth * dr * 0.5 * cos(dr * grid % lat(2,n))) - 1) < 1e-3) &
-              .and. all(abs(grid % dy_2d(2:20,n) / (r_earth * dr * 0.25) - 1) < 1e-3) &
-              .and. all(grid % curv(2:20,n) < 0 .and. grid % curv(2:20,n) > -0.01)
+              .and. all(abs(grid % dy_2d(2:20,n) / (r_earth * dr * 0.25) - 1) < 1e-3)
+    end do
+    ok = ok .and. all(abs(grid % curv) < 1e-6)
+    do i = grid % istart, grid % iend
+      ok = ok .and. abs(grid % kappa_x(i) * r_earth / tan(dr * grid % lat(grid % mi(i), grid % ni(i))) &
+                        - 1) < 1e-5 &
+              .and. abs(grid % kappa_y(i)) < 1e-12
     end do
 
     call grid % finalize()
@@ -226,6 +234,60 @@ contains
 
     res = test('global_lonlat_grid', ok)
   end function global_lonlat_grid
+
+
+  function rotated_grid_from_file() result(res)
+    ! A grid from file at 40N whose x axis points 30 degrees north of east:
+    ! east is 30 degrees clockwise from its x axis, and the geodesic
+    ! curvature of the parallels, tan(lat)/R, is along its x and y axes
+    ! tan(lat)/R times the cosine and sine of -30 degrees.
+    use netcdf
+    use umwm_constants, only: dr, r_earth
+    type(test_result) :: res
+    type(config_type) :: config
+    type(grid_type) :: grid
+    real, parameter :: rotation = 30 * dr, lat0 = 40
+    real :: lon(9,7), lat(9,7), x, y, curvature
+    integer :: ncid, xdim, ydim, lonid, latid, m, n, i
+    logical :: ok
+
+    ! in the tangent plane of the center cell, by 0.5 degrees
+    do n = 1, 7
+      do m = 1, 9
+        x = (m - 5) * 0.5
+        y = (n - 4) * 0.5
+        lon(m,n) = (x * cos(rotation) - y * sin(rotation)) / cos(dr * lat0)
+        lat(m,n) = lat0 + x * sin(rotation) + y * cos(rotation)
+      end do
+    end do
+    call execute_command_line('mkdir -p output/test_grid')
+    call nc_check(nf90_create('output/test_grid/umwm.grid', nf90_clobber, ncid))
+    call nc_check(nf90_def_dim(ncid, 'x', 9, xdim))
+    call nc_check(nf90_def_dim(ncid, 'y', 7, ydim))
+    call nc_check(nf90_def_var(ncid, 'lon', nf90_float, [xdim, ydim], lonid))
+    call nc_check(nf90_def_var(ncid, 'lat', nf90_float, [xdim, ydim], latid))
+    call nc_check(nf90_enddef(ncid))
+    call nc_check(nf90_put_var(ncid, lonid, lon))
+    call nc_check(nf90_put_var(ncid, latid, lat))
+    call nc_check(nf90_close(ncid))
+
+    config = valid_config()
+    config % input_dir = 'output/test_grid'
+    config % gridfromfile = .true.
+    config % mm = 9
+    config % nm = 7
+    call grid % initialize(config)
+
+    i = grid % ii(5,4)
+    curvature = tan(dr * lat0) / r_earth
+    ok = abs(grid % curv(5,4) + rotation) < 1e-3 .and. all(abs(grid % curv + rotation) < 0.03) &
+         .and. abs(grid % kappa_x(i) / (curvature * cos(rotation)) - 1) < 1e-3 &
+         .and. abs(grid % kappa_y(i) / (-curvature * sin(rotation)) - 1) < 1e-3
+
+    call grid % finalize()
+
+    res = test('rotated_grid_from_file', ok)
+  end function rotated_grid_from_file
 
 
   function input_files_for_another_grid() result(res)

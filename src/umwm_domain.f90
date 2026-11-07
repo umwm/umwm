@@ -1094,8 +1094,9 @@ contains
       ! in coupled mode, refraction and the frequency shift act on the
       ! propagated spectrum
       e_propagated = ef(:,:,i)
-      call refraction(om, pm, self % oc(i), e_propagated, &
+      call refraction(om, pm, self % oc(i), e_propagated, cg0(:,i), &
                       self % cgdlncp_dx(:,i), self % cgdlncp_dy(:,i), &
+                      grid % kappa_x(i), grid % kappa_y(i), &
                       self % du_dx(i), self % du_dy(i), self % dv_dx(i), self % dv_dy(i), &
                       grid % cth_curv(:,i), grid % sth_curv(:,i), self % dts, self % dth, &
                       ef(:,:,i))
@@ -1107,8 +1108,9 @@ contains
                              grid % cth_curv(:,i), grid % sth_curv(:,i), self % dts, &
                              real(self % spectrum % dlnf), ef(:,:,i))
 #else
-      call refraction(om, pm, self % oc(i), e(:,:,i), &
+      call refraction(om, pm, self % oc(i), e(:,:,i), cg0(:,i), &
                       self % cgdlncp_dx(:,i), self % cgdlncp_dy(:,i), &
+                      grid % kappa_x(i), grid % kappa_y(i), &
                       self % du_dx(i), self % du_dy(i), self % dv_dx(i), self % dv_dy(i), &
                       grid % cth_curv(:,i), grid % sth_curv(:,i), self % dts, self % dth, &
                       ef(:,:,i))

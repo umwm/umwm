@@ -1,9 +1,12 @@
 program test_advection
   use tuff, only: test, test_result
   use umwm_advection, only: current_rotation_rate, depth_rotation_rate, frequency_shift, &
-                            propagation, refraction
-  use umwm_constants, only: rk, stderr, twopi
+                            great_circle_rotation_rate, propagation, refraction
+  use umwm_config, only: config_type
+  use umwm_constants, only: dr, r_earth, rk, stderr, twopi
   use umwm_dispersion, only: group_speed, wavenumber
+  use umwm_grid, only: grid_type
+  use umwm_spectrum, only: spectrum_type
 #ifdef MPI
   use umwm_env, only: env_init, env_stop
 #endif
@@ -30,7 +33,11 @@ program test_advection
     test(frequency_shift_conserves_action_and_shifts_by_the_whole_step), &
     test(frequency_shift_exchanges_action_with_the_diagnostic_tail), &
     test(propagation_shoals_by_linear_theory), &
-    test(action_flux_is_conserved_on_opposing_current) &
+    test(action_flux_is_conserved_on_opposing_current), &
+    test(great_circle_rotation_follows_clairaut), &
+    test(uniform_isotropic_swell_stays_so_on_a_sphere), &
+    test(swell_follows_great_circles), &
+    test(swell_follows_great_circles_on_rotated_grid) &
   ])
 #ifdef MPI
   call env_stop()
@@ -158,8 +165,8 @@ contains
     zero = 0
     ef = e
     ! strain and shear of 1e-3 1/s, which turn the waves by up to 9 bins in 1000 s
-    call refraction(nf, nd, nf - 1, e, zero, zero, 1e-3, 0., 1e-3, -1e-3, cth, sth, &
-                    1000., dth, ef)
+    call refraction(nf, nd, nf - 1, e, zero, zero, zero, 0., 0., 1e-3, 0., 1e-3, -1e-3, &
+                    cth, sth, 1000., dth, ef)
     ok = all(ef >= 0) .and. all(ef(nf,:) == e(nf,:)) .and. any(ef(1,:) /= e(1,:))
     do o = 1, nf - 1
       ok = ok .and. abs(sum(ef(o,:)) / sum(e(o,:)) - 1) < 1e-5
@@ -184,7 +191,8 @@ contains
     zero = 0
     ef = e
     dt = 2.5 * dth / omega
-    call refraction(nf, nd, nf, e, zero, zero, 0., -omega, omega, 0., cth, sth, dt, dth, ef)
+    call refraction(nf, nd, nf, e, zero, zero, zero, 0., 0., 0., -omega, omega, 0., cth, sth, &
+                    dt, dth, ef)
     shift = sum([(p * ef(1,p), p = 1, nd)]) / sum(ef(1,:)) &
           - sum([(p * e(1,p), p = 1, nd)]) / sum(e(1,:))
     res = test('refraction_substeps_rotate_by_the_whole_step', abs(shift - 2.5) < 1e-4)
@@ -381,6 +389,320 @@ contains
       'test_advection: variance ratio, expected, at fixed frequency: ', ratio, expected, &
       sum(cg * e(:,1,0) * kovcg * sigma) / sum((cg + u(i)) * e(:,1,0) * kovcg * sigma)
   end function action_flux_is_conserved_on_opposing_current
+
+
+  function great_circle_rotation_follows_clairaut() result(res)
+    ! Integrates a ray along the surface of the sphere from 40N at 30
+    ! degrees north of east, turning at the rate of the great circles
+    ! relative to the parallels of a lon-lat grid, of geodesic curvature
+    ! tan(lat)/R. Clairaut's relation, cos(lat) cos(th) = const, holds along
+    ! the ray, which crosses its highest latitude, where it heads east, and
+    ! comes back down to 40N heading 30 degrees south of east.
+    type(test_result) :: res
+    real(rk), parameter :: cg = 10, ds = 1e3_rk
+    real(rk) :: lat, th, lat_mid, th_mid, clairaut_start, clairaut_max, lat_max
+    integer :: n
+    logical :: ok
+    lat = 40 * dr
+    th = 30 * dr
+    clairaut_start = cos(lat) * cos(th)
+    clairaut_max = 0
+    lat_max = lat
+    do n = 1, 20000
+      lat_mid = lat + 0.5_rk * ds * sin(th) / r_earth
+      th_mid = th + 0.5_rk * ds * ray_turning(cg, lat, th)
+      lat = lat + ds * sin(th_mid) / r_earth
+      th = th + ds * ray_turning(cg, lat_mid, th_mid)
+      clairaut_max = max(clairaut_max, abs(cos(lat) * cos(th) / clairaut_start - 1))
+      lat_max = max(lat_max, lat)
+      if (lat < 40 * dr) exit
+    end do
+    ok = clairaut_max < 1e-4_rk .and. abs(th / dr + 30) < 0.1_rk &
+         .and. abs(cos(lat_max) / clairaut_start - 1) < 1e-4_rk
+    res = test('great_circle_rotation_follows_clairaut', ok)
+    if (.not. res % ok) write(stderr, '(a,es10.3,2f10.4)') &
+      'test_advection: Clairaut error, final direction, highest latitude [deg]: ', &
+      clairaut_max, th / dr, lat_max / dr
+  end function great_circle_rotation_follows_clairaut
+
+
+  real(rk) function ray_turning(cg, lat, th)
+    ! The rate of change of the direction th with the distance along a ray
+    ! at the latitude lat on the sphere, at the group speed cg, relative to
+    ! the parallels, of geodesic curvature tan(lat)/R.
+    real(rk), intent(in) :: cg, lat, th
+    ray_turning = great_circle_rotation_rate(real(cg), real(tan(lat) / r_earth), 0., &
+                                             real(cos(th)), real(sin(th))) / cg
+  end function ray_turning
+
+
+  function uniform_isotropic_swell_stays_so_on_a_sphere() result(res)
+    ! On a sphere, a uniform and isotropic spectrum stays so. On a lon-lat
+    ! grid, the meridians converge toward the pole, so the propagation on
+    ! its own gains the action of the waves toward the pole, and loses that
+    ! of the waves toward the equator, at (cg/R) tan(lat) sin(th). The
+    ! turning of the great circles relative to the parallels, in the
+    ! refraction, takes it back, to within the error of the differences over
+    ! direction, (1 - sin(dth)/dth) of it.
+    type(test_result) :: res
+    real, parameter :: cg = 11.7, dt = 1800
+    type(grid_type) :: grid
+    real, allocatable :: e(:,:,:), ef(:,:,:), cgv(:,:), kovcg(:,:)
+    real :: change_propagation, change_both, expected
+    integer :: i, p
+    logical :: ok
+    call lonlat_grid(grid, -10., 25., 1., 8, 30)
+    allocate(e(1,nd,0:grid % imm), ef(1,nd,0:grid % imm), cgv(1,0:grid % imm), &
+             kovcg(1,0:grid % imm))
+    e = 1
+    cgv = cg
+    kovcg = 1
+    ok = .true.
+    change_propagation = 0
+    change_both = 0
+    do i = grid % istart, grid % iend
+      ef(:,:,i) = e(:,:,i)
+      call propagate(grid, i, e, cgv, kovcg, dt, ef(:,:,i))
+      expected = dt * cg * tan(dr * grid % lat(grid % mi(i), grid % ni(i))) / r_earth
+      do p = 1, nd
+        ok = ok .and. abs(ef(1,p,i) - 1 - expected * grid % sth_curv(p,i)) < 0.02 * expected
+      end do
+      change_propagation = max(change_propagation, maxval(abs(ef(:,:,i) - 1)))
+      call refraction(1, nd, 1, e(:,:,i), cgv(:,i), [0.], [0.], grid % kappa_x(i), &
+                      grid % kappa_y(i), 0., 0., 0., 0., grid % cth_curv(:,i), &
+                      grid % sth_curv(:,i), dt, dth, ef(:,:,i))
+      change_both = max(change_both, maxval(abs(ef(:,:,i) - 1)))
+    end do
+    ok = ok .and. change_both < 0.01 * change_propagation
+    call grid % finalize()
+    res = test('uniform_isotropic_swell_stays_so_on_a_sphere', ok)
+    if (.not. res % ok) write(stderr, '(a,2es12.4)') &
+      'test_advection: largest change by propagation, and with refraction: ', &
+      change_propagation, change_both
+  end function uniform_isotropic_swell_stays_so_on_a_sphere
+
+
+  function swell_follows_great_circles() result(res)
+    ! Packets of 15 s swell in deep water, of group speed 11.7 m/s, from
+    ! 40N, 40E on a one-degree lon-lat grid, one launched east and one west,
+    ! travel 4000 km in 95 hours. Both follow the great circle, which turns
+    ! toward the equator, to 31.3N at 83.5E and 3.5W, within the numerical
+    ! diffusion of the upstream scheme, and not the parallel, 970 km north.
+    type(test_result) :: res
+    real, parameter :: cg = 11.7, distance = 4e6, lon0 = 40, lat0 = 40
+    type(grid_type) :: grid
+    real :: lat_east, lon_east, lat_west, lon_west, lat_gc, lon_gc_east, lon_gc_west
+    real :: error_east, error_west
+    logical :: ok
+    call lonlat_grid(grid, -25., 15., 1., 131, 46)
+    call propagate_packet(grid, cg, lon0, lat0, [18, 19], distance, lat_east, lon_east)
+    call propagate_packet(grid, cg, lon0, lat0, [1, nd], distance, lat_west, lon_west)
+    call grid % finalize()
+    call great_circle(lon0, lat0, 0., distance, lon_gc_east, lat_gc)
+    call great_circle(lon0, lat0, real(twopi) / 2, distance, lon_gc_west, lat_gc)
+    error_east = central_angle(lon_east, lat_east, lon_gc_east, lat_gc) * r_earth
+    error_west = central_angle(lon_west, lat_west, lon_gc_west, lat_gc) * r_earth
+    ok = error_east < 0.04 * distance .and. error_west < 0.04 * distance &
+         .and. abs(lat_east - lat_west) < 0.05 .and. abs(lon_east + lon_west - 2 * lon0) < 0.05
+    res = test('swell_follows_great_circles', ok)
+    if (.not. res % ok) write(stderr, '(a,8f9.3)') &
+      'test_advection: east packet and great circle (lat, lon), west packet and great circle: ', &
+      lat_east, lon_east, lat_gc, lon_gc_east, lat_west, lon_west, lat_gc, lon_gc_west
+  end function swell_follows_great_circles
+
+
+  function swell_follows_great_circles_on_rotated_grid() result(res)
+    ! The packets of swell_follows_great_circles from 45N, 0E, at the center
+    ! of a one-degree rotated-pole grid, whose x axis points east there and
+    ! turns by up to 40 degrees across it, travel 3000 km in 71 hours. Both
+    ! follow the great circle to 39.1N at 35.8E and 35.8W, within the
+    ! numerical diffusion of the upstream scheme, and not the parallel, 660
+    ! km north, along which the waves would keep their direction relative to
+    ! east as the grid rotates under them.
+    type(test_result) :: res
+    real, parameter :: cg = 11.7, distance = 3e6, lon0 = 0, lat0 = 45
+    type(grid_type) :: grid
+    real :: lat_east, lon_east, lat_west, lon_west, lat_gc, lon_gc_east, lon_gc_west
+    real :: error_east, error_west
+    logical :: ok
+    call rotated_pole_grid(grid, 90 - lat0, 71, 41)
+    call propagate_packet(grid, cg, lon0, lat0, [18, 19], distance, lat_east, lon_east)
+    call propagate_packet(grid, cg, lon0, lat0, [1, nd], distance, lat_west, lon_west)
+    call grid % finalize()
+    call great_circle(lon0, lat0, 0., distance, lon_gc_east, lat_gc)
+    call great_circle(lon0, lat0, real(twopi) / 2, distance, lon_gc_west, lat_gc)
+    error_east = central_angle(lon_east, lat_east, lon_gc_east, lat_gc) * r_earth
+    error_west = central_angle(lon_west, lat_west, lon_gc_west, lat_gc) * r_earth
+    ok = error_east < 0.05 * distance .and. error_west < 0.05 * distance
+    res = test('swell_follows_great_circles_on_rotated_grid', ok)
+    if (.not. res % ok) write(stderr, '(a,8f9.3)') &
+      'test_advection: east packet and great circle (lat, lon), west packet and great circle: ', &
+      lat_east, lon_east, lat_gc, lon_gc_east, lat_west, lon_west, lat_gc, lon_gc_west
+  end function swell_follows_great_circles_on_rotated_grid
+
+
+  subroutine rotated_pole_grid(grid, tilt, mm, nm)
+    ! A one-degree grid of mm x nm cells, regular in the longitude and
+    ! latitude about a pole tilted by tilt [deg] toward 180E, centered at
+    ! the rotated equator and prime meridian, at (0E, 90 - tilt N), and
+    ! read from file, with the directions of the spectrum projected onto it.
+    use netcdf
+    type(grid_type), intent(out) :: grid
+    real, intent(in) :: tilt
+    integer, intent(in) :: mm, nm
+    type(config_type) :: config
+    real :: lon(mm,nm), lat(mm,nm), x, y, z
+    integer :: ncid, xdim, ydim, lonid, latid, m, n
+    do n = 1, nm
+      do m = 1, mm
+        x = cos(dr * (n - (nm + 1) / 2)) * cos(dr * (m - (mm + 1) / 2))
+        y = cos(dr * (n - (nm + 1) / 2)) * sin(dr * (m - (mm + 1) / 2))
+        z = sin(dr * (n - (nm + 1) / 2))
+        lon(m,n) = atan2(y, x * cos(dr * tilt) - z * sin(dr * tilt)) / dr
+        lat(m,n) = asin(x * sin(dr * tilt) + z * cos(dr * tilt)) / dr
+      end do
+    end do
+    call execute_command_line('mkdir -p output/test_advection')
+    call nc_check(nf90_create('output/test_advection/umwm.grid', nf90_clobber, ncid))
+    call nc_check(nf90_def_dim(ncid, 'x', mm, xdim))
+    call nc_check(nf90_def_dim(ncid, 'y', nm, ydim))
+    call nc_check(nf90_def_var(ncid, 'lon', nf90_float, [xdim, ydim], lonid))
+    call nc_check(nf90_def_var(ncid, 'lat', nf90_float, [xdim, ydim], latid))
+    call nc_check(nf90_enddef(ncid))
+    call nc_check(nf90_put_var(ncid, lonid, lon))
+    call nc_check(nf90_put_var(ncid, latid, lat))
+    call nc_check(nf90_close(ncid))
+    config = config_type('namelists/default_main.nml')
+    config % input_dir = 'output/test_advection'
+    config % gridfromfile = .true.
+    config % mm = mm
+    config % nm = nm
+    config % pm = nd
+    call grid % initialize(config)
+    call grid % initialize_direction_projection(spectrum_type(nf, nd, 0.05_rk, 0.1_rk))
+  end subroutine rotated_pole_grid
+
+
+  subroutine nc_check(stat)
+    use netcdf, only: nf90_noerr, nf90_strerror
+    integer, intent(in) :: stat
+    if (stat /= nf90_noerr) then
+      write(stderr, '(a)') 'test_advection: netCDF error: ' // trim(nf90_strerror(stat))
+      error stop 1
+    end if
+  end subroutine nc_check
+
+
+  subroutine lonlat_grid(grid, lon0, lat0, spacing, mm, nm)
+    ! A regional lon-lat grid of mm x nm cells from (lon0, lat0) by spacing
+    ! [deg], with the directions of the spectrum projected onto it.
+    type(grid_type), intent(out) :: grid
+    real, intent(in) :: lon0, lat0, spacing
+    integer, intent(in) :: mm, nm
+    type(config_type) :: config
+    config = config_type('namelists/default_main.nml')
+    config % mm = mm
+    config % nm = nm
+    config % pm = nd
+    config % lon0 = lon0
+    config % lat0 = lat0
+    config % dlon = spacing
+    config % dlat = spacing
+    call grid % initialize(config)
+    call grid % initialize_direction_projection(spectrum_type(nf, nd, 0.05_rk, 0.1_rk))
+  end subroutine lonlat_grid
+
+
+  subroutine propagate(grid, i, e, cg, kovcg, dt, ef)
+    ! Integrates the propagation of the spectrum e of one frequency at the
+    ! cell i of the grid over dt into ef.
+    type(grid_type), intent(in) :: grid
+    integer, intent(in) :: i
+    real, intent(in) :: e(:,:,0:), cg(:,0:), kovcg(:,0:), dt
+    real, intent(inout) :: ef(1,nd)
+    associate(ie => grid % ie(i), iw => grid % iw(i), in => grid % in(i), is => grid % is(i))
+    call propagation(1, nd, 1, e(:,:,i), e(:,:,ie), e(:,:,iw), e(:,:,in), e(:,:,is), &
+                     cg(:,i), cg(:,ie), cg(:,iw), cg(:,in), cg(:,is), kovcg(:,i), kovcg(:,ie), &
+                     kovcg(:,iw), kovcg(:,in), kovcg(:,is), grid % cth_curv(:,i), &
+                     grid % sth_curv(:,i), grid % dxn(i), grid % dxs(i), grid % dye(i), &
+                     grid % dyw(i), .false., 0., 0., 0., 0., 0.25 * dt * grid % oneovar(i), ef)
+    end associate
+  end subroutine propagate
+
+
+  subroutine propagate_packet(grid, cg, lon0, lat0, bins, distance, lat, lon)
+    ! Propagates and refracts a Gaussian packet of e-folding radius 2.5
+    ! degrees at (lon0, lat0) [deg], in the direction bins, at the uniform
+    ! group speed cg over distance, and returns the center of its energy on
+    ! the sphere (lat, lon) [deg].
+    type(grid_type), intent(in) :: grid
+    real, intent(in) :: cg, lon0, lat0, distance
+    integer, intent(in) :: bins(:)
+    real, intent(out) :: lat, lon
+    real, allocatable :: e(:,:,:), ef(:,:,:), cgv(:,:), kovcg(:,:)
+    real :: dt, w, x, y, z, clat
+    integer :: i, n, num_steps
+    allocate(e(1,nd,0:grid % imm), ef(1,nd,0:grid % imm), cgv(1,0:grid % imm), &
+             kovcg(1,0:grid % imm))
+    cgv = cg
+    kovcg = 1
+    e = 0
+    do i = 1, grid % im
+      e(1,bins,i) = exp(-(central_angle(lon0, lat0, grid % lon(grid % mi(i), grid % ni(i)), &
+                                         grid % lat(grid % mi(i), grid % ni(i))) &
+                          / (2.5 * dr))**2)
+    end do
+    ! at 0.9 of the largest stable time step, cg dt (1/dx + 1/dy) = 1
+    num_steps = ceiling(distance * (1 / minval(grid % dx(1:grid % im)) &
+                                    + 1 / minval(grid % dy(1:grid % im))) / 0.9)
+    dt = distance / cg / num_steps
+    do n = 1, num_steps
+      ef = e
+      do i = grid % istart, grid % iend
+        call propagate(grid, i, e, cgv, kovcg, dt, ef(:,:,i))
+        call refraction(1, nd, 1, e(:,:,i), cgv(:,i), [0.], [0.], grid % kappa_x(i), &
+                        grid % kappa_y(i), 0., 0., 0., 0., grid % cth_curv(:,i), &
+                        grid % sth_curv(:,i), dt, dth, ef(:,:,i))
+      end do
+      e(:,:,1:grid % im) = ef(:,:,1:grid % im)
+    end do
+    x = 0
+    y = 0
+    z = 0
+    do i = 1, grid % im
+      w = sum(e(1,:,i)) * grid % ar(i)
+      clat = cos(dr * grid % lat(grid % mi(i), grid % ni(i)))
+      x = x + w * clat * cos(dr * grid % lon(grid % mi(i), grid % ni(i)))
+      y = y + w * clat * sin(dr * grid % lon(grid % mi(i), grid % ni(i)))
+      z = z + w * sin(dr * grid % lat(grid % mi(i), grid % ni(i)))
+    end do
+    lat = atan2(z, sqrt(x**2 + y**2)) / dr
+    lon = atan2(y, x) / dr
+  end subroutine propagate_packet
+
+
+  real function central_angle(lon1, lat1, lon2, lat2) result(res)
+    ! The angle [rad] between two points (lon, lat) [deg] on the sphere.
+    real, intent(in) :: lon1, lat1, lon2, lat2
+    res = 2 * asin(sqrt(sin(0.5 * dr * (lat2 - lat1))**2 &
+                        + cos(dr * lat1) * cos(dr * lat2) * sin(0.5 * dr * (lon2 - lon1))**2))
+  end function central_angle
+
+
+  subroutine great_circle(lon1, lat1, th, distance, lon2, lat2)
+    ! The point (lon2, lat2) [deg] at distance [m] from (lon1, lat1) along
+    ! the great circle that leaves it in the direction th [rad], anti-clockwise
+    ! from east.
+    real, intent(in) :: lon1, lat1, th, distance
+    real, intent(out) :: lon2, lat2
+    real :: azimuth, angle
+    azimuth = real(twopi) / 4 - th
+    angle = distance / r_earth
+    lat2 = asin(sin(dr * lat1) * cos(angle) + cos(dr * lat1) * sin(angle) * cos(azimuth))
+    lon2 = lon1 + atan2(sin(azimuth) * sin(angle) * cos(dr * lat1), &
+                        cos(angle) - sin(dr * lat1) * sin(lat2)) / dr
+    lat2 = lat2 / dr
+  end subroutine great_circle
 
 
   subroutine directions(cth, sth)

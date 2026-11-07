@@ -52,6 +52,7 @@ type :: grid_type
   real, allocatable :: ar(:), d(:), dx(:), dy(:)
   real, allocatable :: dxn(:), dxs(:), dyw(:), dye(:)
   real, allocatable :: oneovar(:), oneovdx(:), oneovdy(:)
+  real, allocatable :: kappa_x(:), kappa_y(:) ! geodesic curvature of the parallels [1/m]
 
 contains
   procedure :: initialize
@@ -193,6 +194,7 @@ subroutine allocate_remapped(self)
   allocate(self % oneovar(self % istart:self % iend), &
            self % oneovdx(self % istart:self % iend), &
            self % oneovdy(self % istart:self % iend))
+  allocate(self % kappa_x(self % istart:self % iend), self % kappa_y(self % istart:self % iend))
 
 end subroutine allocate_remapped
 
@@ -327,34 +329,27 @@ subroutine define_grid(self, config)
     self % dy_2d(:,1) = 2 * self % dy_2d(:,2) - self % dy_2d(:,3)
     self % dy_2d(:,self % nm) = 2 * self % dy_2d(:,self % nm-1) - self % dy_2d(:,self % nm-2)
 
-    ! compute grid rotation for great circle propagation
+    ! Grid rotation: the angle of east anti-clockwise from the grid x axis
+    ! at the cell centers, which projects the wave directions, anti-clockwise
+    ! from east, onto the grid axes. It is zero on a lon-lat grid, whose x
+    ! lines are the parallels. The turning of the waves along great circles
+    ! relative to east is in the refraction (kappa_x and kappa_y).
     self % curv = 0
     do n = 1, self % nm
       do m = 2, self % mm - 1
-        self % curv(m,n) = atan2(sin(rlon(m+1,n) - rlon(m-1,n)) * cos(rlat(m+1,n)), &
-                                 cos(rlat(m-1,n)) * sin(rlat(m+1,n)) &
-                                -sin(rlat(m-1,n)) * cos(rlat(m+1,n)) &
-                                * cos(rlon(m+1,n) - rlon(m-1,n)))
+        self % curv(m,n) = grid_rotation(rlon(m-1,n), rlat(m-1,n), rlat(m,n), &
+                                         rlon(m+1,n), rlat(m+1,n))
       end do
     end do
 
     if (config % isglobal) then
-      m = 1
-      self % curv(m,:) = atan2(sin(rlon(m+1,:) - rlon(self % mm,:)) * cos(rlat(m+1,:)), &
-                               cos(rlat(self % mm,:)) * sin(rlat(m+1,:)) &
-                              -sin(rlat(self % mm,:)) * cos(rlat(m+1,:)) &
-                              * cos(rlon(m+1,:) - rlon(self % mm,:)))
       m = self % mm
-      self % curv(m,:) = atan2(sin(rlon(1,:) - rlon(m-1,:)) * cos(rlat(1,:)), &
-                               cos(rlat(m-1,:)) * sin(rlat(1,:)) &
-                              -sin(rlat(m-1,:)) * cos(rlat(1,:)) &
-                              * cos(rlon(1,:) - rlon(m-1,:)))
+      self % curv(1,:) = grid_rotation(rlon(m,:), rlat(m,:), rlat(1,:), rlon(2,:), rlat(2,:))
+      self % curv(m,:) = grid_rotation(rlon(m-1,:), rlat(m-1,:), rlat(m,:), rlon(1,:), rlat(1,:))
     else
       self % curv(1,:) = self % curv(2,:)
       self % curv(self % mm,:) = self % curv(self % mm-1,:)
     end if
-
-    self % curv = self % curv - 0.5 * pi
 
     deallocate(abscoslat, lon_tmp, rotx, roty, rlon, rlat)
 
@@ -954,6 +949,17 @@ subroutine remap(self, config)
   self % oneovdy = 1. / self % dy(self % istart:self % iend)
   self % oneovar = 1. / self % ar
 
+  ! The geodesic curvature of the parallels, tan(lat)/R, along the grid x
+  ! and y axes: the waves travel along great circles, which turn relative
+  ! to east (see great_circle_rotation_rate). On a lon-lat grid, tan(lat)/R
+  ! and zero; on a Cartesian grid, zero.
+  do i = self % istart, self % iend
+    m = self % mi(i)
+    n = self % ni(i)
+    self % kappa_x(i) = tan(dr * self % lat(m,n)) / r_earth * cos(self % curv(m,n))
+    self % kappa_y(i) = tan(dr * self % lat(m,n)) / r_earth * sin(self % curv(m,n))
+  end do
+
 end subroutine remap
 
 
@@ -969,7 +975,7 @@ subroutine initialize_direction_projection(self, spectrum)
   allocate(self % cth_curv(spectrum % num_directions,self % istart:self % iend))
   allocate(self % sth_curv(spectrum % num_directions,self % istart:self % iend))
 
-  ! calculate wave ray directions adjusted for grid curvature:
+  ! the wave directions, anti-clockwise from east, in the frame of the grid:
   do i = self % istart, self % iend
     do p = 1, spectrum % num_directions
       self % cth_curv(p,i) = cos(real(spectrum % direction(p), kind(self % cth_curv)) &
@@ -1038,9 +1044,23 @@ subroutine finalize(self)
   if (allocated(self % ar)) deallocate(self % ar)
   if (allocated(self % d)) deallocate(self % d, self % dx, self % dy)
   if (allocated(self % dxn)) deallocate(self % dxn, self % dxs, self % dyw, self % dye)
+  if (allocated(self % kappa_x)) deallocate(self % kappa_x, self % kappa_y)
   if (allocated(self % oneovar)) deallocate(self % oneovar, self % oneovdx, self % oneovdy)
 
 end subroutine finalize
+
+
+pure elemental real function grid_rotation(lon_w, lat_w, lat_c, lon_e, lat_e) result(res)
+! The angle [rad] of east anti-clockwise from the grid x axis at a cell of
+! latitude lat_c, from the direction of the x grid line between its west
+! and east neighbors at (lon_w, lat_w) and (lon_e, lat_e) [rad], by centered
+! differences in the tangent plane of the cell, along the shorter arc also
+! across the dateline. Zero on a lon-lat grid.
+  real, intent(in) :: lon_w, lat_w, lat_c, lon_e, lat_e
+  real :: dlon
+  dlon = modulo(lon_e - lon_w + pi, twopi) - pi
+  res = -atan2(lat_e - lat_w, dlon * cos(lat_c))
+end function grid_rotation
 
 
 pure elemental real function lon_midpoint(a, b) result(res)
