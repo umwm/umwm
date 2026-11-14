@@ -60,8 +60,8 @@ test_partitions: test_partitions.f90 tuff.o umwm_constants.o umwm_dispersion.o u
 test_source_functions: test_source_functions.f90 tuff.o umwm_constants.o umwm_source_functions.o umwm_env.o
 	$(FC) $(CPPFLAGS) $(FCFLAGS) -I. -I$(SRC_DIR) -o $@ $^ $(LDLIBS)
 
-test_advection: test_advection.f90 tuff.o umwm_constants.o umwm_dispersion.o umwm_advection.o umwm_env.o
-	$(FC) $(CPPFLAGS) $(FCFLAGS) -I. -I$(SRC_DIR) -o $@ $^ $(LDLIBS)
+test_advection: test_advection.f90 tuff.o umwm_constants.o umwm_dispersion.o umwm_advection.o umwm_env.o umwm_source_functions.o umwm_config.o umwm_spectrum.o umwm_util.o umwm_grid.o
+	$(FC) $(CPPFLAGS) $(FCFLAGS) $(NETCDF_FFLAGS) -I. -I$(SRC_DIR) -o $@ $^ $(NETCDF_FLIBS) $(LDLIBS)
 
 test_domain: test_domain.f90 tuff.o $(MODEL_OBJS)
 	$(FC) $(CPPFLAGS) $(FCFLAGS) $(NETCDF_FFLAGS) -I. -I$(SRC_DIR) -o $@ $^ $(NETCDF_FLIBS) $(LDLIBS)

@@ -957,6 +957,35 @@ The implementation applies this form over east, west, north, and south
 faces using cell-face lengths and cell area. Propagation by currents is
 added only when the current fields are nonzero.
 
+### Propagation on the Sphere
+
+On a longitude-latitude or other curvilinear grid, the cell-face lengths
+and the cell area make the flux form the divergence on the sphere: on a
+lon-lat grid the north face of a cell is shorter than its south face in
+the northern hemisphere, and the convergence of the meridians is that of
+the waves that travel toward the pole. The directions $\phi$ are
+anti-clockwise from east, as is the wind direction, and are projected onto
+the grid axes at each cell by the grid rotation `curv`, the angle of east
+anti-clockwise from the grid $x$ axis, from the direction of the $x$ grid
+line by centered differences in the tangent plane of the cell. It is zero
+on a lon-lat grid, whose $x$ axis points east everywhere.
+
+The waves travel along great circles, which are not straight on the grid:
+a wave that leaves 40N heading east is at 31N 4000 km downstream,
+while the parallel it started along curves toward the pole. Their
+direction relative to east turns along the way, in the refraction (see
+below); without it they would keep their direction, along the rhumb
+lines, and a uniform and isotropic spectrum would not stay so: the
+convergence of the meridians would gain the action of the waves toward
+the pole and lose that of the waves toward the equator.
+
+The projection is that of the cell on all of its faces, also for the
+action that flows in from its neighbors. Where the grid rotation varies
+from cell to cell, as on a rotated-pole or Lambert conformal grid, the
+action that leaves a cell through a face is then not that which enters
+its neighbor, and a uniform and isotropic spectrum does not stay so. On
+lon-lat and Mercator grids, and on Cartesian grids, it does not vary.
+
 Open boundary conditions are applied next to land and at regional domain
 edges unless boundary input is supplied. Global domains use periodic
 east-west boundary conditions. Land cells take, at each frequency, the
@@ -1011,6 +1040,38 @@ path, in the direction of $\mathbf{c}_g + \mathbf{u}$, turns at the full
 vorticity to first order in $u/c_g$ (Kenyon, 1971), from $\dot\phi$
 together with the advection of the waves by the current.
 
+On the sphere, the direction $\phi$, anti-clockwise from east, also turns
+along the great circles that the waves travel:
+
+$$
+\dot{\phi}_{gc} = -\frac{c_g}{R}\tan\vartheta\cos\phi,
+$$
+
+at latitude $\vartheta$ on a sphere of radius $R$: the parallels, of
+geodesic curvature $\tan\vartheta/R$, curve toward the pole, and the
+great circles do not. It turns the waves along the parallels toward the
+equator, those heading east as well as those heading west, and does not
+turn the waves along the meridians, which are great circles. It keeps
+$\cos\vartheta\cos\phi$ constant along the ray, Clairaut's relation for
+great circles. In the frame of the grid,
+
+$$
+\dot{\phi}_{gc}
+=
+-c_g\left(\kappa_x\cos\phi' + \kappa_y\sin\phi'\right),
+$$
+
+where $\phi'$ is the direction in the frame of the grid, and $\kappa_x$
+and $\kappa_y$ (`kappa_x`, `kappa_y`) are $\tan\vartheta/R$ times the
+cosine and sine of the grid rotation: on a lon-lat grid,
+$\tan\vartheta/R$ and zero, and on a Cartesian grid, both zero. It is
+the turning of a depth term with
+$(c_g/c)\nabla c = (-c_g\kappa_y,\ c_g\kappa_x)$, which the stability
+bound below includes. On a lon-lat grid it balances the convergence of
+the meridians in the propagation: a uniform and isotropic spectrum stays
+so, to within a fraction $1 - \sin\Delta\phi/\Delta\phi$ (0.5% for 36
+directions) of their change, from the differences over direction.
+
 Positive $\dot{\phi}$ rotates wave energy counter-clockwise; negative
 $\dot{\phi}$ rotates it clockwise.
 
@@ -1045,8 +1106,9 @@ $$
 Refraction splits the time step `dts` of each cell into as many equal
 substeps as this condition needs, so that every cell is refracted over
 the whole time step. The condition is evaluated with an upper bound from
-the amplitudes of the depth term, $a$, and of the strain term, $b$, which
-vary over direction as $\phi$ and $2\phi$, and from half the vorticity,
+the amplitudes of the depth and great-circle terms together, $a$, and of
+the strain term, $b$, which vary over direction as $\phi$ and $2\phi$,
+and from half the vorticity,
 $\zeta/2$: a bin loses at most $a + |\zeta|/2 + b$ through one face, and
 at most $\Delta\phi\,(a + 2b)$ through both faces where the rotation
 diverges, per unit time. One substep is usually enough.
@@ -1841,7 +1903,7 @@ The current focused tests are:
 | `test_dispersion` | Wavenumber/frequency round-trip accuracy and positive finite group speed for the capillary-gravity dispersion module. |
 | `test_spectrum` | Spectrum constructor metadata, endpoint frequencies, legacy log-space frequency equivalence, direction-grid equivalence, `dlnf`, and `dth`. |
 | `test_source_functions` | Mean-squared slope moments against the direct sum over directions, the vectorized power function against the intrinsic, and the wind input against a step-by-step evaluation. |
-| `test_advection` | Current-induced ray rotation against the ray equation and in a solid-body eddy, depth-induced ray rotation against Snell's law along a ray over a slope, the conservation, positivity, and rotation of the spectrum by refraction in several substeps, the conservation of action and the shift of the spectrum by the frequency shift, steady shoaling against linear theory, and the steady variance of waves against a strengthening current against ray theory. |
+| `test_advection` | Current-induced ray rotation against the ray equation and in a solid-body eddy, depth-induced ray rotation against Snell's law along a ray over a slope, the great-circle ray rotation against Clairaut's relation, a uniform isotropic spectrum that stays so on a lon-lat grid, swell packets launched east and west that follow the great circle toward the equator, on a lon-lat grid and on a rotated-pole grid, the conservation, positivity, and rotation of the spectrum by refraction in several substeps, the conservation of action and the shift of the spectrum by the frequency shift, steady shoaling against linear theory, and the steady variance of waves against a strengthening current against ray theory. |
 | `test_domain` | One-hour integration of the idealized hurricane case by `domain_type` with gridded and spectrum output and Stokes drift, compared with the mean and maximum of output fields, ocean stress, and Stokes drift from UMWM before the domain refactor without the refraction by its spurious current gradients against land; the uniform current over the flat bottom neither refracts the waves nor shifts their frequency. |
 
 The Python package has its own test suite in `python/tests`, run with

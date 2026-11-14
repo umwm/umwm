@@ -9,8 +9,8 @@ module umwm_advection
 
   private
   public :: current_rotation_rate, depth_rotation_rate, frequency_outflow, frequency_rate, &
-            frequency_shift, propagation, propagation_flux, refraction, refraction_outflow, &
-            upstream_flux
+            frequency_shift, great_circle_rotation_rate, propagation, propagation_flux, &
+            refraction, refraction_outflow, upstream_flux
 
 contains
 
@@ -28,7 +28,7 @@ contains
     real, intent(in) :: e(nf,nd), e_e(nf,nd), e_w(nf,nd), e_n(nf,nd), e_s(nf,nd)
     real, intent(in) :: cg(nf), cg_e(nf), cg_w(nf), cg_n(nf), cg_s(nf) ! group speed
     real, intent(in) :: kovcg(nf), kovcg_e(nf), kovcg_w(nf), kovcg_n(nf), kovcg_s(nf) ! k/cg
-    real, intent(in) :: cth(nd), sth(nd) ! ray directions adjusted for grid curvature
+    real, intent(in) :: cth(nd), sth(nd) ! ray directions in the grid frame
     real, intent(in) :: dxn, dxs, dye, dyw ! cell edge lengths
     logical, intent(in) :: currents
     real, intent(in) :: uc_e, uc_w, vc_n, vc_s ! double current speed at cell edges
@@ -154,6 +154,22 @@ contains
   end function depth_rotation_rate
 
 
+  pure real function great_circle_rotation_rate(cg, kappa_x, kappa_y, cth, sth) result(res)
+    ! Rate of anti-clockwise rotation [rad/s] of the direction, relative to
+    ! east, of waves that travel along great circles at the group speed cg,
+    ! -(cg/R) tan(lat) cos(th), for the direction (cth, sth) in the grid
+    ! frame and the geodesic curvature of the parallels, tan(lat)/R, along
+    ! the grid x and y axes, kappa_x and kappa_y [1/m]. The waves along the
+    ! parallels turn toward the equator, and those along the meridians do
+    ! not turn.
+    !$acc routine seq
+    real, intent(in) :: cg ! group speed
+    real, intent(in) :: kappa_x, kappa_y ! geodesic curvature of the parallels
+    real, intent(in) :: cth, sth ! cos(th), sin(th)
+    res = -cg * (kappa_x * cth + kappa_y * sth)
+  end function great_circle_rotation_rate
+
+
   pure real function current_rotation_rate(du_dx, du_dy, dv_dx, dv_dy, cth, sth) result(res)
     ! Rate of anti-clockwise rotation [rad/s] of the wavenumber direction th
     ! due to current-induced refraction, -(k/|k|).dU/dn, from dk/dt = -grad(k.U),
@@ -167,15 +183,19 @@ contains
   end function current_rotation_rate
 
 
-  pure subroutine refraction(nf, nd, no, e, cgdlncp_dx, cgdlncp_dy, du_dx, du_dy, dv_dx, dv_dy, &
-                             cth, sth, dt, dth, ef)
+  pure subroutine refraction(nf, nd, no, e, cg, cgdlncp_dx, cgdlncp_dy, kappa_x, kappa_y, &
+                             du_dx, du_dy, dv_dx, dv_dy, cth, sth, dt, dth, ef)
     ! Advects the spectrum e of a cell in directional space for frequencies
-    ! 1:no over the time step dt and integrates the change into ef. The
-    ! time step is split into as many equal substeps as the upstream scheme
-    ! needs in this cell to stay stable and positive.
+    ! 1:no over the time step dt and integrates the change into ef: the
+    ! rotation by the depth and the current, and that of the great circles
+    ! relative to east. The time step is split into as many equal
+    ! substeps as the upstream scheme needs in this cell to stay stable and
+    ! positive.
     integer, intent(in) :: nf, nd, no
     real, intent(in) :: e(nf,nd)
+    real, intent(in) :: cg(nf) ! group speed
     real, intent(in) :: cgdlncp_dx(nf), cgdlncp_dy(nf) ! (cg/cp) grad(cp)
+    real, intent(in) :: kappa_x, kappa_y ! geodesic curvature of the parallels
     real, intent(in) :: du_dx, du_dy, dv_dx, dv_dy ! current velocity gradient
     real, intent(in) :: cth(nd), sth(nd) ! ray directions in the grid frame
     real, intent(in) :: dt, dth
@@ -189,7 +209,8 @@ contains
     do p = 1, nd
       rot_current = current_rotation_rate(du_dx, du_dy, dv_dx, dv_dy, cth(p), sth(p))
       do o = 1, no
-        rot(o,p) = depth_rotation_rate(cgdlncp_dx(o), cgdlncp_dy(o), cth(p), sth(p)) + rot_current
+        rot(o,p) = depth_rotation_rate(cgdlncp_dx(o), cgdlncp_dy(o), cth(p), sth(p)) &
+                 + great_circle_rotation_rate(cg(o), kappa_x, kappa_y, cth(p), sth(p)) + rot_current
       end do
     end do
     rot(:,0) = rot(:,nd)
@@ -197,8 +218,9 @@ contains
 
     outflow = 0
     do o = 1, no
-      outflow = max(outflow, refraction_outflow(cgdlncp_dx(o), cgdlncp_dy(o), &
-                                                du_dx, du_dy, dv_dx, dv_dy, dth))
+      outflow = max(outflow, refraction_outflow(cgdlncp_dx(o), cgdlncp_dy(o), cg(o), &
+                                                kappa_x, kappa_y, du_dx, du_dy, dv_dx, dv_dy, &
+                                                dth))
     end do
     nsub = max(1, ceiling(dt * outflow / dth))
 
@@ -217,24 +239,29 @@ contains
   end subroutine refraction
 
 
-  pure elemental real function refraction_outflow(cgdlncp_dx, cgdlncp_dy, du_dx, du_dy, &
-                                                  dv_dx, dv_dy, dth) result(res)
+  pure elemental real function refraction_outflow(cgdlncp_dx, cgdlncp_dy, cg, kappa_x, kappa_y, &
+                                                  du_dx, du_dy, dv_dx, dv_dy, dth) result(res)
     ! Largest rate [1/s] at which a directional bin of one frequency loses
     ! its action by refraction, which limits the substep of the upstream
     ! scheme: the scheme is stable and positive if the fraction of a bin that
     ! leaves it through both faces in a substep does not exceed 1. Over
-    ! direction, the rotation rate is a sinusoid in th from the depth, of
-    ! amplitude rot_depth, plus half the vorticity, plus a sinusoid in 2 th
-    ! from the strain of the current, of amplitude rot_strain. Per unit time,
-    ! a bin loses at most the largest rotation rate through one face, and,
-    ! where the rotation diverges, at most dth times the largest derivative
-    ! of the rotation rate over th through both faces.
+    ! direction, the rotation rate is a sinusoid in th from the depth and the
+    ! great circles, of amplitude rot_depth, plus half the vorticity, plus a
+    ! sinusoid in 2 th from the strain of the current, of amplitude
+    ! rot_strain. Per unit time, a bin loses at most the largest rotation
+    ! rate through one face, and, where the rotation diverges, at most dth
+    ! times the largest derivative of the rotation rate over th through both
+    ! faces.
     !$acc routine seq
     real, intent(in) :: cgdlncp_dx, cgdlncp_dy ! (cg/cp) grad(cp)
+    real, intent(in) :: cg ! group speed
+    real, intent(in) :: kappa_x, kappa_y ! geodesic curvature of the parallels
     real, intent(in) :: du_dx, du_dy, dv_dx, dv_dy ! current velocity gradient
     real, intent(in) :: dth
     real :: rot_depth, rot_vorticity, rot_strain
-    rot_depth = sqrt(cgdlncp_dx**2 + cgdlncp_dy**2)
+    ! the great circles turn as the depth would with (cg/cp) grad(cp) of
+    ! (-cg kappa_y, cg kappa_x)
+    rot_depth = sqrt((cgdlncp_dx - cg * kappa_y)**2 + (cgdlncp_dy + cg * kappa_x)**2)
     rot_vorticity = 0.5 * abs(dv_dx - du_dy)
     rot_strain = 0.5 * sqrt((du_dx - dv_dy)**2 + (dv_dx + du_dy)**2)
     res = max(rot_depth + rot_vorticity + rot_strain, dth * (rot_depth + 2 * rot_strain))

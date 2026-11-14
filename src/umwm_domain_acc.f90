@@ -12,7 +12,8 @@ submodule (umwm_domain) umwm_domain_acc
 
   use, intrinsic :: iso_c_binding, only: c_f_pointer, c_loc, c_ptr, c_size_t
   use umwm_advection, only: current_rotation_rate, depth_rotation_rate, frequency_outflow, &
-                            frequency_rate, propagation_flux, refraction_outflow, upstream_flux
+                            frequency_rate, great_circle_rotation_rate, propagation_flux, &
+                            refraction_outflow, upstream_flux
   use umwm_physics, only: equilibrium_bin, integrate_bin, source_rate
   use umwm_source_functions, only: power_bin, power_threshold, s_ice_bin, &
                                    sds_coefficient_bin, sin_d12_bin, snl_d12_bin, snl_gain
@@ -137,6 +138,7 @@ contains
                     forcing % fice, config % fice_uth, forcing % uc, forcing % vc, grid % ie, &
                     grid % iw, grid % in, grid % is, grid % iie, grid % iiw, grid % iin, &
                     grid % iis, grid % dxn, grid % dxs, grid % dye, grid % dyw, grid % oneovar, &
+                    grid % kappa_x, grid % kappa_y, &
                     grid % cth_curv, grid % sth_curv, self % cg0, self % kovcg, self % invcp0, &
                     self % cgdlncp_dx, self % cgdlncp_dy, self % du_dx, self % du_dy, &
                     self % dv_dx, self % dv_dy)
@@ -507,8 +509,8 @@ contains
 
   subroutine advect_acc(om, pm, i1, i2, h1, h2, imm, currents, dts, dth, dlnf, e, ef, oc, &
                         fice, fice_uth, uc, vc, east, west, north, south, iie, iiw, iin, iis, &
-                        dxn, dxs, dye, dyw, oneovar, cth, sth, cg0, kovcg, invcp0, cgdlncp_dx, &
-                        cgdlncp_dy, du_dx, du_dy, dv_dx, dv_dy)
+                        dxn, dxs, dye, dyw, oneovar, kappa_x, kappa_y, cth, sth, cg0, kovcg, &
+                        invcp0, cgdlncp_dx, cgdlncp_dy, du_dx, du_dy, dv_dx, dv_dy)
     ! Propagates and refracts the spectrum e at all cells, and with currents
     ! shifts it in frequency, conserving the wave action, and integrates
     ! into ef, as advect_column. The neighbors east, west, north, and south
@@ -522,7 +524,8 @@ contains
     real, intent(in) :: fice(imm), fice_uth, uc(imm), vc(imm)
     integer, intent(in), dimension(imm) :: east, west, north, south, iie, iiw, iin, iis
     real, intent(in), dimension(i1:i2) :: dxn, dxs, dye, dyw, oneovar, du_dx, du_dy, dv_dx, dv_dy
-    real, intent(in) :: cth(pm,i1:i2), sth(pm,i1:i2) ! ray directions adjusted for grid curvature
+    real, intent(in), dimension(i1:i2) :: kappa_x, kappa_y ! geodesic curvature of the parallels
+    real, intent(in) :: cth(pm,i1:i2), sth(pm,i1:i2) ! ray directions in the grid frame
     real, intent(in), dimension(om,h1:h2) :: cg0, kovcg
     real, intent(in), dimension(om,i1:i2) :: invcp0, cgdlncp_dx, cgdlncp_dy
 
@@ -582,6 +585,7 @@ contains
         !$acc loop vector reduction(max:outflow_r)
         do o = 1, no
           outflow_r = max(outflow_r, refraction_outflow(cgdlncp_dx(o,i), cgdlncp_dy(o,i), &
+                                                        cg0(o,i), kappa_x(i), kappa_y(i), &
                                                         du_dx(i), du_dy(i), dv_dx(i), &
                                                         dv_dy(i), dth))
         end do
@@ -655,10 +659,15 @@ contains
               if (pr < 1) pr = pm
               rot_minus = depth_rotation_rate(cgdlncp_dx(o,i), cgdlncp_dy(o,i), cth(pr,i), &
                                               sth(pr,i)) &
+                + great_circle_rotation_rate(cg0(o,i), kappa_x(i), kappa_y(i), cth(pr,i), &
+                                             sth(pr,i)) &
                 + current_rotation_rate(du_dx(i), du_dy(i), dv_dx(i), dv_dy(i), cth(pr,i), sth(pr,i))
               rot = depth_rotation_rate(cgdlncp_dx(o,i), cgdlncp_dy(o,i), cth(p,i), sth(p,i)) &
+                + great_circle_rotation_rate(cg0(o,i), kappa_x(i), kappa_y(i), cth(p,i), sth(p,i)) &
                 + current_rotation_rate(du_dx(i), du_dy(i), dv_dx(i), dv_dy(i), cth(p,i), sth(p,i))
               rot_plus = depth_rotation_rate(cgdlncp_dx(o,i), cgdlncp_dy(o,i), cth(pl,i), &
+                                             sth(pl,i)) &
+                + great_circle_rotation_rate(cg0(o,i), kappa_x(i), kappa_y(i), cth(pl,i), &
                                              sth(pl,i)) &
                 + current_rotation_rate(du_dx(i), du_dy(i), dv_dx(i), dv_dy(i), cth(pl,i), sth(pl,i))
               efop = efop - dt_over_dth * upstream_flux(rot_minus, rot, rot_plus, &
@@ -719,11 +728,17 @@ contains
                 if (pr < 1) pr = pm
                 rot_minus = depth_rotation_rate(cgdlncp_dx(o,i), cgdlncp_dy(o,i), cth(pr,i), &
                                                 sth(pr,i)) &
+                  + great_circle_rotation_rate(cg0(o,i), kappa_x(i), kappa_y(i), cth(pr,i), &
+                                               sth(pr,i)) &
                   + current_rotation_rate(du_dx(i), du_dy(i), dv_dx(i), dv_dy(i), cth(pr,i), &
                                           sth(pr,i))
                 rot = depth_rotation_rate(cgdlncp_dx(o,i), cgdlncp_dy(o,i), cth(p,i), sth(p,i)) &
+                  + great_circle_rotation_rate(cg0(o,i), kappa_x(i), kappa_y(i), cth(p,i), &
+                                               sth(p,i)) &
                   + current_rotation_rate(du_dx(i), du_dy(i), dv_dx(i), dv_dy(i), cth(p,i), sth(p,i))
                 rot_plus = depth_rotation_rate(cgdlncp_dx(o,i), cgdlncp_dy(o,i), cth(pl,i), &
+                                               sth(pl,i)) &
+                  + great_circle_rotation_rate(cg0(o,i), kappa_x(i), kappa_y(i), cth(pl,i), &
                                                sth(pl,i)) &
                   + current_rotation_rate(du_dx(i), du_dy(i), dv_dx(i), dv_dy(i), cth(pl,i), &
                                           sth(pl,i))
